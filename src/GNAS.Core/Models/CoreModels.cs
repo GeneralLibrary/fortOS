@@ -426,6 +426,7 @@ public record PortMapping
 public record AgentTokenResult
 {
     /// <summary>令牌文本。</summary>
+    [LogMasked]
     public required string Token { get; init; }
     /// <summary>Agent 标识。</summary>
     public required string AgentId { get; init; }
