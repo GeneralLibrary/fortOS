@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GNAS.Api\GNAS.Api.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.ServiceBus\GNAS.ServiceBus.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Observability\GNAS.Observability.csproj" />
   </ItemGroup>
 
 </Project>

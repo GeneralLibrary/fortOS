@@ -1,0 +1,40 @@
+using GNAS.Core;
+using Microsoft.Extensions.Hosting;
+
+namespace GNAS.Observability.Audit;
+
+/// <summary>每日审计链完整性验证后台服务。</summary>
+public sealed class VerificationBackgroundService : BackgroundService
+{
+    private readonly IAuditChain _auditChain;
+    private readonly IEventBus _eventBus;
+
+    /// <summary>初始化审计链验证后台服务。</summary>
+    public VerificationBackgroundService(IAuditChain auditChain, IEventBus eventBus)
+    {
+        _auditChain = auditChain;
+        _eventBus = eventBus;
+    }
+
+    /// <inheritdoc />
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(DelayUntilNextRun(), stoppingToken).ConfigureAwait(false);
+            var result = await _auditChain.VerifyIntegrityAsync(null, null, stoppingToken).ConfigureAwait(false);
+            if (!result.IsValid)
+            {
+                await _eventBus.PublishAsync("audit.chain.broken", "critical", System.Text.Json.JsonSerializer.Serialize(result), stoppingToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static TimeSpan DelayUntilNextRun()
+    {
+        var now = DateTime.Now;
+        var next = now.Date.AddHours(3);
+        if (next <= now) next = next.AddDays(1);
+        return next - now;
+    }
+}
