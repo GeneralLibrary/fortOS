@@ -1,0 +1,28 @@
+# GNAS 自部署参考 (参见 docs/gnas-architecture.md §13.2)
+services:
+  gnas-core:
+    image: gnas/core:latest
+    build: .
+    container_name: gnas-core
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /srv/nas:/srv/nas
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /dev:/host/dev
+    environment:
+      - GNAS_CONFIG_PATH=/srv/nas/config/nas.yaml
+      - GNAS_DATA_ROOT=/srv/nas
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+      - ASPNETCORE_ENVIRONMENT=Production
+
+  gnas-loki:
+    image: grafana/loki:latest
+    container_name: gnas-loki
+    restart: unless-stopped
+    volumes:
+      - /srv/nas/logs/loki:/loki
+    command: -config.file=/etc/loki/local-config.yaml

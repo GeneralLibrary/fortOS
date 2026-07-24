@@ -1,0 +1,14 @@
+# GNAS 集成测试专用 Compose
+services:
+  gnas-test:
+    build: .
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./test-data:/srv/nas
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Testing
+      - GNAS_DATA_ROOT=/srv/nas
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+    ports:
+      - "5001:5000"
