@@ -4,6 +4,12 @@
     <Project Path="src/GNAS.Api/GNAS.Api.csproj" />
     <Project Path="src/GNAS.Cli/GNAS.Cli.csproj" />
     <Project Path="src/GNAS.Core/GNAS.Core.csproj" />
+    <Project Path="src/GNAS.Modules.Agent/GNAS.Modules.Agent.csproj" />
+    <Project Path="src/GNAS.Modules.Backup/GNAS.Modules.Backup.csproj" />
+    <Project Path="src/GNAS.Modules.Network/GNAS.Modules.Network.csproj" />
+    <Project Path="src/GNAS.Modules.Share/GNAS.Modules.Share.csproj" />
+    <Project Path="src/GNAS.Modules.Storage/GNAS.Modules.Storage.csproj" />
+    <Project Path="src/GNAS.Modules.Update/GNAS.Modules.Update.csproj" />
     <Project Path="src/GNAS.Modules/GNAS.Modules.csproj" />
     <Project Path="src/GNAS.Observability/GNAS.Observability.csproj" />
     <Project Path="src/GNAS.Platform/GNAS.Platform.csproj" />

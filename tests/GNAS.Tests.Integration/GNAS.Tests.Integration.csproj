@@ -21,8 +21,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GNAS.Api\GNAS.Api.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Agent\GNAS.Agent.csproj" />
     <ProjectReference Include="..\..\src\GNAS.ServiceBus\GNAS.ServiceBus.csproj" />
     <ProjectReference Include="..\..\src\GNAS.Observability\GNAS.Observability.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules\GNAS.Modules.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules.Share\GNAS.Modules.Share.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules.Backup\GNAS.Modules.Backup.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules.Storage\GNAS.Modules.Storage.csproj" />
   </ItemGroup>
 
 </Project>
