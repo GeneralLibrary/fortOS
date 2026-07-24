@@ -15,6 +15,7 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     private readonly ILogger<LogPipeline>? _logger;
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _consumer;
+    private int _disposed;
 
     /// <summary>初始化日志管线。</summary>
     public LogPipeline(IEnumerable<ILogStore> stores, IGnasConfiguration? configuration = null, IAuditChain? auditChain = null, ILogger<LogPipeline>? logger = null)
@@ -46,6 +47,11 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     /// <inheritdoc />
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
         _channel.Writer.TryComplete();
         await _shutdown.CancelAsync().ConfigureAwait(false);
         if (_consumer is not null)
@@ -114,7 +120,16 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        await StopAsync(CancellationToken.None).ConfigureAwait(false);
-        _shutdown.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            _channel.Writer.TryComplete();
+            await _shutdown.CancelAsync().ConfigureAwait(false);
+            if (_consumer is not null)
+            {
+                await Task.WhenAny(_consumer, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+            }
+
+            _shutdown.Dispose();
+        }
     }
 }

@@ -75,5 +75,5 @@ public sealed class SnapshotService
         }
     }
 
-    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}";
+    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }
