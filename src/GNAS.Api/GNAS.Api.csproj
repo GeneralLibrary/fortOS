@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.35.1" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.80.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
@@ -21,6 +22,10 @@
     <ProjectReference Include="..\GNAS.ServiceBus\GNAS.ServiceBus.csproj" />
     <ProjectReference Include="..\GNAS.Observability\GNAS.Observability.csproj" />
     <ProjectReference Include="..\GNAS.Platform\GNAS.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\..\protos\*.proto" GrpcServices="Both" ProtoRoot="..\..\protos" />
   </ItemGroup>
 
 </Project>
