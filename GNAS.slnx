@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GNAS.Agent/GNAS.Agent.csproj" />
+    <Project Path="src/GNAS.Api/GNAS.Api.csproj" />
+    <Project Path="src/GNAS.Cli/GNAS.Cli.csproj" />
+    <Project Path="src/GNAS.Core/GNAS.Core.csproj" />
+    <Project Path="src/GNAS.Modules/GNAS.Modules.csproj" />
+    <Project Path="src/GNAS.Observability/GNAS.Observability.csproj" />
+    <Project Path="src/GNAS.Platform/GNAS.Platform.csproj" />
+    <Project Path="src/GNAS.Security/GNAS.Security.csproj" />
+    <Project Path="src/GNAS.ServiceBus/GNAS.ServiceBus.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GNAS.Tests.Integration/GNAS.Tests.Integration.csproj" />
+  </Folder>
+</Solution>

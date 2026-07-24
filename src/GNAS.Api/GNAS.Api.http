@@ -1,0 +1,6 @@
+@GNAS.Api_HostAddress = http://localhost:5248
+
+GET {{GNAS.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

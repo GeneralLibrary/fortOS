@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GNAS.Core\GNAS.Core.csproj" />
+    <ProjectReference Include="..\GNAS.Security\GNAS.Security.csproj" />
+    <ProjectReference Include="..\GNAS.Modules\GNAS.Modules.csproj" />
+    <ProjectReference Include="..\GNAS.Agent\GNAS.Agent.csproj" />
+    <ProjectReference Include="..\GNAS.ServiceBus\GNAS.ServiceBus.csproj" />
+    <ProjectReference Include="..\GNAS.Observability\GNAS.Observability.csproj" />
+    <ProjectReference Include="..\GNAS.Platform\GNAS.Platform.csproj" />
+  </ItemGroup>
+
+</Project>
