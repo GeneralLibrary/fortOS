@@ -18,6 +18,12 @@
     <ProjectReference Include="..\GNAS.Core\GNAS.Core.csproj" />
     <ProjectReference Include="..\GNAS.Security\GNAS.Security.csproj" />
     <ProjectReference Include="..\GNAS.Modules\GNAS.Modules.csproj" />
+    <ProjectReference Include="..\GNAS.Modules.Storage\GNAS.Modules.Storage.csproj" />
+    <ProjectReference Include="..\GNAS.Modules.Share\GNAS.Modules.Share.csproj" />
+    <ProjectReference Include="..\GNAS.Modules.Network\GNAS.Modules.Network.csproj" />
+    <ProjectReference Include="..\GNAS.Modules.Agent\GNAS.Modules.Agent.csproj" />
+    <ProjectReference Include="..\GNAS.Modules.Backup\GNAS.Modules.Backup.csproj" />
+    <ProjectReference Include="..\GNAS.Modules.Update\GNAS.Modules.Update.csproj" />
     <ProjectReference Include="..\GNAS.Agent\GNAS.Agent.csproj" />
     <ProjectReference Include="..\GNAS.ServiceBus\GNAS.ServiceBus.csproj" />
     <ProjectReference Include="..\GNAS.Observability\GNAS.Observability.csproj" />

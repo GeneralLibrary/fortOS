@@ -1,0 +1,35 @@
+using GNAS.Core;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+
+namespace GNAS.Api.Filters;
+
+/// <summary>统一异常响应过滤器。</summary>
+public sealed class GnasExceptionFilter : IExceptionFilter
+{
+    private readonly ILogger<GnasExceptionFilter> logger;
+
+    /// <summary>初始化异常过滤器。</summary>
+    public GnasExceptionFilter(ILogger<GnasExceptionFilter> logger) => this.logger = logger;
+
+    /// <inheritdoc />
+    public void OnException(ExceptionContext context)
+    {
+        var traceId = context.HttpContext.Items["X-Trace-Id"]?.ToString();
+        var (status, code, error) = Map(context.Exception);
+        if (status >= 500) logger.LogError(context.Exception, "API 请求失败。");
+        context.Result = new ObjectResult(new { error, code, traceId }) { StatusCode = status };
+        context.ExceptionHandled = true;
+    }
+
+    private static (int Status, string Code, string Error) Map(Exception exception) => exception switch
+    {
+        ServiceNotFoundException ex => (StatusCodes.Status404NotFound, ex.ErrorCode, ex.Message),
+        PermissionDeniedException ex => (StatusCodes.Status403Forbidden, ex.ErrorCode, ex.Message),
+        TokenValidationException ex => (StatusCodes.Status401Unauthorized, ex.ErrorCode, ex.Message),
+        ConfigurationException ex => (StatusCodes.Status400BadRequest, ex.ErrorCode, ex.Message),
+        ArgumentException ex => (StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message),
+        GnasException ex => (StatusCodes.Status500InternalServerError, ex.ErrorCode, ex.Message),
+        _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "服务器内部错误。"),
+    };
+}
