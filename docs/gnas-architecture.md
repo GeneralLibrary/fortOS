@@ -1,9 +1,9 @@
 # GNAS — 新一代跨平台 NAS 系统技术架构
 
 > **项目代号**: GNAS  
-> **版本**: Architecture v2.0  
+> **版本**: Architecture v2.1  
 > **最新修订**: 2026-07-25  
-> **技术栈**: .NET 9 + Docker + OpenTelemetry
+> **技术栈**: .NET 10 + Docker + OpenTelemetry
 
 ---
 
@@ -175,7 +175,7 @@ GNAS 的展示层仅包含一个跨平台命令行工具 `gnas`，所有管理�
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │               Desktop CLI Tool (gnas)                   │ │
 │  │                                                        │ │
-│  │  · 跨平台 Console Application (.NET 9)                 │ │
+│  │  · 跨平台 Console Application (.NET 10)                 │ │
 │  │  · 通过 REST API 与 NAS 后端通信                        │ │
 │  │  · 交互式 TUI 模式 (终端 UI) + 批处理模式                │ │
 │  │  · 管道友好 (JSON / Table 输出)                         │ │
@@ -1808,7 +1808,7 @@ public record ResourceQuota
 ║  ┌──────────────────────────────────────────────────────┐ ║
 ║  │          .NET Runtime Identifiers (RID)               │ ║
 ║  │                                                       │ ║
-║  │  Target Frameworks: net9.0                            │ ║
+║  │  Target Frameworks: net10.0                            │ ║
 ║  │  RIDs: linux-x64 | linux-arm64 | win-x64 | win-arm64 │ ║
 ║  │                                                       │ ║
 ║  │  通过依赖注入 (DI) 自动选择平台实现:                   │ ║
@@ -2248,11 +2248,11 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
 
 | 层次 | 技术 | 说明 |
 |------|------|------|
-| **交互层** | .NET 9 Console Application (gnas CLI) | 跨平台命令行工具, 支持 TUI + 批处理 |
+| **交互层** | .NET 10 Console Application (gnas CLI) | 跨平台命令行工具, 支持 TUI + 批处理 |
 | **API Gateway** | ASP.NET Core Minimal API + gRPC | REST 对外 (CLI/第三方), gRPC 对内 |
 | **内嵌 Dashboard** | 纯静态 HTML + Vanilla JS (可选) | 只读监控面板, 无框架依赖 |
 | **内部 IPC** | gRPC + Unix Sockets / Named Pipes | 服务间高性能通信 |
-| **业务模块** | .NET 9 Class Libraries + AssemblyLoadContext | 模块热加载, 沙箱隔离 |
+| **业务模块** | .NET 10 Class Libraries + AssemblyLoadContext | 模块热加载, 沙箱隔离 |
 | **配置存储** | SQLite (默认) / PostgreSQL (集群) | 轻量但功能完整 |
 | **声明式配置** | YAML + JSON Schema | 替代传统 XML+SaltStack |
 | **容器运行时** | Docker Engine (官方, 未修改) | 社区标准, 避免厂商锁定 |
@@ -2266,7 +2266,7 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
 | **日志存储** | 文件轮转 + 内嵌 Loki + SQLite + Audit Vault | 按日志类型分流存储 |
 | **审计防篡改** | 自研 Audit Chain (SHA-256 + HMAC) | 区块链思想, 零外部依赖 |
 | **告警通知** | SMTP + Webhook + CLI 输出 | 多渠道通知 |
-| **跨平台** | .NET 9 RID 多目标编译 | linux-x64, win-x64, linux-arm64 |
+| **跨平台** | .NET 10 RID 多目标编译 | linux-x64, win-x64, linux-arm64 |
 | **进程管理** | 自研 Service Bus + systemd/SCM 适配 | 跨平台统一服务管理 |
 
 ---
@@ -2879,7 +2879,7 @@ rate_limit:
 
 | 维度 | OMV 原架构 | GNAS 新架构 |
 |------|-----------|-------------|
-| **后端语言** | PHP | .NET 9 (C#) |
+| **后端语言** | PHP | .NET 10 (C#) |
 | **Web 服务** | Nginx + PHP-FPM | Kestrel (ASP.NET Core 内建) |
 | **配置存储** | XML (config.xml) | SQLite + YAML 声明式配置 |
 | **配置管理** | SaltStack (masterless) | 自研 Service Bus (事件驱动) |
@@ -2901,13 +2901,13 @@ rate_limit:
 
 ## 架构决策记录 (ADR — Architecture Decision Records)
 
-### ADR-001: 选择 .NET 9 而非 Go/Rust
+### ADR-001: 选择 .NET 10 而非 Go/Rust
 
 | 项 | 内容 |
 |----|------|
 | **状态** | ✅ 已决定 |
 | **背景** | NAS 系统涉及大量系统调用、文件操作、网络协议处理 |
-| **决策** | 使用 .NET 9 (C# 13) |
+| **决策** | 使用 .NET 10 (C# 14) |
 | **理由** | 1. 跨平台成熟度高 (linux-x64/arm64/win-x64) 2. ASP.NET Core 提供完整的 API/中间件生态 3. gRPC 原生支持 4. 作者团队技术栈以 .NET 为主 5. 热加载 (AssemblyLoadContext) 支持模块化 |
 | **替代方案** | Go (并发优秀但泛型生态弱), Rust (性能极致但开发效率低) |
 
@@ -2976,11 +2976,12 @@ rate_limit:
 
 | 版本 | 日期 | 变更内容 |
 |------|------|---------|
-| **v2.0** | 2026-07-25 | 新增: §5.3 存储池管理详细设计、§5.4 共享协议详细设计、§5.5 数据保护与备份策略、§4.3 gRPC 服务定义(Proto)、§14 系统安装与初始化引导、§15 UPS 集成、§16 安全增强设计、ADR 架构决策记录 |
+| **v2.1** | 2026-07-25 | 升级技术栈: .NET 9 → .NET 10 (C# 14) |
+| **v2.0** | 2026-07-25 | 新增: §5.3存储池管理、§5.4共享协议、§5.5数据保护、§4.3 gRPC Proto、§14安装初始化、§15 UPS、§16安全增强、ADR |
 | **v1.0** | 2026-07-24 | 初始版本: 13 个章节的完整架构设计 |
 
 ---
 
-> **文档版本**: Architecture v2.0  
+> **文档版本**: Architecture v2.1  
 > **更新日期**: 2026-07-25  
 > **关联文档**: [GNAS Implementation Prompts](gnas-implementation-prompts.md)
