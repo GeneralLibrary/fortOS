@@ -44,6 +44,8 @@ public record ServiceDefinition
     public RestartPolicy RestartPolicy { get; init; }
     /// <summary>原生进程可执行文件路径。</summary>
     public string? Executable { get; init; }
+    /// <summary>原生进程命令行参数。</summary>
+    public string? Arguments { get; init; }
     /// <summary>容器 compose 文件路径。</summary>
     public string? ComposeFile { get; init; }
     /// <summary>健康检查配置。</summary>
@@ -279,6 +281,8 @@ public record ProcessStartConfig
     public string? WorkingDirectory { get; init; }
     /// <summary>环境变量。</summary>
     public Dictionary<string, string>? EnvironmentVariables { get; init; }
+    /// <summary>标准输入内容；用于向 chpasswd、smbpasswd 等命令安全传递敏感数据。</summary>
+    public string? StandardInput { get; init; }
     /// <summary>超时秒数。</summary>
     public int TimeoutSeconds { get; init; } = 30;
 }

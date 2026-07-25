@@ -10,6 +10,7 @@ namespace GNAS.Modules.Share;
 public sealed class ShareModule : NasModuleBase
 {
     private readonly SemaphoreSlim sync = new(1, 1);
+    private ShareServiceCoordinator? coordinator;
     private string ConfigPath => Path.Combine(Context.DataDirectory, "config", "shares.json");
 
     /// <inheritdoc />
@@ -24,10 +25,40 @@ public sealed class ShareModule : NasModuleBase
     /// <inheritdoc />
     public override IReadOnlyList<string> RequiredCapabilities => ["share:read", "share:write", "storage:filesystem:read"];
 
+    /// <summary>
+    /// 初始化：注册内置共享守护进程服务定义，并重放持久化的共享配置到系统路径，
+    /// 保证 NAS 重启后客户端仍能访问既有共享。
+    /// </summary>
+    protected override async Task OnInitializeAsync(CancellationToken ct)
+    {
+        coordinator = new ShareServiceCoordinator(
+            Services.GetService<IServiceRegistry>(),
+            Services.GetService<IServiceSupervisor>(),
+            Services.GetService<IProcessManager>(),
+            Services.GetService<IGnasConfiguration>(),
+            Logger);
+        await coordinator.RegisterBuiltInServicesAsync(ct).ConfigureAwait(false);
+
+        RenderedShareConfigs rendered;
+        await sync.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var shares = await ReadSharesAsync(ct).ConfigureAwait(false);
+            rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            sync.Release();
+        }
+
+        await coordinator.ApplyAsync(rendered, ct).ConfigureAwait(false);
+    }
+
     /// <summary>创建共享并刷新服务配置。</summary>
     public async Task<ShareDefinition> CreateShareAsync(ShareDefinition share, CancellationToken ct)
     {
         ShareValidation.ValidateShare(share);
+        RenderedShareConfigs rendered;
         await sync.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -39,18 +70,14 @@ public sealed class ShareModule : NasModuleBase
 
             shares.Add(share);
             await WriteSharesAsync(shares, ct).ConfigureAwait(false);
-            await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+            rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
         }
         finally
         {
             sync.Release();
         }
 
-        if (Services.GetService<IServiceSupervisor>() is { } supervisor)
-        {
-            await supervisor.RestartAsync("smb", ct).ConfigureAwait(false);
-        }
-
+        await ApplyRenderedConfigsAsync(rendered, ct).ConfigureAwait(false);
         await PublishAsync("share.created", "share.created", share, ct).ConfigureAwait(false);
         return share;
     }
@@ -60,6 +87,7 @@ public sealed class ShareModule : NasModuleBase
     {
         await sync.WaitAsync(ct).ConfigureAwait(false);
         ShareDefinition? removed;
+        RenderedShareConfigs? rendered = null;
         try
         {
             var shares = await ReadSharesAsync(ct).ConfigureAwait(false);
@@ -71,11 +99,16 @@ public sealed class ShareModule : NasModuleBase
 
             shares.Remove(removed);
             await WriteSharesAsync(shares, ct).ConfigureAwait(false);
-            await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+            rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
         }
         finally
         {
             sync.Release();
+        }
+
+        if (rendered is not null)
+        {
+            await ApplyRenderedConfigsAsync(rendered, ct).ConfigureAwait(false);
         }
 
         await PublishAsync("share.deleted", "share.deleted", removed, ct).ConfigureAwait(false);
@@ -113,13 +146,25 @@ public sealed class ShareModule : NasModuleBase
         await JsonSerializer.SerializeAsync(stream, shares, new JsonSerializerOptions { WriteIndented = true }, ct).ConfigureAwait(false);
     }
 
-    private async Task WriteRenderedConfigsAsync(List<ShareDefinition> shares, CancellationToken ct)
+    /// <summary>
+    /// 渲染各协议配置并写入模块数据目录副本（供审计与排障），返回渲染结果供协调器应用到系统路径。
+    /// </summary>
+    private async Task<RenderedShareConfigs> WriteRenderedConfigsAsync(List<ShareDefinition> shares, CancellationToken ct)
     {
         var configDir = Path.Combine(Context.DataDirectory, "config");
         Directory.CreateDirectory(configDir);
-        await File.WriteAllTextAsync(Path.Combine(configDir, "smb.conf"), new SmbConfigGenerator().Generate(shares), ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(configDir, "exports"), new NfsExportsGenerator().Generate(shares), ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(configDir, "vsftpd.conf"), new FtpConfigGenerator().Generate(shares), ct).ConfigureAwait(false);
+        var rendered = new RenderedShareConfigs(
+            new SmbConfigGenerator().Generate(shares),
+            new NfsExportsGenerator().Generate(shares),
+            new FtpConfigGenerator().Generate(shares));
+        await File.WriteAllTextAsync(Path.Combine(configDir, "smb.conf"), rendered.Smb, ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(configDir, "exports"), rendered.NfsExports, ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(configDir, "vsftpd.conf"), rendered.Ftp, ct).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(configDir, "webdav.conf"), new WebDavConfigGenerator().Generate(shares), ct).ConfigureAwait(false);
+        return rendered;
     }
+
+    /// <summary>通过协调器将渲染结果应用到系统守护进程配置。</summary>
+    private Task ApplyRenderedConfigsAsync(RenderedShareConfigs rendered, CancellationToken ct)
+        => coordinator?.ApplyAsync(rendered, ct) ?? Task.CompletedTask;
 }

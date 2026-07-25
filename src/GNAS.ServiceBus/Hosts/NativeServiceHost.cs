@@ -50,6 +50,7 @@ public sealed class NativeServiceHost : IServiceHost
         _process = await _processManager.StartProcessAsync(new ProcessStartConfig
         {
             ExecutablePath = definition.Executable,
+            Arguments = definition.Arguments,
         }, ct).ConfigureAwait(false);
         _monitorTask = Task.Run(() => MonitorExitAsync(definition.ServiceId, _process.Pid, _monitorCts.Token));
         await _eventBus.PublishAsync($"service.{definition.ServiceId}.started", "service.started", "{}", ct).ConfigureAwait(false);

@@ -8,6 +8,7 @@ using GNAS.Modules.Share;
 using GNAS.Modules.Share.Services;
 using GNAS.Modules.Storage;
 using GNAS.Observability.Logging;
+using GNAS.Security.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -349,6 +350,28 @@ public sealed class AuthController : GnasControllerBase
         return new { token = result.NasToken, payload = result.TokenPayload };
     }
 
+    /// <summary>
+    /// 注册本地用户。
+    /// 首次启动（尚无任何用户）时允许匿名调用以创建首个管理员账户；
+    /// 存在用户后，<see cref="Middleware.NasTokenMiddleware"/> 强制要求令牌，且此处校验用户管理能力。
+    /// </summary>
+    [HttpPost("register")]
+    public async Task<object> Register([FromBody] RegisterRequest request, [FromServices] IIdentityService identity, CancellationToken ct)
+    {
+        if (HttpContext.Items["NasTokenPayload"] is NasTokenPayload payload && !payload.Capabilities.Satisfies("admin:user:create"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "需要用户管理权限。", code = "FORBIDDEN", traceId = TraceId });
+        }
+
+        var result = await identity.CreateLocalUserAsync(request.Username, request.Password, request.DisplayName, request.Email, ct).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            return BadRequest(new { error = result.ErrorMessage, code = "REGISTER_FAILED", traceId = TraceId });
+        }
+
+        return new { success = true, username = request.Username };
+    }
+
     /// <summary>刷新令牌。</summary>
     [HttpPost("refresh")]
     public async Task<object> Refresh([FromServices] ITokenManager tokens, CancellationToken ct)
@@ -401,5 +424,7 @@ public sealed record DeployAgentRequest(string TemplateId, AgentConfig Config);
 public sealed record RecoveryRequest(string Target, string? Mode);
 /// <summary>登录请求。</summary>
 public sealed record LoginRequest(string Username, string Password, string? Totp);
+/// <summary>注册用户请求。</summary>
+public sealed record RegisterRequest(string Username, string Password, string? DisplayName, string? Email);
 /// <summary>配置值。</summary>
 public sealed record ConfigValue(string? Value);

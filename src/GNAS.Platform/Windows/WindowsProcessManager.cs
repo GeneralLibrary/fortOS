@@ -45,7 +45,7 @@ public sealed partial class WindowsProcessManager : IProcessManager
 
     /// <inheritdoc />
     public Task<CommandResult> ExecuteCommandAsync(ProcessStartConfig config, CancellationToken ct)
-        => _executor.ExecuteAsync(config.ExecutablePath, config.Arguments, ct, TimeSpan.FromSeconds(config.TimeoutSeconds), workingDirectory: config.WorkingDirectory, environment: config.EnvironmentVariables);
+        => _executor.ExecuteAsync(config.ExecutablePath, config.Arguments, ct, TimeSpan.FromSeconds(config.TimeoutSeconds), workingDirectory: config.WorkingDirectory, environment: config.EnvironmentVariables, standardInput: config.StandardInput);
 
     /// <inheritdoc />
     public async Task EnableServiceAsync(string serviceName, CancellationToken ct)

@@ -59,6 +59,67 @@ public sealed class ApiGatewayTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Register_Bootstrap_CreatesFirstAdmin_ThenRequiresAuth()
+    {
+        using var factory = await ApiTestFactory.CreateAsync(nameof(Register_Bootstrap_CreatesFirstAdmin_ThenRequiresAuth));
+        using var client = factory.CreateClient();
+
+        // bootstrap 阶段：无用户时允许匿名注册首个账户
+        var first = await client.PostAsJsonAsync("/api/auth/register", new { username = "admin", password = "Admin12345", displayName = "Admin" });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        // 存在用户后：匿名注册被拒绝
+        var anonymous = await client.PostAsJsonAsync("/api/auth/register", new { username = "bob", password = "Password1", displayName = "Bob" });
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        // 首个用户自动获得 admin 角色，登录后可以继续创建用户
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "Admin12345" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var body = await login.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var token = body.GetProperty("token").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/register")
+        {
+            Content = JsonContent.Create(new { username = "bob", password = "Password1", displayName = "Bob" }),
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var second = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Register_NonAdminToken_ReturnsForbidden()
+    {
+        using var factory = await ApiTestFactory.CreateAsync(nameof(Register_NonAdminToken_ReturnsForbidden), createUser: true);
+        using var client = factory.CreateClient();
+
+        // createUser 创建的首个用户是 admin；再创建一个普通用户并用其令牌尝试注册
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "Admin12345" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var adminToken = (await login.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("token").GetString();
+
+        using var createBob = new HttpRequestMessage(HttpMethod.Post, "/api/auth/register")
+        {
+            Content = JsonContent.Create(new { username = "bob", password = "Password1" }),
+        };
+        createBob.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(createBob)).StatusCode);
+
+        var bobLogin = await client.PostAsJsonAsync("/api/auth/login", new { username = "bob", password = "Password1" });
+        var bobToken = (await bobLogin.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("token").GetString();
+
+        using var forbidden = new HttpRequestMessage(HttpMethod.Post, "/api/auth/register")
+        {
+            Content = JsonContent.Create(new { username = "carol", password = "Password1" }),
+        };
+        forbidden.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bobToken);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(forbidden)).StatusCode);
+    }
+
     private sealed class ApiTestFactory : WebApplicationFactory<Program>
     {
         private readonly string? previousDataRoot;

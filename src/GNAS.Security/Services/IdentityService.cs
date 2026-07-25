@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using GNAS.Core;
 using GNAS.Security.Models;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 
 namespace GNAS.Security.Services;
 
@@ -19,6 +20,8 @@ public sealed class IdentityService : IIdentityService
     private readonly IDatabaseProvider _database;
     private readonly ITokenManager _tokenManager;
     private readonly IGnasConfiguration? _configuration;
+    private readonly IReadOnlyList<ISystemUserProvisioner> _provisioners;
+    private readonly ILogger<IdentityService>? _logger;
 
     /// <summary>
     /// 初始化身份认证服务。
@@ -26,11 +29,15 @@ public sealed class IdentityService : IIdentityService
     /// <param name="database">数据库提供器。</param>
     /// <param name="tokenManager">令牌管理器。</param>
     /// <param name="configuration">可选配置。</param>
-    public IdentityService(IDatabaseProvider database, ITokenManager tokenManager, IGnasConfiguration? configuration = null)
+    /// <param name="provisioners">可选系统用户供给器集合（如 Samba 用户桥接）。</param>
+    /// <param name="logger">可选日志记录器。</param>
+    public IdentityService(IDatabaseProvider database, ITokenManager tokenManager, IGnasConfiguration? configuration = null, IEnumerable<ISystemUserProvisioner>? provisioners = null, ILogger<IdentityService>? logger = null)
     {
         _database = database;
         _tokenManager = tokenManager;
         _configuration = configuration;
+        _provisioners = provisioners?.ToArray() ?? [];
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -159,6 +166,11 @@ public sealed class IdentityService : IIdentityService
 
         await EnsureDatabaseAsync(ct).ConfigureAwait(false);
         await using var connection = await _database.GetConnectionAsync(ct).ConfigureAwait(false);
+
+        // 系统首个用户自动获得管理员角色，使 bootstrap 匿名模式能够顺利过渡到强制认证。
+        var isFirstUser = await CountUsersAsync(connection, ct).ConfigureAwait(false) == 0;
+        var roles = isFirstUser ? new[] { "admin", "user" } : new[] { "user" };
+
         await using var command = connection.CreateCommand();
         command.CommandText = """
 INSERT INTO users (username, password_hash, display_name, email, failed_attempts, locked_until, created_at, roles_json)
@@ -169,16 +181,18 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
         command.Parameters.AddWithValue("$display_name", (object?)displayName ?? DBNull.Value);
         command.Parameters.AddWithValue("$email", (object?)email ?? DBNull.Value);
         command.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
-        command.Parameters.AddWithValue("$roles_json", JsonSerializer.Serialize(new[] { "user" }, JsonOptions));
+        command.Parameters.AddWithValue("$roles_json", JsonSerializer.Serialize(roles, JsonOptions));
         try
         {
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-            return new AuthResult { Success = true };
         }
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
         {
             return Failure("用户已存在。");
         }
+
+        await ProvisionSystemUsersAsync(username, password, ct).ConfigureAwait(false);
+        return new AuthResult { Success = true };
     }
 
     /// <inheritdoc />
@@ -190,7 +204,52 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
         command.CommandText = "DELETE FROM users WHERE username = $username;";
         command.Parameters.AddWithValue("$username", username);
         var affected = await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        return affected > 0 ? new AuthResult { Success = true } : Failure("用户不存在。");
+        if (affected == 0)
+        {
+            return Failure("用户不存在。");
+        }
+
+        await RemoveSystemUsersAsync(username, ct).ConfigureAwait(false);
+        return new AuthResult { Success = true };
+    }
+
+    private async Task<long> CountUsersAsync(SqliteConnection connection, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM users;";
+        return (long)(await command.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? 0L);
+    }
+
+    /// <summary>调用所有系统用户供给器；单个失败仅记录警告，不影响 GNAS 内部用户创建结果。</summary>
+    private async Task ProvisionSystemUsersAsync(string username, string password, CancellationToken ct)
+    {
+        foreach (var provisioner in _provisioners)
+        {
+            try
+            {
+                await provisioner.ProvisionAsync(username, password, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 处理用户 {Username} 失败。", provisioner.GetType().Name, username);
+            }
+        }
+    }
+
+    /// <summary>调用所有系统用户供给器执行移除；单个失败仅记录警告。</summary>
+    private async Task RemoveSystemUsersAsync(string username, CancellationToken ct)
+    {
+        foreach (var provisioner in _provisioners)
+        {
+            try
+            {
+                await provisioner.RemoveAsync(username, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 移除用户 {Username} 失败。", provisioner.GetType().Name, username);
+            }
+        }
     }
 
     private async Task EnsureDatabaseAsync(CancellationToken ct) => await _database.InitializeAsync(ct).ConfigureAwait(false);

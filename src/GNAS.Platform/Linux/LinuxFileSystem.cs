@@ -14,29 +14,35 @@ namespace GNAS.Platform.Linux;
 public sealed partial class LinuxFileSystem : IFileSystem
 {
     private static readonly HashSet<string> AllowedFileSystems = new(StringComparer.OrdinalIgnoreCase) { "ext4", "xfs", "btrfs" };
+    private const string FstabPath = "/etc/fstab";
+    private static readonly SemaphoreSlim FstabGate = new(1, 1);
     private readonly CommandExecutor _executor;
+    private readonly ILogger _logger;
 
     /// <summary>初始化 Linux 文件系统管理器。</summary>
     /// <param name="logger">日志记录器。</param>
     public LinuxFileSystem(ILogger<LinuxFileSystem> logger)
     {
         _executor = new CommandExecutor(logger);
+        _logger = logger;
     }
 
     /// <inheritdoc />
-    public Task MountAsync(string device, string mountPoint, string fsType, CancellationToken ct)
+    public async Task MountAsync(string device, string mountPoint, string fsType, CancellationToken ct)
     {
         ValidatePath(device, nameof(device));
         ValidatePath(mountPoint, nameof(mountPoint));
         ValidateFsType(fsType);
-        return ExecuteIgnoreAsync("mount", $"-t {Quote(fsType)} {Quote(device)} {Quote(mountPoint)}", ct);
+        await ExecuteIgnoreAsync("mount", $"-t {Quote(fsType)} {Quote(device)} {Quote(mountPoint)}", ct).ConfigureAwait(false);
+        await PersistFstabAsync(content => FstabEditor.UpsertEntry(content, device, mountPoint, fsType.ToLowerInvariant()), ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task UnmountAsync(string mountPoint, CancellationToken ct)
+    public async Task UnmountAsync(string mountPoint, CancellationToken ct)
     {
         ValidatePath(mountPoint, nameof(mountPoint));
-        return ExecuteIgnoreAsync("umount", Quote(mountPoint), ct);
+        await ExecuteIgnoreAsync("umount", Quote(mountPoint), ct).ConfigureAwait(false);
+        await PersistFstabAsync(content => FstabEditor.RemoveEntry(content, mountPoint), ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -81,6 +87,28 @@ public sealed partial class LinuxFileSystem : IFileSystem
     private async Task ExecuteIgnoreAsync(string command, string arguments, CancellationToken ct)
     {
         await _executor.ExecuteAsync(command, arguments, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 将挂载变更持久化到 /etc/fstab，保证重启后仍然生效。
+    /// 持久化失败（如容器内 /etc 只读）仅记录警告，不影响本次挂载操作结果。
+    /// </summary>
+    private async Task PersistFstabAsync(Func<string, string> transform, CancellationToken ct)
+    {
+        await FstabGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var content = File.Exists(FstabPath) ? await File.ReadAllTextAsync(FstabPath, ct).ConfigureAwait(false) : string.Empty;
+            await File.WriteAllTextAsync(FstabPath, transform(content), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "无法更新 {FstabPath}，挂载不会在重启后自动恢复。", FstabPath);
+        }
+        finally
+        {
+            FstabGate.Release();
+        }
     }
 
     private static string? GetString(JsonElement element, string name)

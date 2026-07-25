@@ -9,6 +9,7 @@ using GNAS.Modules.Backup;
 using GNAS.Modules.Host;
 using GNAS.Modules.Network;
 using GNAS.Modules.Share;
+using GNAS.Modules.Share.Services;
 using GNAS.Modules.Storage;
 using GNAS.Modules.Update;
 using GNAS.Observability;
@@ -38,6 +39,11 @@ builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<NetworkMod
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<AgentModule>());
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<BackupModule>());
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<UpdateModule>());
+// Samba 用户桥接：GNAS 用户创建/删除时同步供给系统用户与 smbpasswd，使 SMB 客户端可用同一凭据认证。
+if (OperatingSystem.IsLinux())
+{
+    builder.Services.AddSingleton<ISystemUserProvisioner, SambaUserProvisioner>();
+}
 builder.Services.AddAgentServices();
 builder.Services.AddObservability(builder.Configuration);
 builder.Services.AddHostedService<StartupOrchestrator>();
