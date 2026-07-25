@@ -42,6 +42,9 @@ internal sealed class CommandExecutor
         using var timeoutCts = new CancellationTokenSource(timeout ?? DefaultTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
+        // 日志安全：去除换行防止日志伪造；携带标准输入（通常为凭据）的命令不记录参数原文。
+        var safeArguments = standardInput is null ? SanitizeForLog(arguments) : "<redacted>";
+
         var startInfo = new ProcessStartInfo
         {
             FileName = fileName,
@@ -77,7 +80,7 @@ internal sealed class CommandExecutor
         }
         catch (Exception ex) when (ex is not PlatformException)
         {
-            _logger.LogError(ex, "启动命令失败: {FileName} {Arguments}", fileName, arguments);
+            _logger.LogError(ex, "启动命令失败: {FileName} {Arguments}", fileName, safeArguments);
             throw new PlatformException($"启动命令失败: {fileName}", innerException: ex);
         }
 
@@ -99,7 +102,7 @@ internal sealed class CommandExecutor
 
             if (process.ExitCode != 0)
             {
-                _logger.LogError("命令失败: {FileName} {Arguments}, ExitCode={ExitCode}, Stderr={Stderr}", fileName, arguments, process.ExitCode, stderr);
+                _logger.LogError("命令失败: {FileName} {Arguments}, ExitCode={ExitCode}, Stderr={Stderr}", fileName, safeArguments, process.ExitCode, SanitizeForLog(stderr));
                 if (throwOnNonZeroExit)
                 {
                     throw new CommandExecutionException($"命令执行失败: {fileName}", process.ExitCode, stdout, stderr);
@@ -107,7 +110,7 @@ internal sealed class CommandExecutor
             }
             else
             {
-                _logger.LogInformation("命令成功: {FileName} {Arguments}", fileName, arguments);
+                _logger.LogInformation("命令成功: {FileName} {Arguments}", fileName, safeArguments);
             }
 
             return result;
@@ -117,10 +120,14 @@ internal sealed class CommandExecutor
             TryKill(process);
             var stdout = await SafeReadAsync(stdoutTask).ConfigureAwait(false);
             var stderr = await SafeReadAsync(stderrTask).ConfigureAwait(false);
-            _logger.LogError(ex, "命令超时: {FileName} {Arguments}", fileName, arguments);
+            _logger.LogError(ex, "命令超时: {FileName} {Arguments}", fileName, safeArguments);
             throw new CommandExecutionException($"命令执行超时: {fileName}", -1, stdout, stderr, innerException: ex);
         }
     }
+
+    /// <summary>去除换行符，防止外部输入进入日志时伪造多行记录。</summary>
+    private static string SanitizeForLog(string? value)
+        => value?.ReplaceLineEndings(" ") ?? string.Empty;
 
     private static async Task<string> SafeReadAsync(Task<string> task)
     {

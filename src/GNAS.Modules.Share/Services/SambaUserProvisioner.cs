@@ -33,13 +33,14 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
     /// <inheritdoc />
     public async Task ProvisionAsync(string username, string password, CancellationToken ct)
     {
+        // 先校验用户名格式，保证后续命令拼接与日志输出安全。
+        ValidateUsername(username);
+
         if (!CanProvision())
         {
             _logger.LogDebug("当前环境不支持 Samba 用户供给，跳过用户 {Username}。", username);
             return;
         }
-
-        ValidateUsername(username);
 
         // 第一步：确保存在同名 Linux 系统用户，Samba security = user 模式要求系统用户先行存在。
         if (!await SystemUserExistsAsync(username, ct).ConfigureAwait(false))
@@ -61,12 +62,13 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
     /// <inheritdoc />
     public async Task RemoveAsync(string username, CancellationToken ct)
     {
+        // 先校验用户名格式，保证后续命令拼接与日志输出安全。
+        ValidateUsername(username);
+
         if (!CanProvision())
         {
             return;
         }
-
-        ValidateUsername(username);
 
         // 仅移除 Samba 数据库中的账户；有意保留 Linux 系统用户及其家目录，
         // 避免删除 GNAS 账户时连带销毁用户在共享目录之外的数据。

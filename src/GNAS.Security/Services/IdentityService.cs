@@ -231,7 +231,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 处理用户 {Username} 失败。", provisioner.GetType().Name, username);
+                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 处理用户 {Username} 失败。", provisioner.GetType().Name, username.ReplaceLineEndings(" "));
             }
         }
     }
@@ -247,7 +247,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 移除用户 {Username} 失败。", provisioner.GetType().Name, username);
+                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 移除用户 {Username} 失败。", provisioner.GetType().Name, username.ReplaceLineEndings(" "));
             }
         }
     }
