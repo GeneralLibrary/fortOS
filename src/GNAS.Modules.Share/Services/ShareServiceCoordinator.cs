@@ -7,16 +7,14 @@ namespace GNAS.Modules.Share.Services;
 /// <param name="Smb">smb.conf 内容。</param>
 /// <param name="NfsExports">exports 内容。</param>
 /// <param name="Ftp">vsftpd.conf 内容。</param>
-/// <param name="WebDav">WebDAV nginx 片段。</param>
-public sealed record RenderedShareConfigs(string Smb, string NfsExports, string Ftp, string WebDav);
+public sealed record RenderedShareConfigs(string Smb, string NfsExports, string Ftp);
 
 /// <summary>
 /// 共享服务协调器。
 /// 负责把渲染好的协议配置真正应用到系统（写入 /etc 下的守护进程配置路径）、
-/// 注册内置共享守护进程的 <see cref="ServiceDefinition"/>，并在配置变更后刷新对应服务，
+/// 注册发行版提供的 systemd 服务，并在配置变更后刷新对应服务，
 /// 打通"生成配置 → 守护进程读取 → 客户端可连接"的完整链路。
-/// 所有系统侧操作都是尽力而为的：在非 Linux 平台、缺少守护进程或权限不足时降级并记录日志，
-/// 不会让共享的增删操作本身失败。
+/// GNAS 不另起共享守护进程，避免与发行版 systemd 单元争用端口和状态文件。
 /// </summary>
 public sealed class ShareServiceCoordinator
 {
@@ -26,18 +24,16 @@ public sealed class ShareServiceCoordinator
     public const string NfsServiceId = "nfs";
     /// <summary>FTP 服务标识。</summary>
     public const string FtpServiceId = "ftp";
-    /// <summary>WebDAV 服务标识。</summary>
-    public const string WebDavServiceId = "webdav";
-
-    private const string SmbdPath = "/usr/sbin/smbd";
-    private const string RpcNfsdPath = "/usr/sbin/rpc.nfsd";
-    private const string VsftpdPath = "/usr/sbin/vsftpd";
     private const string ExportfsPath = "/usr/sbin/exportfs";
+    private const string SmbdPath = "/usr/sbin/smbd";
+    private const string VsftpdPath = "/usr/sbin/vsftpd";
+    private const string SmbUnit = "smbd.service";
+    private const string NfsUnit = "nfs-server.service";
+    private const string FtpUnit = "vsftpd.service";
 
     private const string DefaultSmbConfPath = "/etc/samba/smb.conf";
     private const string DefaultExportsPath = "/etc/exports";
     private const string DefaultVsftpdConfPath = "/etc/vsftpd.conf";
-    private const string DefaultWebDavConfPath = "/etc/nginx/conf.d/gnas-webdav.conf";
 
     private readonly IServiceRegistry? _registry;
     private readonly IServiceSupervisor? _supervisor;
@@ -47,7 +43,7 @@ public sealed class ShareServiceCoordinator
 
     /// <summary>初始化共享服务协调器。</summary>
     /// <param name="registry">可选服务注册表。</param>
-    /// <param name="supervisor">可选服务监管器。</param>
+    /// <param name="supervisor">可选服务监管器，用于无 systemd 的容器环境。</param>
     /// <param name="processManager">可选进程管理器。</param>
     /// <param name="configuration">可选配置，用于覆盖系统配置文件路径。</param>
     /// <param name="logger">日志记录器。</param>
@@ -63,61 +59,70 @@ public sealed class ShareServiceCoordinator
     private string SmbConfPath => _configuration?.GetValue("share:smb_conf_path") ?? DefaultSmbConfPath;
     private string ExportsPath => _configuration?.GetValue("share:exports_path") ?? DefaultExportsPath;
     private string VsftpdConfPath => _configuration?.GetValue("share:vsftpd_conf_path") ?? DefaultVsftpdConfPath;
-    private string WebDavConfPath => _configuration?.GetValue("share:webdav_conf_path") ?? DefaultWebDavConfPath;
 
     /// <summary>
-    /// 注册内置共享守护进程的服务定义（Manual 启动，由共享变更按需拉起/重启）。
-    /// 仅注册本机实际存在的守护进程，避免 RestartAsync 因服务不存在而抛出异常。
+    /// 注册发行版提供的共享 systemd 单元，由 Service Bus 暴露统一的状态和控制接口。
+    /// 仅注册本机实际安装的单元，开发环境缺少对应软件包时不会产生无效服务。
     /// </summary>
     public async Task RegisterBuiltInServicesAsync(CancellationToken ct)
     {
-        if (_registry is null || !OperatingSystem.IsLinux())
+        if (_registry is null)
         {
             return;
         }
 
-        if (File.Exists(SmbdPath))
+        if (SystemdAvailable())
         {
-            // --foreground/--no-process-group 使 smbd 以前台子进程方式运行，便于 NativeServiceHost 监管生命周期。
-            await RegisterAsync(new ServiceDefinition
+            var definitions = new[]
             {
-                ServiceId = SmbServiceId,
-                DisplayName = "Samba 文件共享",
-                Type = ServiceType.Native,
-                Startup = ServiceStartup.Manual,
-                RestartPolicy = RestartPolicy.OnFailure,
-                Executable = SmbdPath,
-                Arguments = "--foreground --no-process-group",
-            }, ct).ConfigureAwait(false);
+                (SmbServiceId, "Samba 文件共享", SmbUnit),
+                (NfsServiceId, "NFS 文件共享", NfsUnit),
+                (FtpServiceId, "FTP 文件共享", FtpUnit),
+            };
+            foreach (var (serviceId, displayName, unit) in definitions)
+            {
+                if (!SystemdUnitExists(unit))
+                {
+                    continue;
+                }
+
+                await RegisterAsync(new ServiceDefinition
+                {
+                    ServiceId = serviceId,
+                    DisplayName = displayName,
+                    Type = ServiceType.Systemd,
+                    Startup = ServiceStartup.Automatic,
+                    RestartPolicy = RestartPolicy.Never,
+                    SystemdUnit = unit,
+                }, ct).ConfigureAwait(false);
+            }
+
+            return;
         }
 
-        if (File.Exists(RpcNfsdPath))
+        // Containers do not run systemd as PID 1. Keep daemons in the foreground
+        // so NativeServiceHost can own their lifecycle without competing units.
+        var nativeDefinitions = new[]
         {
-            // rpc.nfsd 只负责通知内核启动 nfsd 线程后立即退出，属于一次性命令而非常驻进程，
-            // 因此使用 Never 重启策略避免退出后被误判为崩溃而进入重启循环。
-            await RegisterAsync(new ServiceDefinition
+            (SmbServiceId, "Samba 文件共享", SmbdPath, "--foreground --no-process-group", RestartPolicy.OnFailure),
+            (FtpServiceId, "FTP 文件共享", VsftpdPath, (string?)null, RestartPolicy.OnFailure),
+        };
+        foreach (var (serviceId, displayName, executable, arguments, restartPolicy) in nativeDefinitions)
+        {
+            if (!File.Exists(executable))
             {
-                ServiceId = NfsServiceId,
-                DisplayName = "NFS 文件共享",
-                Type = ServiceType.Native,
-                Startup = ServiceStartup.Manual,
-                RestartPolicy = RestartPolicy.Never,
-                Executable = RpcNfsdPath,
-                Arguments = "8",
-            }, ct).ConfigureAwait(false);
-        }
+                continue;
+            }
 
-        if (File.Exists(VsftpdPath))
-        {
-            // vsftpd 默认配置 background=NO，以前台方式运行并读取 /etc/vsftpd.conf。
             await RegisterAsync(new ServiceDefinition
             {
-                ServiceId = FtpServiceId,
-                DisplayName = "FTP 文件共享",
+                ServiceId = serviceId,
+                DisplayName = displayName,
                 Type = ServiceType.Native,
                 Startup = ServiceStartup.Manual,
-                RestartPolicy = RestartPolicy.OnFailure,
-                Executable = VsftpdPath,
+                RestartPolicy = restartPolicy,
+                Executable = executable,
+                Arguments = arguments,
             }, ct).ConfigureAwait(false);
         }
     }
@@ -127,10 +132,10 @@ public sealed class ShareServiceCoordinator
     /// </summary>
     public async Task ApplyAsync(RenderedShareConfigs configs, CancellationToken ct)
     {
-        if (!OperatingSystem.IsLinux())
+        if (!SystemdAvailable() && !string.IsNullOrWhiteSpace(configs.NfsExports))
         {
-            _logger.LogDebug("非 Linux 平台不应用共享守护进程配置。");
-            return;
+            throw new PlatformNotSupportedException(
+                "NFS 共享需要由 systemd 管理内核 NFS 服务，仅支持 Debian 裸机安装。");
         }
 
         var changes = new[]
@@ -138,7 +143,6 @@ public sealed class ShareServiceCoordinator
             new ConfigChange("smb", SmbConfPath, configs.Smb),
             new ConfigChange("nfs", ExportsPath, configs.NfsExports),
             new ConfigChange("ftp", VsftpdConfPath, configs.Ftp),
-            new ConfigChange("webdav", WebDavConfPath, configs.WebDav),
         };
 
         var prepared = new List<PreparedConfig>(changes.Length);
@@ -157,10 +161,17 @@ public sealed class ShareServiceCoordinator
                 item.Committed = true;
             }
 
-            await RefreshNfsExportsAsync(ct).ConfigureAwait(false);
-            await RestartIfRegisteredAsync(SmbServiceId, ct).ConfigureAwait(false);
-            await RestartIfRegisteredAsync(FtpServiceId, ct).ConfigureAwait(false);
-            await RestartIfRegisteredAsync(WebDavServiceId, ct).ConfigureAwait(false);
+            if (SystemdAvailable())
+            {
+                await RefreshNfsExportsAsync(ct).ConfigureAwait(false);
+                await ReloadSystemdUnitAsync(SmbUnit, ct).ConfigureAwait(false);
+                await ReloadSystemdUnitAsync(FtpUnit, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await RestartIfRegisteredAsync(SmbServiceId, ct).ConfigureAwait(false);
+                await RestartIfRegisteredAsync(FtpServiceId, ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -275,23 +286,46 @@ public sealed class ShareServiceCoordinator
         _logger.LogInformation("NFS 导出表已刷新。");
     }
 
-    /// <summary>仅当服务已注册时才通过监管器重启，避免 ServiceNotFoundException 中断共享操作。</summary>
-    private async Task RestartIfRegisteredAsync(string serviceId, CancellationToken ct)
+    private async Task ReloadSystemdUnitAsync(string unit, CancellationToken ct)
     {
-        if (_supervisor is null || _registry is null)
+        if (_processManager is null || !SystemdUnitExists(unit))
         {
             return;
         }
 
-        if (await _registry.GetAsync(serviceId, ct).ConfigureAwait(false) is null)
+        var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
         {
-            _logger.LogDebug("服务 {ServiceId} 未注册（守护进程未安装），跳过重启。", serviceId);
+            ExecutablePath = "systemctl",
+            Arguments = $"reload-or-restart \"{unit}\"",
+            TimeoutSeconds = 30,
+        }, ct).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw new ConfigurationException($"刷新 systemd 单元 {unit} 失败：{result.Stderr}");
+        }
+
+        _logger.LogInformation("systemd 单元 {Unit} 已刷新共享配置。", unit);
+    }
+
+    private async Task RestartIfRegisteredAsync(string serviceId, CancellationToken ct)
+    {
+        if (_supervisor is null || _registry is null
+            || await _registry.GetAsync(serviceId, ct).ConfigureAwait(false) is null)
+        {
             return;
         }
 
         await _supervisor.RestartAsync(serviceId, ct).ConfigureAwait(false);
-        _logger.LogInformation("共享服务 {ServiceId} 已重启以加载新配置。", serviceId);
+        _logger.LogInformation("容器共享服务 {ServiceId} 已重启以加载配置。", serviceId);
     }
+
+    private static bool SystemdAvailable()
+        => Directory.Exists("/run/systemd/system") && File.Exists("/usr/bin/systemctl");
+
+    private static bool SystemdUnitExists(string unit)
+        => File.Exists(Path.Combine("/etc/systemd/system", unit))
+            || File.Exists(Path.Combine("/usr/lib/systemd/system", unit))
+            || File.Exists(Path.Combine("/lib/systemd/system", unit));
 
     private static IReadOnlyList<string> Rollback(IEnumerable<PreparedConfig> prepared)
     {

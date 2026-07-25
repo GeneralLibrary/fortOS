@@ -4,6 +4,7 @@ obj/
 .vs/
 .idea/
 publish/
+artifacts/
 TestResults/
 test-data/
 *.db

@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using SQLitePCL;
 
 namespace GNAS.Core;
@@ -76,9 +76,9 @@ public sealed class DatabaseProvider : IDatabaseProvider
 
     private void EnsureDatabasePathIsSafe()
     {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var rootWithSeparator = _dataRoot.EndsWith(Path.DirectorySeparatorChar) ? _dataRoot : _dataRoot + Path.DirectorySeparatorChar;
-        if (!_databaseDirectory.StartsWith(rootWithSeparator, comparison) && !string.Equals(_databaseDirectory, _dataRoot, comparison))
+        if (!_databaseDirectory.StartsWith(rootWithSeparator, StringComparison.Ordinal)
+            && !string.Equals(_databaseDirectory, _dataRoot, StringComparison.Ordinal))
             throw new ConfigurationException("数据库目录必须位于数据根目录内。");
     }
 

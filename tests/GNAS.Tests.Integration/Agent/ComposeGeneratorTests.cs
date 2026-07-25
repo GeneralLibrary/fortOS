@@ -48,10 +48,7 @@ public class ComposeGeneratorTests
         Assert.Contains(rawToken, env);
         Assert.DoesNotContain(rawToken, compose);
         Assert.Contains("NAS_TOKEN: ${NAS_TOKEN}", compose);
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, File.GetUnixFileMode(result.ComposeFilePath));
-            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(result.EnvFilePath));
-        }
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, File.GetUnixFileMode(result.ComposeFilePath));
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(result.EnvFilePath));
     }
 }

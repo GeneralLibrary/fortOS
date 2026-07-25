@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Modules.Share;
 
-/// <summary>共享协议模块，管理 SMB、NFS、FTP 与 WebDAV 配置。</summary>
+/// <summary>共享协议模块，管理 SMB、NFS 与 FTP 配置。</summary>
 public sealed class ShareModule : NasModuleBase
 {
     private readonly SemaphoreSlim sync = new(1, 1);
@@ -156,12 +156,10 @@ public sealed class ShareModule : NasModuleBase
         var rendered = new RenderedShareConfigs(
             new SmbConfigGenerator().Generate(shares),
             new NfsExportsGenerator().Generate(shares),
-            new FtpConfigGenerator().Generate(shares),
-            new WebDavConfigGenerator().Generate(shares));
+            new FtpConfigGenerator().Generate(shares));
         await File.WriteAllTextAsync(Path.Combine(configDir, "smb.conf"), rendered.Smb, ct).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(configDir, "exports"), rendered.NfsExports, ct).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(configDir, "vsftpd.conf"), rendered.Ftp, ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(configDir, "webdav.conf"), rendered.WebDav, ct).ConfigureAwait(false);
         return rendered;
     }
 

@@ -1,38 +1,32 @@
 using System.Runtime.InteropServices;
 using GNAS.Platform.Linux;
-using GNAS.Platform.Windows;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Platform;
 
 /// <summary>
-/// 平台服务自动注册扩展。
+/// Linux 平台服务注册扩展。
 /// </summary>
 public static class PlatformServiceExtensions
 {
-    /// <summary>根据当前操作系统注册平台服务。</summary>
+    /// <summary>注册 Linux 平台服务，并拒绝在其他操作系统上启动。</summary>
     /// <param name="services">服务集合。</param>
     /// <returns>服务集合。</returns>
     /// <exception cref="PlatformNotSupportedException">当前平台不受支持。</exception>
     public static IServiceCollection AddPlatformServices(this IServiceCollection services)
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        if (!OperatingSystem.IsLinux())
         {
-            services.AddLinuxPlatform();
-            if (RuntimeInformation.ProcessArchitecture is Architecture.Arm or Architecture.Arm64)
-            {
-                services.AddArmOptimization();
-            }
-
-            return services;
+            throw new PlatformNotSupportedException(
+                $"GNAS 仅支持 Linux，当前平台为 {RuntimeInformation.OSDescription}。");
         }
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        services.AddLinuxPlatform();
+        if (RuntimeInformation.ProcessArchitecture is Architecture.Arm or Architecture.Arm64)
         {
-            services.AddWindowsPlatform();
-            return services;
+            services.AddArmOptimization();
         }
 
-        throw new PlatformNotSupportedException($"不支持的平台: {RuntimeInformation.OSDescription}");
+        return services;
     }
 }

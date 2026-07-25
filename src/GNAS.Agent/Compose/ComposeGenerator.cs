@@ -243,10 +243,5 @@ public sealed class ComposeGenerator : IComposeGenerator
     }
 
     private static void SetFileMode(string path, UnixFileMode mode)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(path, mode);
-        }
-    }
+        => File.SetUnixFileMode(path, mode);
 }

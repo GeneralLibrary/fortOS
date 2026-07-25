@@ -25,7 +25,7 @@ public class FstabEditorTests
         var twice = FstabEditor.UpsertEntry(once, "/dev/sdc1", "/srv/nas/data", "xfs");
 
         Assert.DoesNotContain("/dev/sdb1", twice);
-        Assert.Single(twice.Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(l => l.Contains("/srv/nas/data")));
+        Assert.Single(twice.Split('\n', StringSplitOptions.RemoveEmptyEntries), l => l.Contains("/srv/nas/data"));
         Assert.Contains($"/dev/sdc1 /srv/nas/data xfs defaults,nofail 0 2 {FstabEditor.ManagedMarker}", twice);
     }
 

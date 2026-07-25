@@ -17,4 +17,8 @@ public enum ServiceType
     /// .NET 进程内模块。
     /// </summary>
     Module,
+    /// <summary>
+    /// 由 systemd 管理的 Linux 系统服务。
+    /// </summary>
+    Systemd,
 }

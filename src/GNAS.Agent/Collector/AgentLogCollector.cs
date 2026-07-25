@@ -356,7 +356,7 @@ public sealed class AgentLogCollector : BackgroundService
     private static bool DockerExists()
     {
         var paths = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-        return paths.Any(path => File.Exists(Path.Combine(path, OperatingSystem.IsWindows() ? "docker.exe" : "docker")));
+        return paths.Any(path => File.Exists(Path.Combine(path, "docker")));
     }
 
     private static void KillProcess(Process process)

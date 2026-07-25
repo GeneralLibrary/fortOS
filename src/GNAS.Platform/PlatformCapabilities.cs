@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace GNAS.Platform;
 
@@ -10,8 +9,8 @@ public static class PlatformCapabilities
 {
     private static readonly Lazy<bool> SupportsDockerValue = new(() => HasBinary("docker") && Probe("docker", "--version"));
     private static readonly Lazy<bool> SupportsSmartMonitoringValue = new(() => HasBinary("smartctl") || File.Exists("/usr/sbin/smartctl") || File.Exists("/sbin/smartctl"));
-    private static readonly Lazy<bool> SupportsHardwareRaidValue = new(() => RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? HasBinary("mdadm") : ProbePowerShell("Get-Command Get-StoragePool"));
-    private static readonly Lazy<bool> SupportsTpmValue = new(() => RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? File.Exists("/dev/tpm0") : ProbePowerShell("Get-Tpm"));
+    private static readonly Lazy<bool> SupportsHardwareRaidValue = new(() => HasBinary("mdadm"));
+    private static readonly Lazy<bool> SupportsTpmValue = new(() => File.Exists("/dev/tpm0") || File.Exists("/dev/tpmrm0"));
     private static readonly Lazy<bool> SupportsZfsValue = new(() => HasBinary("zfs"));
     private static readonly Lazy<long> TotalMemoryBytesValue = new(GetTotalMemoryBytesSafe);
 
@@ -41,7 +40,7 @@ public static class PlatformCapabilities
         try
         {
             var paths = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-            return paths.Any(p => File.Exists(Path.Combine(p, name)) || File.Exists(Path.Combine(p, name + ".exe")));
+            return paths.Any(p => File.Exists(Path.Combine(p, name)));
         }
         catch
         {
@@ -66,23 +65,11 @@ public static class PlatformCapabilities
         }
     }
 
-    private static bool ProbePowerShell(string script)
-    {
-        try
-        {
-            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && Probe("powershell", $"-NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; {script}\"");
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static long GetTotalMemoryBytesSafe()
     {
         try
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && File.Exists("/proc/meminfo"))
+            if (File.Exists("/proc/meminfo"))
             {
                 var line = File.ReadLines("/proc/meminfo").FirstOrDefault(l => l.StartsWith("MemTotal:", StringComparison.Ordinal));
                 var parts = line?.Split(' ', StringSplitOptions.RemoveEmptyEntries);

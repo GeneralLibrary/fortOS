@@ -597,11 +597,6 @@ public sealed partial class FileManagerService
             throw new InvalidOperationException($"未注册 IProcessManager，无法执行 {executable}。");
         }
 
-        if (OperatingSystem.IsWindows())
-        {
-            throw new PlatformException($"{executable} 仅在 Linux 平台受支持。");
-        }
-
         var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
         {
             ExecutablePath = executable,

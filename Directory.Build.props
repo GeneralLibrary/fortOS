@@ -8,4 +8,11 @@
     <Authors>GNAS Team</Authors>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- GNAS intentionally targets Linux only; this also enables platform-aware
+         analyzers to validate every consuming assembly against that contract. -->
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>linux</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

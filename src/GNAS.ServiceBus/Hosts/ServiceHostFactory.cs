@@ -18,6 +18,7 @@ public static class ServiceHostFactory
         => definition.Type switch
         {
             ServiceType.Native => ActivatorUtilities.CreateInstance<NativeServiceHost>(serviceProvider),
+            ServiceType.Systemd => ActivatorUtilities.CreateInstance<SystemdServiceHost>(serviceProvider),
             ServiceType.Container => ActivatorUtilities.CreateInstance<ContainerServiceHost>(serviceProvider),
             ServiceType.Module => throw new ArgumentException("模块服务由 ModuleHost 进程内托管。", nameof(definition)),
             _ => throw new ArgumentOutOfRangeException(nameof(definition), definition.Type, "未知服务类型。"),

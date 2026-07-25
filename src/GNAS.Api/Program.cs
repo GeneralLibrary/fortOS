@@ -21,6 +21,11 @@ using GNAS.ServiceBus;
 using Microsoft.AspNetCore.Http.Json;
 using System.Text.Json.Serialization;
 
+if (!OperatingSystem.IsLinux())
+{
+    throw new PlatformNotSupportedException("GNAS API 仅支持 Linux。");
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 #region 服务注册
@@ -44,11 +49,8 @@ builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<UpdateModu
 builder.Services.AddSingleton<FileManagerService>();
 builder.Services.AddSingleton<BackupRunHistoryStore>();
 builder.Services.AddSingleton<BackupExecutionService>();
-// Samba 用户桥接：GNAS 用户创建/删除时同步供给系统用户与 smbpasswd，使 SMB 客户端可用同一凭据认证。
-if (OperatingSystem.IsLinux())
-{
-    builder.Services.AddSingleton<ISystemUserProvisioner, SambaUserProvisioner>();
-}
+// GNAS 仅运行于 Linux；同步供给系统用户与 smbpasswd，使 SMB 客户端可使用同一套凭据。
+builder.Services.AddSingleton<ISystemUserProvisioner, SambaUserProvisioner>();
 builder.Services.AddAgentServices();
 builder.Services.AddObservability(builder.Configuration);
 builder.Services.AddHostedService<StartupOrchestrator>();

@@ -5,6 +5,10 @@ namespace GNAS.Modules.Share.Services;
 /// <summary>共享配置安全校验。</summary>
 public static class ShareValidation
 {
+    private static readonly HashSet<string> SupportedProtocols = new(
+        ["smb", "nfs", "ftp"],
+        StringComparer.OrdinalIgnoreCase);
+
     /// <summary>校验共享定义。</summary>
     public static void ValidateShare(ShareDefinition share)
     {
@@ -14,6 +18,14 @@ public static class ShareValidation
         if (share.Description?.IndexOfAny(['\r', '\n']) >= 0)
         {
             throw new ArgumentException("共享描述不能包含换行。", nameof(share));
+        }
+
+        if (share.Protocols.Length == 0
+            || share.Protocols.Any(protocol => !SupportedProtocols.Contains(protocol)))
+        {
+            throw new ArgumentException(
+                "共享协议仅支持 smb、nfs 和 ftp；WebDAV 在具备完整认证前不会开放。",
+                nameof(share));
         }
     }
 

@@ -34,6 +34,17 @@ public class ServiceRegistryTests
         Assert.Contains("a", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task GetAsync_MissingService_ReturnsNull()
+    {
+        var registry = CreateRegistry();
+
+        var loaded = await registry.GetAsync("missing", CancellationToken.None);
+
+        Assert.Null(loaded);
+    }
+
     private static ServiceRegistry CreateRegistry()
     {
         var root = Path.Combine(Environment.CurrentDirectory, "TestData", Guid.NewGuid().ToString("N"));

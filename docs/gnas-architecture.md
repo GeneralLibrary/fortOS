@@ -1,4 +1,4 @@
-# GNAS — 新一代跨平台 NAS 系统技术架构
+# GNAS — 新一代 Linux NAS 系统技术架构
 
 > **项目代号**: GNAS  
 > **版本**: Architecture v2.1  
@@ -41,7 +41,7 @@
 
 | 目标 | 说明 |
 |------|------|
-| **跨平台** | 支持 Linux x64、Windows x64、Linux ARM64 三大平台 |
+| **Linux 平台** | 支持 Linux x64、Linux ARM64；官方发行版基于 Debian 12 |
 | **Docker 原生集成** | Agent/应用以容器方式部署，与 NAS 系统深度交互 |
 | **安全优先** | 借鉴鸿蒙分布式安全思想，适配 NAS 多用户场景 |
 | **统一服务管理** | 一个容器管理所有服务（原生进程 + Docker 容器） |
@@ -53,8 +53,8 @@
 原则                              实现方式
 ────                               ────────
 
-1. 平台无关                       平台抽象层 + .NET RID 多目标编译
-   (Linux/Windows/ARM)
+1. 多架构 Linux                   平台抽象层 + .NET RID 多目标编译
+      (Linux x64/ARM64)
 
 2. Agent 深度集成                 Agent Catalog → Token Broker → Compose Generator
    (Docker + NAS Token + Volume)   → Service Bus 统一管理生命周期
@@ -66,7 +66,7 @@
    (原生进程 + Docker 容器)        同时管理 smb-daemon 和 openclaw-agent
 
 5. .NET 全栈                       ASP.NET Core (API) + CLI (交互)
-   (跨平台 + 高性能)                + gRPC (IPC) + 内置 Web Dashboard
+   (Linux + 高性能)                 + gRPC (IPC) + 内置 Web Dashboard
 
 6. 全面可观测                      六类日志 + 不可篡改审计链 + 全链路追踪
    (Observability)
@@ -121,11 +121,11 @@
 ║                               │                                          ║
 ║  ┌────────────────────────────┴─────────────────────────────────────┐    ║
 ║  │  PLATFORM             IDiskMgr │ IFS │ INetMgr │ IProcMgr │ ...  │    ║
-║  │  ABSTRACTION          Linux-x64 │ Win-x64 │ Linux-arm64          │    ║
+║  │  ABSTRACTION          Linux-x64 │ Linux-arm64                  │    ║
 ║  └────────────────────────────┬─────────────────────────────────────┘    ║
 ║                               │                                          ║
 ║  ┌────────────────────────────┴─────────────────────────────────────┐    ║
-║  │  OPERATING SYSTEM    Debian/Ubuntu │ Windows 10/11 │ ARM Linux   │    ║
+║  │  OPERATING SYSTEM    Debian 12 │ Compatible Linux │ ARM Linux   │    ║
 ║  └──────────────────────────────────────────────────────────────────┘    ║
 ║                                                                            ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
@@ -166,7 +166,7 @@
 
 ## 3. 展示层 — Desktop CLI Tool
 
-GNAS 的展示层仅包含一个跨平台命令行工具 `gnas`，所有管理操作均通过 CLI 完成。
+GNAS 的展示层包含 Linux 命令行工具 `gnas`，所有管理操作均通过 CLI 完成。
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -175,7 +175,7 @@ GNAS 的展示层仅包含一个跨平台命令行工具 `gnas`，所有管理�
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │               Desktop CLI Tool (gnas)                   │ │
 │  │                                                        │ │
-│  │  · 跨平台 Console Application (.NET 10)                 │ │
+│  │  · Linux Console Application (.NET 10)                  │ │
 │  │  · 通过 REST API 与 NAS 后端通信                        │ │
 │  │  · 交互式 TUI 模式 (终端 UI) + 批处理模式                │ │
 │  │  · 管道友好 (JSON / Table 输出)                         │ │
@@ -262,7 +262,7 @@ CLI 是主要交互方式。对于需要图形化监控的场景，GNAS 可选�
 
 | 原则 | 说明 |
 |------|------|
-| **管道优先** | 所有查询命令支持 `--output json`，可接入 `jq`、PowerShell 等工具 |
+| **管道优先** | 所有查询命令支持 `--output json`，可接入 `jq` 等工具 |
 | **幂等操作** | 管理操作设计为幂等（如 `create` 已存在时跳过或报错） |
 | **确认保护** | 危险操作（删除、格式化）默认要求 `--confirm` 或交互确认 |
 | **离线友好** | CLI 仅调用 REST API，不依赖 WebSocket 长连接 |
@@ -393,7 +393,7 @@ message ShareDefinition {
   string name = 2;
   string path = 3;
   string comment = 4;
-  repeated ShareProtocol protocols = 5;  // SMB, NFS, FTP, WebDAV
+  repeated ShareProtocol protocols = 5;  // SMB, NFS, FTP；WebDAV 值保留供未来兼容
   bool read_only = 6;
   bool guest_ok = 7;
   bool browseable = 8;
@@ -681,7 +681,7 @@ protos/
 │  │· 磁盘管理│ │· SMB/CIFS│ │· 接口管理│ │· 资源监控        │   │
 │  │· RAID/LVM│ │· NFS     │ │· 防火墙  │ │· 日志聚合        │   │
 │  │· 文件系统│ │· FTP/SFTP│ │· DHCP/DNS│ │· 告警通知        │   │
-│  │· 加密卷  │ │· WebDAV  │ │· VLAN    │ │· 健康检查        │   │
+│  │· 加密卷  │ │· FTP     │ │· VLAN    │ │· 健康检查        │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
 │                                                                  │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │
@@ -746,7 +746,7 @@ public record ModuleContext
 | 模块 | ModuleId | 依赖 | 说明 |
 |------|----------|------|------|
 | **Storage** | `storage` | — | 磁盘枚举、RAID 管理、LVM、文件系统格式化、SMART 监控、加密卷管理 |
-| **Share** | `share` | `storage` | SMB/CIFS、NFS v3/v4、FTP/SFTP、WebDAV 共享服务管理 |
+| **Share** | `share` | `storage` | SMB/CIFS、NFS v3/v4、FTP 共享服务管理 |
 | **Network** | `network` | — | 网络接口管理、防火墙规则、DHCP/DNS、VLAN 配置 |
 | **Agent** | `agent` | `storage`, `security` | Agent 生命周期管理、Token 签发与续期、Compose 生成、容器监控 |
 | **Backup** | `backup` | `storage` | Rsync 任务、快照计划、云备份、定时任务 |
@@ -813,8 +813,7 @@ public record ModuleContext
 │  · Linux 主力 → Btrfs (轻量 CoW, 内建快照压缩)        │
 │  · 高级需求 → ZFS (最高数据完整性, 自愈能力)           │
 │  · 简单需求 → ext4/XFS (稳定, 低开销)                  │
-│  · Windows → ReFS (Mirror Accelerated Parity)          │
-│  · 跨平台共享盘 → NTFS 或 ext4 (兼容性最好)           │
+│  · 通用共享盘 → ext4 (兼容性最好)                     │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
@@ -1073,7 +1072,6 @@ public enum QuotaType { User, Share, Group }
 | **ext4/XFS** | Linux Quota | `xfs_quota -x -c 'limit bsoft=900G bhard=1T user1' /mnt` |
 | **Btrfs** | qgroup | `btrfs qgroup limit 1T /mnt/nas/data/home/user1` |
 | **ZFS** | ZFS Quota | `zfs set quota=1T pool-main/home/user1` |
-| **Windows (NTFS)** | FSRM | `dirquota quota add /path:... /limit:1TB /type:hard` |
 
 **配额告警阈值：**
 - 80% → Info 级通知用户
@@ -1151,7 +1149,7 @@ nfs:
 ┌─────────────────────────────────────────────────────────┐
 │  文件级快照 (Btrfs / ZFS / ReFS)                       │
 │  · 即时创建, COW 机制, 仅存储差异数据                   │
-│  · 用户可自助恢复 (类似 Windows 以前的版本)            │
+│  · 用户可通过 SMB 快照入口自助恢复                      │
 │  · gnas snapshot create <dataset>                       │
 │  · gnas snapshot list <dataset>                         │
 │  · gnas snapshot restore <dataset> <snapshot-id>        │
@@ -1174,7 +1172,7 @@ nfs:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│  Windows 以前的版本 (Previous Versions) 集成            │
+│  SMB Previous Versions 集成                             │
 │                                                         │
 │  Samba vfs_shadow_copy2 模块暴露快照为卷影副本:          │
 │  vfs_objects = shadow_copy2                             │
@@ -1182,7 +1180,7 @@ nfs:
 │  shadow:sort = desc                                     │
 │  shadow:format = gnas-{dataset}-%Y%m%d-%H%M%S           │
 │                                                         │
-│  → Windows 资源管理器右键 → "还原以前的版本" 可用       │
+│  → 支持该协议的 SMB 客户端可浏览并恢复历史版本          │
 │  → macOS Time Machine 可通过 SMB 共享作为备份目标       │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -1474,7 +1472,7 @@ Level │ 名称       │ 标签色  │  权限规则
 
 ## 7. 服务总线容器层
 
-本层是 GNAS 的核心创新——一个跨平台的应用级服务管理器，统一管理 NAS 中所有服务进程（原生服务 + Docker 容器）。
+本层是 GNAS 的核心创新——一个 Linux 应用级服务管理器，统一管理 NAS 中所有服务进程（原生服务 + Docker 容器）。
 
 ```
 ┌═══════════════════════════════════════════════════════════════┐
@@ -1512,8 +1510,8 @@ Level │ 名称       │ 标签色  │  权限规则
 ║  │  │                      │  │                          │ │  ║
 ║  │  │  管理方式:            │  │  管理方式:               │ │  ║
 ║  │  │  · 直接进程 fork     │  │  · docker compose        │ │  ║
-║  │  │  · systemd (Linux)   │  │  · Docker API            │ │  ║
-║  │  │  · SCM (Windows)     │  │  · containerd            │ │  ║
+║  │  │  · systemd           │  │  · Docker API            │ │  ║
+║  │  │                      │  │  · containerd            │ │  ║
 ║  │  └──────────────────────┘  └──────────────────────────┘ │  ║
 ║  └─────────────────────────────────────────────────────────┘  ║
 ║                                                                ║
@@ -1790,14 +1788,14 @@ public record ResourceQuota
 ║  └──────────────────────────────────────────────────────┘ ║
 ║                                                            ║
 ║  ┌────────────────────┬────────────────────┬─────────────┐║
-║  │  Linux Impl        │  Windows Impl      │  ARM Impl   │║
-║  │  (linux-x64)       │  (win-x64)         │  (arm64)    │║
+║  │  Linux x64 Impl    │  Shared Linux Core │  ARM Impl   │║
+║  │  (linux-x64)       │                    │  (arm64)    │║
 ║  ├────────────────────┼────────────────────┼─────────────┤║
-║  │  · systemd         │  · SCM (服务控制)   │  · systemd  │║
+║  │  · systemd         │                    │  · systemd  │║
 ║  │  · udev (设备)     │  · WMI (设备枚举)   │  · udev     │║
 ║  │  · /proc, /sys     │  · diskpart        │  · /proc    │║
 ║  │  · mdadm, LVM      │  · Storage Spaces  │  · mdadm    │║
-║  │  · iptables/nft    │  · Windows Firewall│  · nft      │║
+║  │  · iptables/nft    │                    │  · nft      │║
 ║  │  · samba, nfs-     │  · SMB Server      │  · samba    │║
 ║  │    kernel-server   │    (Win内置)        │  · nfs      │║
 ║  │  · Docker CE       │  · Docker Desktop  │  · Docker CE│║
@@ -1809,14 +1807,13 @@ public record ResourceQuota
 ║  │          .NET Runtime Identifiers (RID)               │ ║
 ║  │                                                       │ ║
 ║  │  Target Frameworks: net10.0                            │ ║
-║  │  RIDs: linux-x64 | linux-arm64 | win-x64 | win-arm64 │ ║
+║  │  RIDs: linux-x64 | linux-arm64                       │ ║
 ║  │                                                       │ ║
 ║  │  通过依赖注入 (DI) 自动选择平台实现:                   │ ║
 ║  │                                                       │ ║
-║  │  if (OperatingSystem.IsLinux())                       │ ║
-║  │      services.Add<IDiskManager, LinuxDiskManager>();  │ ║
-║  │  else if (OperatingSystem.IsWindows())                │ ║
-║  │      services.Add<IDiskManager, WindowsDiskManager>();│ ║
+║  │  if (!OperatingSystem.IsLinux())                      │ ║
+║  │      throw new PlatformNotSupportedException();       │ ║
+║  │  services.Add<IDiskManager, LinuxDiskManager>();      │ ║
 ║  │                                                       │ ║
 ║  │  if (RuntimeInformation.ProcessArchitecture ==        │ ║
 ║  │      Architecture.Arm64)                              │ ║
@@ -2248,7 +2245,7 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
 
 | 层次 | 技术 | 说明 |
 |------|------|------|
-| **交互层** | .NET 10 Console Application (gnas CLI) | 跨平台命令行工具, 支持 TUI + 批处理 |
+| **交互层** | .NET 10 Console Application (gnas CLI) | Linux 命令行工具，支持 TUI + 批处理 |
 | **API Gateway** | ASP.NET Core Minimal API + gRPC | REST 对外 (CLI/第三方), gRPC 对内 |
 | **内嵌 Dashboard** | 纯静态 HTML + Vanilla JS (可选) | 只读监控面板, 无框架依赖 |
 | **内部 IPC** | gRPC + Unix Sockets / Named Pipes | 服务间高性能通信 |
@@ -2259,15 +2256,15 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
 | **容器编排** | docker compose (文件生成) | 每 Agent 一个 compose.yml |
 | **安全令牌** | JWT + NAbility (内嵌能力) | 鸿蒙启发的 NAS 安全模型 |
 | **密钥存储** | TPM 2.0 (优先) / 软件 KeyStore (回退) | 硬件安全模块集成 |
-| **文件级权限** | POSIX ACL / Windows ACL (适配层) | 继承原有系统权限 |
+| **文件级权限** | POSIX ACL | 继承 Linux 系统权限 |
 | **数据分级** | NasDataLevel (L0-L4) | 文件/目录级标签 |
 | **日志 SDK** | `Microsoft.Extensions.Logging` + Serilog | .NET 标准日志基础设施 |
 | **链路追踪** | OpenTelemetry (.NET SDK) | OTLP 协议, 行业标准 |
 | **日志存储** | 文件轮转 + 内嵌 Loki + SQLite + Audit Vault | 按日志类型分流存储 |
 | **审计防篡改** | 自研 Audit Chain (SHA-256 + HMAC) | 区块链思想, 零外部依赖 |
 | **告警通知** | SMTP + Webhook + CLI 输出 | 多渠道通知 |
-| **跨平台** | .NET 10 RID 多目标编译 | linux-x64, win-x64, linux-arm64 |
-| **进程管理** | 自研 Service Bus + systemd/SCM 适配 | 跨平台统一服务管理 |
+| **目标平台** | .NET 10 RID 多目标编译 | linux-x64, linux-arm64 |
+| **进程管理** | 自研 Service Bus + systemd 适配 | Linux 服务统一管理 |
 
 ---
 
@@ -2364,17 +2361,16 @@ services:
 
 | 方式 | 适用场景 | 说明 |
 |------|----------|------|
-| **ISO 镜像安装** | 裸机安装 | 基于 Debian/Ubuntu Live ISO 定制，包含 GNAS 全部依赖 |
+| **ISO 镜像安装** | x64 裸机安装 | 基于 Debian 12 Live ISO，包含 Debian Installer 与 GNAS 全部依赖 |
 | **脚本安装** | 已有 Linux 系统 | `curl -fsSL https://get.gnas.io | bash` 一键安装 |
 | **Docker 自部署** | 开发/测试/轻量部署 | 容器化运行 GNAS Core，挂载 Docker Socket |
-| **Windows 安装包** | Windows 平台 | MSI 安装包，注册为 Windows Service |
 
 ```
 安装方式决策树:
 ─────────────────
   是否裸机?
     ├── 是 → ISO 镜像安装 (推荐)
-    │        · 下载 gnas-{version}-{arch}.iso
+    │        · 下载 gnas-debian12-{version}-amd64.iso
     │        · 使用 balenaEtcher/Rufus 制作启动盘
     │        · 从 U 盘启动 → 进入安装向导
     │
@@ -2389,6 +2385,12 @@ services:
 ```
 
 ### 14.2 ISO 安装流程
+
+ISO 由 `eng/iso/build.sh` 在特权 Debian 12 构建容器中生成。构建管线先将
+GNAS API 与 CLI 发布为 `linux-x64` 自包含应用，再通过 `live-build` 写入
+Live 根文件系统，启用 Debian Installer、Docker Compose v2 和 `gnas.service`。
+构建产物及其 SHA-256 校验文件位于 `artifacts/iso/`；GitHub Actions 的
+`GNAS Debian ISO` 工作流可手动触发，并在 Release 发布时自动构建。
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -2525,7 +2527,7 @@ Step 5 — 启用默认服务:
   [✓] SMB/CIFS 文件共享 (端口 445)
   [✓] NFS 文件共享 (端口 2049)
   [ ] FTP 文件共享 (端口 21)
-  [ ] WebDAV (端口 8080)
+  WebDAV 共享暂不开放，待完整认证与客户端兼容层实现后再启用
   [ ] Agent 市场 (Docker 容器支持)
 
   按 Enter 确认或修改选择。
@@ -2886,9 +2888,9 @@ rate_limit:
 | **客户端** | Web UI (Angular/ExtJS) | Desktop CLI Tool (gnas) + 可选 Web Dashboard |
 | **Docker** | 无原生支持 (OMV-Extras 插件) | 一等公民, 深度集成 |
 | **Agent** | 无 | Agent Catalog + Token + Compose |
-| **跨平台** | Debian Only | Linux / Windows / ARM |
+| **目标平台** | Debian Only | Debian 12 x64 ISO + Linux ARM64 应用 |
 | **权限模型** | 传统 Linux ACL | NAbility 能力模型 + RBAC + ACL |
-| **服务管理** | systemd (Linux only) | Service Bus (跨平台) |
+| **服务管理** | systemd | Service Bus + systemd |
 | **IPC** | 文件/socket (隐式) | gRPC + Event Bus (显式) |
 | **日志** | syslog (分散) | 统一六类日志 + 审计链 |
 | **可观测性** | 无 | OpenTelemetry + Loki + Dashboard |
@@ -2908,7 +2910,7 @@ rate_limit:
 | **状态** | ✅ 已决定 |
 | **背景** | NAS 系统涉及大量系统调用、文件操作、网络协议处理 |
 | **决策** | 使用 .NET 10 (C# 14) |
-| **理由** | 1. 跨平台成熟度高 (linux-x64/arm64/win-x64) 2. ASP.NET Core 提供完整的 API/中间件生态 3. gRPC 原生支持 4. 作者团队技术栈以 .NET 为主 5. 热加载 (AssemblyLoadContext) 支持模块化 |
+| **理由** | 1. Linux x64/ARM64 支持成熟 2. ASP.NET Core 提供完整的 API/中间件生态 3. gRPC 原生支持 4. 作者团队技术栈以 .NET 为主 5. 热加载 (AssemblyLoadContext) 支持模块化 |
 | **替代方案** | Go (并发优秀但泛型生态弱), Rust (性能极致但开发效率低) |
 
 ### ADR-002: 默认存储使用 SQLite 而非 PostgreSQL

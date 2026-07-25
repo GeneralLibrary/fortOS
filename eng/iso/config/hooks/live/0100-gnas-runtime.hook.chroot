@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+chmod 0755 /opt/gnas/api/GNAS.Api /opt/gnas/cli/GNAS.Cli
+ln -sf /opt/gnas/cli/GNAS.Cli /usr/local/bin/gnas
+systemctl enable docker.service
+systemctl enable smbd.service
+systemctl enable nfs-server.service
+systemctl enable vsftpd.service
+systemctl enable gnas.service
+systemd-tmpfiles --create /etc/tmpfiles.d/gnas.conf

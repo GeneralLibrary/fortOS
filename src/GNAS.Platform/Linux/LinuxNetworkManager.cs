@@ -69,6 +69,7 @@ public sealed partial class LinuxNetworkManager : INetworkManager
         var yaml = new StringBuilder();
         yaml.AppendLine("network:");
         yaml.AppendLine("  version: 2");
+        yaml.AppendLine("  renderer: NetworkManager");
         yaml.AppendLine("  ethernets:");
         yaml.AppendLine($"    {name}:");
         yaml.AppendLine($"      dhcp4: {config.Dhcp.ToString().ToLowerInvariant()}");

@@ -1,10 +1,10 @@
 # GNAS — 鸿蒙启发的新一代 NAS 系统
 
-GNAS（General NAS）是一个以 **.NET 10 + Docker + OpenTelemetry** 构建的跨平台 NAS 系统。它借鉴鸿蒙分布式安全思想，将身份、能力（NAbility）、数据分级与不可篡改审计链组合起来，为家庭、工作室与边缘设备提供可自部署、可观测、容器原生的 NAS 管理体验。
+GNAS（General NAS）是一个以 **.NET 10 + Docker + OpenTelemetry** 构建的 Linux NAS 系统。它借鉴鸿蒙分布式安全思想，将身份、能力（NAbility）、数据分级与不可篡改审计链组合起来，为家庭、工作室与边缘设备提供可自部署、可观测、容器原生的 NAS 管理体验。
 
 ## 核心特性
 
-- **跨平台运行**：支持 Linux x64、Linux ARM64 与 Windows x64。
+- **Linux 原生运行**：支持 Linux x64 与 Linux ARM64，发行镜像基于 Debian 12。
 - **统一 API 网关**：REST/gRPC 暴露健康、磁盘、共享、服务、Agent、审计与告警能力。
 - **鸿蒙式安全模型**：NasToken + NAbility + NasDataLevel + ACL 联合决策。
 - **Service Bus 服务管理**：统一监管原生进程与 Docker Compose 容器服务。
@@ -18,7 +18,7 @@ GNAS（General NAS）是一个以 **.NET 10 + Docker + OpenTelemetry** 构建的
 
 | 项目 | 要求 |
 |------|------|
-| 操作系统 | Linux x64 / Linux ARM64 / Windows x64 |
+| 操作系统 | Linux x64 / Linux ARM64；ISO 安装目标为 Debian 12 x64 |
 | 运行时 | .NET 10 SDK（开发）或 .NET 10 Runtime（部署） |
 | 容器 | Docker Engine + Docker Compose v2 |
 | 权限 | Linux 部署建议具备 `/srv/nas`、Docker socket 与必要磁盘管理权限 |
@@ -43,6 +43,40 @@ docker compose down
 ```
 
 > 默认 Compose 使用 host 网络、`/srv/nas` 数据根与 Docker socket，以便 GNAS 管理宿主服务与 Agent 容器。
+> Docker 模式不提供内核 NFS 服务；NFS 共享仅在 Debian ISO 裸机安装中启用。
+
+### Debian 12 ISO 安装
+
+仓库提供基于 Debian `live-build` 的 amd64 混合启动镜像。镜像同时支持
+Legacy BIOS 和 UEFI，包含 Debian 图形安装器、GNAS API/CLI、Docker Compose v2
+以及 NAS 所需的磁盘和共享工具。
+
+在 Linux x64 构建机上安装 Docker，然后执行：
+
+```bash
+VERSION=1.0.0 bash eng/iso/build.sh
+```
+
+构建过程在固定的 Debian 12 容器中完成，宿主机不会安装 `live-build` 或 .NET SDK。
+产物写入 `artifacts/iso/`：
+
+```text
+gnas-debian12-1.0.0-amd64.iso
+gnas-debian12-1.0.0-amd64.iso.sha256
+```
+
+验证并写入 U 盘（请将 `/dev/sdX` 替换为整块 U 盘设备，写入会清除其数据）：
+
+```bash
+cd artifacts/iso
+sha256sum --check gnas-debian12-1.0.0-amd64.iso.sha256
+sudo dd if=gnas-debian12-1.0.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
+```
+
+从 U 盘启动设备，选择 Debian Installer，按向导完成系统盘、网络和管理员账户配置。
+安装后的 GNAS 由 `gnas.service` 自动启动，默认监听 `http://0.0.0.0:5000`；
+数据根目录为 `/srv/nas`。也可以在 GitHub Actions 中手动运行 **GNAS Debian ISO**
+工作流下载 ISO 与 SHA-256 校验文件。
 
 ## 项目结构（16 个项目）
 
@@ -50,13 +84,13 @@ docker compose down
 GNAS.slnx
 ├── src/
 │   ├── GNAS.Core/              # 核心模型、抽象、数据库与配置
-│   ├── GNAS.Platform/          # Linux/Windows 平台抽象实现
+│   ├── GNAS.Platform/          # Linux 平台实现
 │   ├── GNAS.Security/          # NasToken、身份、权限与密钥存储
 │   ├── GNAS.ServiceBus/        # 服务注册、监管、事件总线、健康检查
 │   ├── GNAS.Agent/             # Agent 目录、令牌代理、Compose 生成器
 │   ├── GNAS.Modules/           # 模块宿主与模块基类
 │   ├── GNAS.Modules.Storage/   # 磁盘、RAID、文件系统模块
-│   ├── GNAS.Modules.Share/     # SMB/NFS/FTP/WebDAV/回收站/配额模块
+│   ├── GNAS.Modules.Share/     # SMB/NFS/FTP/回收站/配额模块
 │   ├── GNAS.Modules.Network/   # 网络与防火墙配置模块
 │   ├── GNAS.Modules.Agent/     # Agent 编排模块
 │   ├── GNAS.Modules.Backup/    # 快照、rsync、云备份模块
@@ -73,7 +107,7 @@ GNAS.slnx
 | 阶段 | Issue | 内容 |
 |------|-------|------|
 | Phase 1 | [#2](../../issues/2) | Core contracts、配置、数据库基础 |
-| Phase 2 | [#3](../../issues/3) | Platform 抽象与 Linux/Windows 实现 |
+| Phase 2 | [#3](../../issues/3) | Platform 抽象与 Linux 实现 |
 | Phase 3 | [#4](../../issues/4) | Security、NasToken、NAbility、Identity |
 | Phase 4 | [#5](../../issues/5) | Service Bus、Registry、Supervisor、EventBus |
 | Phase 5 | [#6](../../issues/6) | Storage/Share/Network/Backup/Update 模块 |

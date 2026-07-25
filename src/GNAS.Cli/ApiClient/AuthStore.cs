@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace GNAS.Cli.ApiClient;
@@ -37,16 +36,10 @@ public sealed class AuthStore
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var json = JsonSerializer.Serialize(new AuthStore { Server = server, Token = token }, ApiJson.Options);
         File.WriteAllText(path, json + Environment.NewLine);
-        TrySetUnixMode(path);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
     /// <summary>清除已保存的令牌但保留服务器 URL。</summary>
     public static void SaveToken(string? server, string? token) => Save(server, token);
 
-    private static void TrySetUnixMode(string path)
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
-        try { File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); }
-        catch { }
-    }
 }

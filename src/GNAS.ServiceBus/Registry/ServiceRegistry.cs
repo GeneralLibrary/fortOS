@@ -51,8 +51,7 @@ public sealed class ServiceRegistry : IServiceRegistry
         {
             return definition;
         }
-
-        throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+        return null;
     }
 
     /// <inheritdoc />

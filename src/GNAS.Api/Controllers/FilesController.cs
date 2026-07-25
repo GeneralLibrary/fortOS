@@ -1,4 +1,4 @@
-﻿using GNAS.Core;
+using GNAS.Core;
 using GNAS.Modules.Share.Services;
 using GNAS.Security.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -53,13 +53,16 @@ public sealed class FilesController : GnasControllerBase
     public async Task<IActionResult> Download([FromQuery] string path, CancellationToken ct)
     {
         var decision = await _permissions.CheckPermissionAsync(OwnerToken, "files:file:read", path, NasDataLevel.Personal, ct).ConfigureAwait(false);
-        if (!decision.Granted) throw new PermissionDeniedException(decision.DenyReason);
+        if (!decision.Granted)
+        {
+            throw new PermissionDeniedException(decision.DenyReason ?? "没有读取该文件的权限。");
+        }
         var stat = await _files.StatAsync(path, ct).ConfigureAwait(false);
         if (!stat.Exists || stat.IsDirectory) return NotFound();
         var etag = await _files.GetEtagAsync(path, ct).ConfigureAwait(false);
         Response.Headers.ETag = $"\"{etag}\"";
-        if (Request.Headers.IfNoneMatch.Any(v => string.Equals(v.ToString().Trim('"'), etag, StringComparison.OrdinalIgnoreCase))) return StatusCode(StatusCodes.Status304NotModified);
-        if (Request.Headers.IfMatch.Count > 0 && !Request.Headers.IfMatch.Any(v => string.Equals(v.ToString().Trim('"'), etag, StringComparison.OrdinalIgnoreCase))) return StatusCode(StatusCodes.Status412PreconditionFailed);
+        if (Request.Headers.IfNoneMatch.Any(v => v is not null && string.Equals(v.Trim('"'), etag, StringComparison.OrdinalIgnoreCase))) return StatusCode(StatusCodes.Status304NotModified);
+        if (Request.Headers.IfMatch.Count > 0 && !Request.Headers.IfMatch.Any(v => v is not null && string.Equals(v.Trim('"'), etag, StringComparison.OrdinalIgnoreCase))) return StatusCode(StatusCodes.Status412PreconditionFailed);
         var stream = System.IO.File.OpenRead(stat.Path);
         return new FileStreamResult(stream, "application/octet-stream") { EnableRangeProcessing = true, FileDownloadName = Path.GetFileName(stat.Path) };
     }

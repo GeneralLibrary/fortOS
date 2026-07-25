@@ -1,9 +1,10 @@
-﻿name: GNAS CI
+name: GNAS CI
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
 
 jobs:
   test:
@@ -13,6 +14,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Validate Debian ISO configuration
+        run: |
+          bash -n eng/iso/build.sh eng/iso/build-in-container.sh eng/iso/verify-config.sh
+          bash eng/iso/verify-config.sh
       - run: dotnet restore GNAS.slnx
       - run: dotnet build GNAS.slnx -c Release --no-restore -warnaserror:CS
       - run: dotnet test GNAS.slnx -c Release --no-build --collect:"XPlat Code Coverage" --logger "trx;LogFileName=tests.trx" --results-directory TestResults

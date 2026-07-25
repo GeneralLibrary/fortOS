@@ -1,0 +1,61 @@
+name: GNAS Debian ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version embedded in the ISO filename
+        required: true
+        default: dev
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate ISO configuration
+        run: |
+          bash -n eng/iso/build.sh eng/iso/build-in-container.sh eng/iso/verify-config.sh \
+            eng/iso/test-image.sh eng/iso/test-boot.sh eng/iso/test-install.sh
+          bash eng/iso/verify-config.sh
+
+      - name: Build Debian 12 installation image
+        env:
+          VERSION: ${{ inputs.version || github.event.release.tag_name }}
+        run: bash eng/iso/build.sh
+
+      - name: Upload ISO and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnas-debian12-amd64
+          path: artifacts/iso/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Check GitHub release asset size
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "${iso}"
+          size="$(stat --format='%s' "${iso}")"
+          if (( size >= 2147483648 )); then
+            echo "::error::${iso} is ${size} bytes; GitHub release assets must be smaller than 2 GiB."
+            exit 1
+          fi
+
+      - name: Attach image to GitHub release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/iso/* --clobber

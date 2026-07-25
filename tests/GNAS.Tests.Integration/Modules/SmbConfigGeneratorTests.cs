@@ -30,4 +30,19 @@ public sealed class SmbConfigGeneratorTests
 
         Assert.Throws<ArgumentException>(() => new SmbConfigGenerator().Generate([share]));
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void ValidateShare_WebDavProtocol_IsRejectedUntilAuthenticationExists()
+    {
+        var share = new ShareDefinition
+        {
+            ShareId = "documents",
+            Name = "documents",
+            Path = "/srv/nas/documents",
+            Protocols = ["webdav"],
+        };
+
+        Assert.Throws<ArgumentException>(() => ShareValidation.ValidateShare(share));
+    }
 }

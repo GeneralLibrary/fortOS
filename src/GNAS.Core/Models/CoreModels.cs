@@ -46,6 +46,8 @@ public record ServiceDefinition
     public string? Executable { get; init; }
     /// <summary>原生进程命令行参数。</summary>
     public string? Arguments { get; init; }
+    /// <summary>systemd 单元名称。</summary>
+    public string? SystemdUnit { get; init; }
     /// <summary>容器 compose 文件路径。</summary>
     public string? ComposeFile { get; init; }
     /// <summary>健康检查配置。</summary>

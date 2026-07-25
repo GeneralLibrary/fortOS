@@ -9,6 +9,12 @@ internal static class Program
     /// <summary>启动 CLI 或互动 TUI。</summary>
     private static async Task<int> Main(string[] args)
     {
+        if (!OperatingSystem.IsLinux())
+        {
+            await Console.Error.WriteLineAsync("GNAS CLI 仅支持 Linux。");
+            return 1;
+        }
+
         var options = new CliOptions();
         var root = BuildRoot(options);
 

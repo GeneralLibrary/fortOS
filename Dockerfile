@@ -6,7 +6,6 @@ WORKDIR /app
 # 文件系统工具（ext4/xfs/btrfs）与基础系统工具，保证平台层命令在容器内可用。
 RUN apt-get update && apt-get install -y --no-install-recommends \
         samba \
-        nfs-kernel-server \
         vsftpd \
         smartmontools \
         mdadm \
@@ -16,10 +15,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         btrfs-progs \
         util-linux \
         rsync \
+        nftables \
+        iptables \
+        iproute2 \
+        nut-client \
+        rclone \
     && rm -rf /var/lib/apt/lists/*
 
-# API 端口与共享协议端口（SMB 445/139、NFS 2049/111、FTP 21）。
-EXPOSE 5000 5001 445 139 2049 111 21
+# API 端口与容器模式共享协议端口（SMB 445/139、FTP 21）。
+EXPOSE 5000 5001 445 139 21
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
