@@ -7,7 +7,8 @@ namespace GNAS.Modules.Share.Services;
 /// <param name="Smb">smb.conf 内容。</param>
 /// <param name="NfsExports">exports 内容。</param>
 /// <param name="Ftp">vsftpd.conf 内容。</param>
-public sealed record RenderedShareConfigs(string Smb, string NfsExports, string Ftp);
+/// <param name="WebDav">WebDAV nginx 片段。</param>
+public sealed record RenderedShareConfigs(string Smb, string NfsExports, string Ftp, string WebDav);
 
 /// <summary>
 /// 共享服务协调器。
@@ -25,6 +26,8 @@ public sealed class ShareServiceCoordinator
     public const string NfsServiceId = "nfs";
     /// <summary>FTP 服务标识。</summary>
     public const string FtpServiceId = "ftp";
+    /// <summary>WebDAV 服务标识。</summary>
+    public const string WebDavServiceId = "webdav";
 
     private const string SmbdPath = "/usr/sbin/smbd";
     private const string RpcNfsdPath = "/usr/sbin/rpc.nfsd";
@@ -34,6 +37,7 @@ public sealed class ShareServiceCoordinator
     private const string DefaultSmbConfPath = "/etc/samba/smb.conf";
     private const string DefaultExportsPath = "/etc/exports";
     private const string DefaultVsftpdConfPath = "/etc/vsftpd.conf";
+    private const string DefaultWebDavConfPath = "/etc/nginx/conf.d/gnas-webdav.conf";
 
     private readonly IServiceRegistry? _registry;
     private readonly IServiceSupervisor? _supervisor;
@@ -59,6 +63,7 @@ public sealed class ShareServiceCoordinator
     private string SmbConfPath => _configuration?.GetValue("share:smb_conf_path") ?? DefaultSmbConfPath;
     private string ExportsPath => _configuration?.GetValue("share:exports_path") ?? DefaultExportsPath;
     private string VsftpdConfPath => _configuration?.GetValue("share:vsftpd_conf_path") ?? DefaultVsftpdConfPath;
+    private string WebDavConfPath => _configuration?.GetValue("share:webdav_conf_path") ?? DefaultWebDavConfPath;
 
     /// <summary>
     /// 注册内置共享守护进程的服务定义（Manual 启动，由共享变更按需拉起/重启）。
@@ -128,25 +133,48 @@ public sealed class ShareServiceCoordinator
             return;
         }
 
-        var smbApplied = await WriteSystemConfigAsync(SmbConfPath, configs.Smb, ct).ConfigureAwait(false);
-        var nfsApplied = await WriteSystemConfigAsync(ExportsPath, configs.NfsExports, ct).ConfigureAwait(false);
-        var ftpApplied = await WriteSystemConfigAsync(VsftpdConfPath, configs.Ftp, ct).ConfigureAwait(false);
-
-        // NFS 导出表通过 exportfs 热刷新即可生效，无需重启内核 nfsd。
-        if (nfsApplied)
+        var changes = new[]
         {
+            new ConfigChange("smb", SmbConfPath, configs.Smb),
+            new ConfigChange("nfs", ExportsPath, configs.NfsExports),
+            new ConfigChange("ftp", VsftpdConfPath, configs.Ftp),
+            new ConfigChange("webdav", WebDavConfPath, configs.WebDav),
+        };
+
+        var prepared = new List<PreparedConfig>(changes.Length);
+        try
+        {
+            foreach (var change in changes)
+            {
+                var item = await PrepareAsync(change, ct).ConfigureAwait(false);
+                prepared.Add(item);
+                await ValidateAsync(item, ct).ConfigureAwait(false);
+            }
+
+            foreach (var item in prepared)
+            {
+                File.Move(item.TemporaryPath, item.Change.Path, overwrite: true);
+                item.Committed = true;
+            }
+
             await RefreshNfsExportsAsync(ct).ConfigureAwait(false);
-        }
-
-        // SMB 与 FTP 守护进程重启后重新读取配置文件。
-        if (smbApplied)
-        {
             await RestartIfRegisteredAsync(SmbServiceId, ct).ConfigureAwait(false);
-        }
-
-        if (ftpApplied)
-        {
             await RestartIfRegisteredAsync(FtpServiceId, ct).ConfigureAwait(false);
+            await RestartIfRegisteredAsync(WebDavServiceId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var rollbackErrors = Rollback(prepared);
+            throw new ShareConfigurationException(
+                rollbackErrors.Count == 0
+                    ? "共享协议配置应用失败，已恢复原配置。"
+                    : $"共享协议配置应用失败，且有 {rollbackErrors.Count} 个配置无法恢复。",
+                ex,
+                rollbackErrors);
+        }
+        finally
+        {
+            Cleanup(prepared);
         }
     }
 
@@ -163,25 +191,67 @@ public sealed class ShareServiceCoordinator
         }
     }
 
-    /// <summary>写入单个系统配置文件；成功返回 true，权限不足等失败仅记录警告。</summary>
-    private async Task<bool> WriteSystemConfigAsync(string path, string content, CancellationToken ct)
+    private async Task<PreparedConfig> PrepareAsync(ConfigChange change, CancellationToken ct)
     {
-        try
+        var directory = Path.GetDirectoryName(change.Path)
+            ?? throw new ConfigurationException($"共享配置路径无父目录：{change.Path}");
+        Directory.CreateDirectory(directory);
+        var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(change.Path)}.{Guid.CreateVersion7():N}.tmp");
+        var backupPath = Path.Combine(directory, $".{Path.GetFileName(change.Path)}.{Guid.CreateVersion7():N}.bak");
+        var existed = File.Exists(change.Path);
+        if (existed)
         {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            await File.WriteAllTextAsync(path, content, ct).ConfigureAwait(false);
-            _logger.LogInformation("共享配置已写入 {Path}。", path);
-            return true;
+            File.Copy(change.Path, backupPath, overwrite: false);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+
+        await using (var stream = new FileStream(
+            temporaryPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            4096,
+            FileOptions.Asynchronous | FileOptions.WriteThrough))
         {
-            _logger.LogWarning(ex, "无法写入系统共享配置 {Path}，客户端将无法看到最新共享。", path);
-            return false;
+            await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true);
+            await writer.WriteAsync(change.Content.AsMemory(), ct).ConfigureAwait(false);
+            await writer.FlushAsync(ct).ConfigureAwait(false);
+            stream.Flush(flushToDisk: true);
+        }
+
+        return new PreparedConfig(change, temporaryPath, backupPath, existed);
+    }
+
+    private async Task ValidateAsync(PreparedConfig prepared, CancellationToken ct)
+    {
+        var executable = _configuration?.GetValue($"share:{prepared.Change.Protocol}_validator");
+        var arguments = _configuration?.GetValue($"share:{prepared.Change.Protocol}_validator_args");
+        if (string.IsNullOrWhiteSpace(executable)
+            && prepared.Change.Protocol == "smb"
+            && File.Exists("/usr/bin/testparm"))
+        {
+            executable = "/usr/bin/testparm";
+            arguments = "-s --suppress-prompt {path}";
+        }
+
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return;
+        }
+
+        if (_processManager is null)
+        {
+            throw new ConfigurationException($"已配置 {prepared.Change.Protocol} 校验器，但进程管理器不可用。");
+        }
+
+        var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
+        {
+            ExecutablePath = executable,
+            Arguments = (arguments ?? "{path}").Replace("{path}", Quote(prepared.TemporaryPath), StringComparison.Ordinal),
+            TimeoutSeconds = 30,
+        }, ct).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw new ConfigurationException($"{prepared.Change.Protocol} 配置校验失败：{result.Stderr}");
         }
     }
 
@@ -193,19 +263,16 @@ public sealed class ShareServiceCoordinator
             return;
         }
 
-        try
+        var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
         {
-            await _processManager.ExecuteCommandAsync(new ProcessStartConfig
-            {
-                ExecutablePath = ExportfsPath,
-                Arguments = "-ra",
-            }, ct).ConfigureAwait(false);
-            _logger.LogInformation("NFS 导出表已刷新。");
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+            ExecutablePath = ExportfsPath,
+            Arguments = "-ra",
+        }, ct).ConfigureAwait(false);
+        if (result.ExitCode != 0)
         {
-            _logger.LogWarning(ex, "刷新 NFS 导出表失败。");
+            throw new ConfigurationException($"刷新 NFS 导出表失败：{result.Stderr}");
         }
+        _logger.LogInformation("NFS 导出表已刷新。");
     }
 
     /// <summary>仅当服务已注册时才通过监管器重启，避免 ServiceNotFoundException 中断共享操作。</summary>
@@ -216,20 +283,69 @@ public sealed class ShareServiceCoordinator
             return;
         }
 
-        try
+        if (await _registry.GetAsync(serviceId, ct).ConfigureAwait(false) is null)
         {
-            if (await _registry.GetAsync(serviceId, ct).ConfigureAwait(false) is null)
-            {
-                _logger.LogDebug("服务 {ServiceId} 未注册（守护进程未安装），跳过重启。", serviceId);
-                return;
-            }
-
-            await _supervisor.RestartAsync(serviceId, ct).ConfigureAwait(false);
-            _logger.LogInformation("共享服务 {ServiceId} 已重启以加载新配置。", serviceId);
+            _logger.LogDebug("服务 {ServiceId} 未注册（守护进程未安装），跳过重启。", serviceId);
+            return;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+
+        await _supervisor.RestartAsync(serviceId, ct).ConfigureAwait(false);
+        _logger.LogInformation("共享服务 {ServiceId} 已重启以加载新配置。", serviceId);
+    }
+
+    private static IReadOnlyList<string> Rollback(IEnumerable<PreparedConfig> prepared)
+    {
+        var errors = new List<string>();
+        foreach (var item in prepared.Where(item => item.Committed).Reverse())
         {
-            _logger.LogWarning(ex, "重启共享服务 {ServiceId} 失败。", serviceId);
+            try
+            {
+                if (item.Existed)
+                {
+                    File.Move(item.BackupPath, item.Change.Path, overwrite: true);
+                }
+                else if (File.Exists(item.Change.Path))
+                {
+                    File.Delete(item.Change.Path);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                errors.Add($"{item.Change.Protocol}: {ex.Message}");
+            }
+        }
+
+        return errors;
+    }
+
+    private static void Cleanup(IEnumerable<PreparedConfig> prepared)
+    {
+        foreach (var item in prepared)
+        {
+            if (File.Exists(item.TemporaryPath)) File.Delete(item.TemporaryPath);
+            if (File.Exists(item.BackupPath)) File.Delete(item.BackupPath);
         }
     }
+
+    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    private sealed record ConfigChange(string Protocol, string Path, string Content);
+
+    private sealed class PreparedConfig(ConfigChange change, string temporaryPath, string backupPath, bool existed)
+    {
+        public ConfigChange Change { get; } = change;
+        public string TemporaryPath { get; } = temporaryPath;
+        public string BackupPath { get; } = backupPath;
+        public bool Existed { get; } = existed;
+        public bool Committed { get; set; }
+    }
+}
+
+/// <summary>共享配置事务失败；RollbackErrors 指示需要人工介入的文件。</summary>
+public sealed class ShareConfigurationException(
+    string message,
+    Exception innerException,
+    IReadOnlyList<string> rollbackErrors) : Exception(message, innerException)
+{
+    public IReadOnlyList<string> RollbackErrors { get; } = rollbackErrors;
 }

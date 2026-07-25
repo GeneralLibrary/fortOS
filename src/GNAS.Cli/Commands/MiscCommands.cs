@@ -81,8 +81,24 @@ public static class MiscCommands
     /// <summary>建立 recovery 命令。</summary>
     public static Command Recovery(CliOptions options)
     {
-        var root = new Command("recovery", "恢复流程"); var confirm = new Option<bool>("--confirm"); var start = new Command("start", "启动恢复") { confirm };
-        start.SetAction((p, ct) => CommandRuntime.RequireConfirm(p.GetValue(confirm)) ? CommandRuntime.RunAsync(p, options, (c, t) => c.PostAsync("api/recovery/start", null, t), cancellationToken: ct) : Task.FromResult(2));
+        var root = new Command("recovery", "恢复流程");
+        var target = new Argument<string>("target") { Description = "恢复目标路径" };
+        var source = new Option<string?>("--source") { Description = "rsync 模式的数据来源路径" };
+        var snapshotId = new Option<string?>("--snapshot-id") { Description = "snapshot 模式的快照标识/路径" };
+        var mode = new Option<string?>("--mode") { Description = "恢复模式：rsync 或 snapshot（默认自动推断）" };
+        var dryRun = new Option<bool>("--dry-run") { Description = "仅演练（仅 rsync 模式）" };
+        var confirm = new Option<bool>("--confirm");
+        var start = new Command("start", "启动恢复") { target, source, snapshotId, mode, dryRun, confirm };
+        start.SetAction((p, ct) => CommandRuntime.RequireConfirm(p.GetValue(confirm))
+            ? CommandRuntime.RunAsync(p, options, (c, t) => c.PostAsync("api/recovery/start", new
+            {
+                target = p.GetRequiredValue(target),
+                source = p.GetValue(source),
+                snapshotId = p.GetValue(snapshotId),
+                mode = p.GetValue(mode),
+                dryRun = p.GetValue(dryRun),
+            }, t), cancellationToken: ct)
+            : Task.FromResult(2));
         root.Add(start); return root;
     }
 

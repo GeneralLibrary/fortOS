@@ -547,6 +547,12 @@ public record BackupTask
     public bool Encryption { get; init; } = true;
     /// <summary>排除模式。</summary>
     public string[] ExcludePatterns { get; init; } = [];
+    /// <summary>失败后的最大重试次数。</summary>
+    public int RetryCount { get; init; } = 2;
+    /// <summary>重试初始退避秒数。</summary>
+    public int RetryBackoffSeconds { get; init; } = 5;
+    /// <summary>备份允许的最大陈旧时间小时。</summary>
+    public int FreshnessSlaHours { get; init; } = 24;
 }
 
 /// <summary>备份目标。</summary>

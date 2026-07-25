@@ -1,6 +1,7 @@
 using GNAS.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using GNAS.Api.Middleware;
 
 namespace GNAS.Api.Filters;
 
@@ -18,7 +19,16 @@ public sealed class GnasExceptionFilter : IExceptionFilter
         var traceId = context.HttpContext.Items["X-Trace-Id"]?.ToString();
         var (status, code, error) = Map(context.Exception);
         if (status >= 500) logger.LogError(context.Exception, "API 请求失败。");
-        context.Result = new ObjectResult(new { error, code, traceId }) { StatusCode = status };
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = status >= 500 ? "Internal server error" : "Request failed",
+            Detail = error,
+            Type = $"https://gnas.dev/problems/{code.ToLowerInvariant()}"
+        };
+        problem.Extensions["code"] = code;
+        problem.Extensions["traceId"] = traceId ?? context.HttpContext.TraceIdentifier;
+        context.Result = new ObjectResult(problem) { StatusCode = status };
         context.ExceptionHandled = true;
     }
 

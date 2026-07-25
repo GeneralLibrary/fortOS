@@ -120,12 +120,21 @@ public sealed class ComposeGenerator : IComposeGenerator
 
         foreach (var child in services.Children.Values.OfType<YamlMappingNode>())
         {
+            ValidateUntrustedService(child);
             InjectService(child, config, tokenResult, apiEndpoint);
         }
     }
 
     private static void InjectService(YamlMappingNode service, AgentConfig config, AgentTokenResult tokenResult, string apiEndpoint)
     {
+        // The generated security profile is authoritative; templates cannot relax it.
+        service.Children[new YamlScalarNode("image")] = new YamlScalarNode(config.ImageName);
+        service.Children[new YamlScalarNode("privileged")] = new YamlScalarNode("false");
+        service.Children[new YamlScalarNode("read_only")] = new YamlScalarNode("true");
+        service.Children[new YamlScalarNode("security_opt")] = new YamlSequenceNode(new YamlScalarNode("no-new-privileges:true"));
+        service.Children[new YamlScalarNode("cap_drop")] = new YamlSequenceNode(new YamlScalarNode("ALL"));
+        service.Children[new YamlScalarNode("tmpfs")] = new YamlSequenceNode(new YamlScalarNode("/tmp:rw,noexec,nosuid,size=64m"));
+        service.Children.Remove(new YamlScalarNode("volumes"));
         service.Children[new YamlScalarNode("env_file")] = new YamlSequenceNode(new YamlScalarNode(".env"));
         var environment = GetOrAddMapping(service, "environment");
         environment.Children[new YamlScalarNode("NAS_TOKEN")] = new YamlScalarNode("${NAS_TOKEN}");
@@ -151,20 +160,52 @@ public sealed class ComposeGenerator : IComposeGenerator
             }
         }
 
-        if (config.ResourceQuota is not null)
         {
             var limits = GetOrAddMapping(GetOrAddMapping(GetOrAddMapping(service, "deploy"), "resources"), "limits");
-            if (config.ResourceQuota.CpuLimit is not null)
-            {
-                limits.Children[new YamlScalarNode("cpus")] = new YamlScalarNode(config.ResourceQuota.CpuLimit.Value.ToString("0.###", CultureInfo.InvariantCulture));
-            }
+            limits.Children[new YamlScalarNode("cpus")] = new YamlScalarNode((config.ResourceQuota?.CpuLimit ?? 1d).ToString("0.###", CultureInfo.InvariantCulture));
+            limits.Children[new YamlScalarNode("memory")] = new YamlScalarNode(FormatMemory(config.ResourceQuota?.MemoryLimitBytes ?? 512L * 1024 * 1024));
+        }
+    }
 
-            if (config.ResourceQuota.MemoryLimitBytes is not null)
+    private static void ValidateUntrustedService(YamlMappingNode service)
+    {
+        RejectTrue(service, "privileged");
+        RejectHostNamespace(service, "network_mode");
+        RejectHostNamespace(service, "pid");
+        RejectHostNamespace(service, "ipc");
+        RejectPresent(service, "devices");
+        if (service.Children.TryGetValue(new YamlScalarNode("cap_add"), out var caps) && caps is YamlSequenceNode capList
+            && capList.Children.OfType<YamlScalarNode>().Any(c => IsDangerousCapability(c.Value)))
+            throw new InvalidDataException("Agent compose may not add dangerous Linux capabilities.");
+        if (service.Children.TryGetValue(new YamlScalarNode("volumes"), out var volumes) && volumes is YamlSequenceNode volumeList)
+        {
+            foreach (var volume in volumeList.Children.OfType<YamlScalarNode>())
             {
-                limits.Children[new YamlScalarNode("memory")] = new YamlScalarNode(FormatMemory(config.ResourceQuota.MemoryLimitBytes.Value));
+                var source = (volume.Value ?? string.Empty).Split(':', 2)[0];
+                if (source == "/" || source.Contains("docker.sock", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Agent compose may not mount the Docker socket or host root.");
             }
         }
     }
+
+    private static void RejectTrue(YamlMappingNode service, string key)
+    {
+        if (service.Children.TryGetValue(new YamlScalarNode(key), out var value) && value is YamlScalarNode scalar && bool.TryParse(scalar.Value, out var enabled) && enabled)
+            throw new InvalidDataException($"Agent compose may not enable {key}.");
+    }
+
+    private static void RejectHostNamespace(YamlMappingNode service, string key)
+    {
+        if (service.Children.TryGetValue(new YamlScalarNode(key), out var value) && value is YamlScalarNode scalar && string.Equals(scalar.Value, "host", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"Agent compose may not use host {key}.");
+    }
+
+    private static void RejectPresent(YamlMappingNode service, string key)
+    {
+        if (service.Children.ContainsKey(new YamlScalarNode(key))) throw new InvalidDataException($"Agent compose may not define {key}.");
+    }
+
+    private static bool IsDangerousCapability(string? capability) => capability?.ToUpperInvariant() is "ALL" or "SYS_ADMIN" or "SYS_MODULE" or "SYS_PTRACE" or "NET_ADMIN" or "DAC_OVERRIDE";
 
     private static YamlMappingNode GetOrAddMapping(YamlMappingNode parent, string key)
     {

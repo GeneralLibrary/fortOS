@@ -71,7 +71,23 @@ public sealed class DeployAndRunAgentE2ETests
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动 docker 进程。 ");
+        Process? process;
+        try
+        {
+            process = Process.Start(startInfo);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return new ProcessResult(127, string.Empty, "docker 不可用");
+        }
+
+        if (process is null)
+        {
+            return new ProcessResult(127, string.Empty, "无法启动 docker 进程。");
+        }
+
+        using (process)
+        {
         var stdout = process.StandardOutput.ReadToEndAsync(cts.Token);
         var stderr = process.StandardError.ReadToEndAsync(cts.Token);
         try
@@ -88,7 +104,8 @@ public sealed class DeployAndRunAgentE2ETests
             throw;
         }
 
-        return new ProcessResult(process.ExitCode, await stdout, await stderr);
+            return new ProcessResult(process.ExitCode, await stdout, await stderr);
+        }
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";

@@ -16,6 +16,7 @@ public static class ObservabilityExtensions
     /// <summary>注册日志、审计链、告警和 Serilog 集成。</summary>
     public static IServiceCollection AddObservability(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton<GnasMetrics>();
         services.AddSingleton<MemoryLogStore>();
         services.AddSingleton<FileLogStore>();
         services.AddSingleton<LokiLogStore>();

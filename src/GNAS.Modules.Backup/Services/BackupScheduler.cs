@@ -1,4 +1,3 @@
-using System.Text.Json;
 using GNAS.Core;
 using Microsoft.Extensions.Logging;
 
@@ -8,8 +7,7 @@ namespace GNAS.Modules.Backup.Services;
 public sealed class BackupScheduler
 {
     private readonly Func<Task<IReadOnlyList<BackupTask>>> tasksProvider;
-    private readonly RsyncBackupService rsync;
-    private readonly IEventBus eventBus;
+    private readonly Func<BackupTask, CancellationToken, Task<bool>> execute;
     private readonly ILogger logger;
     private readonly Dictionary<string, DateTimeOffset> lastRuns = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? cts;
@@ -17,10 +15,28 @@ public sealed class BackupScheduler
 
     /// <summary>创建备份调度器。</summary>
     public BackupScheduler(Func<Task<IReadOnlyList<BackupTask>>> tasksProvider, RsyncBackupService rsync, IEventBus eventBus, ILogger logger)
+        : this(tasksProvider, async (task, ct) =>
+        {
+            var result = await rsync.SyncAsync(task.SourcePath, task.Target.BucketOrPath, dryRun: false, ct).ConfigureAwait(false);
+            var success = result.ExitCode == 0;
+            await eventBus.PublishAsync(
+                success ? "backup.task.completed" : "backup.task.failed",
+                success ? "backup.task.completed" : "backup.task.failed",
+                System.Text.Json.JsonSerializer.Serialize(new { task.TaskId, result.ExitCode, result.Stderr }),
+                ct).ConfigureAwait(false);
+            return success;
+        }, logger)
+    {
+    }
+
+    /// <summary>创建使用持久化执行器的调度器。</summary>
+    public BackupScheduler(
+        Func<Task<IReadOnlyList<BackupTask>>> tasksProvider,
+        Func<BackupTask, CancellationToken, Task<bool>> execute,
+        ILogger logger)
     {
         this.tasksProvider = tasksProvider;
-        this.rsync = rsync;
-        this.eventBus = eventBus;
+        this.execute = execute;
         this.logger = logger;
     }
 
@@ -87,22 +103,19 @@ public sealed class BackupScheduler
 
     private async Task RunTaskAsync(BackupTask task, CancellationToken ct)
     {
-        CommandResult result = new() { ExitCode = 1 };
-        for (var attempt = 0; attempt < 2; attempt++)
+        try
         {
-            result = await rsync.SyncAsync(task.SourcePath, task.Target.BucketOrPath, dryRun: false, ct).ConfigureAwait(false);
-            if (result.ExitCode == 0)
+            var success = await execute(task, ct).ConfigureAwait(false);
+            lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
+            if (!success)
             {
-                break;
+                logger.LogWarning("备份任务 {TaskId} 执行失败。", task.TaskId);
             }
         }
-
-        lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
-        var success = result.ExitCode == 0;
-        await eventBus.PublishAsync(success ? "backup.task.completed" : "backup.task.failed", success ? "backup.task.completed" : "backup.task.failed", JsonSerializer.Serialize(new { task.TaskId, result.ExitCode, result.Stderr }), ct).ConfigureAwait(false);
-        if (!success)
+        catch (BackupExecutionException ex)
         {
-            logger.LogWarning("备份任务 {TaskId} 失败: {Error}", task.TaskId, result.Stderr);
+            lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
+            logger.LogWarning(ex, "备份任务 {TaskId} 执行失败，错误码 {ErrorCode}。", task.TaskId, ex.Code);
         }
     }
 }

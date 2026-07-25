@@ -1,4 +1,4 @@
-name: GNAS CI
+﻿name: GNAS CI
 on:
   push:
     branches: [main]
@@ -6,30 +6,45 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rid: [linux-x64, linux-arm64, win-x64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet restore
-      - run: dotnet build -c Release --no-restore
-      - run: dotnet test -c Release --no-build --filter "Category!=Integration"
-      - run: dotnet publish src/GNAS.Api/GNAS.Api.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o ./publish/${{ matrix.rid }}
+      - run: dotnet restore GNAS.slnx
+      - run: dotnet build GNAS.slnx -c Release --no-restore -warnaserror:CS
+      - run: dotnet test GNAS.slnx -c Release --no-build --collect:"XPlat Code Coverage" --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+      - name: Enforce line coverage floor
+        shell: pwsh
+        run: |
+          $report = Get-ChildItem TestResults -Recurse -Filter coverage.cobertura.xml | Select-Object -First 1
+          if (-not $report) { throw "Coverage report was not produced." }
+          [xml]$coverage = Get-Content $report.FullName
+          $lineRate = [double]::Parse($coverage.coverage.'line-rate', [Globalization.CultureInfo]::InvariantCulture)
+          if ($lineRate -lt 0.35) { throw "Line coverage $lineRate is below the 0.35 production gate." }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: TestResults
 
-  integration:
+  docker-e2e:
     runs-on: ubuntu-latest
-    needs: build
+    needs: test
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'docker-e2e')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - run: docker compose -f docker-compose.test.yml up -d --build
-      - run: dotnet test --filter "Category=Integration"
+      - run: dotnet test tests/GNAS.Tests.Integration/GNAS.Tests.Integration.csproj --filter "Category=Integration" --logger "trx;LogFileName=docker-e2e.trx" --results-directory TestResults
       - if: always()
-        run: docker compose -f docker-compose.test.yml down
+        run: docker compose -f docker-compose.test.yml down --volumes
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-e2e-results
+          path: TestResults

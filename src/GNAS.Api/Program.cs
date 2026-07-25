@@ -1,11 +1,13 @@
 using GNAS.Agent;
 using GNAS.Api.Filters;
+using GNAS.Api.Authorization;
 using GNAS.Api.Grpc;
 using GNAS.Api.Middleware;
 using GNAS.Api.Services;
 using GNAS.Core;
 using GNAS.Modules.Agent;
 using GNAS.Modules.Backup;
+using GNAS.Modules.Backup.Services;
 using GNAS.Modules.Host;
 using GNAS.Modules.Network;
 using GNAS.Modules.Share;
@@ -39,6 +41,9 @@ builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<NetworkMod
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<AgentModule>());
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<BackupModule>());
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<UpdateModule>());
+builder.Services.AddSingleton<FileManagerService>();
+builder.Services.AddSingleton<BackupRunHistoryStore>();
+builder.Services.AddSingleton<BackupExecutionService>();
 // Samba 用户桥接：GNAS 用户创建/删除时同步供给系统用户与 smbpasswd，使 SMB 客户端可用同一凭据认证。
 if (OperatingSystem.IsLinux())
 {
@@ -47,8 +52,8 @@ if (OperatingSystem.IsLinux())
 builder.Services.AddAgentServices();
 builder.Services.AddObservability(builder.Configuration);
 builder.Services.AddHostedService<StartupOrchestrator>();
-builder.Services.AddGrpc();
-builder.Services.AddControllers(options => options.Filters.Add<GnasExceptionFilter>())
+builder.Services.AddGrpc(options => options.Interceptors.Add<GrpcAuthorizationInterceptor>());
+builder.Services.AddControllers(options => { options.Filters.Add<GnasExceptionFilter>(); options.Filters.Add<CapabilityAuthorizationFilter>(); options.Conventions.Add(new CapabilityConvention()); })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
@@ -70,10 +75,13 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<TraceIdMiddleware>();
+app.UseMiddleware<ApiVersionCompatibilityMiddleware>();
+app.UseRouting();
 app.UseMiddleware<NasTokenMiddleware>();
 app.UseMiddleware<AuditMiddleware>();
 app.UseMiddleware<RateLimitMiddleware>();
-app.UseRouting();
+app.UseMiddleware<IdempotencyMiddleware>();
+app.UseMiddleware<HttpMetricsMiddleware>();
 app.UseCors();
 
 if (app.Configuration.GetValue("dashboard:enabled", false))
@@ -83,11 +91,22 @@ if (app.Configuration.GetValue("dashboard:enabled", false))
 }
 
 app.MapControllers();
+app.MapGet("/metrics", async (HttpContext context, GNAS.Observability.GnasMetrics metrics) =>
+{
+    if (!app.Configuration.GetValue("metrics:allow_anonymous", false) && context.Items["NasTokenPayload"] is null)
+    {
+        await ApiProblem.WriteAsync(context, StatusCodes.Status401Unauthorized, "TOKEN_MISSING", "Authentication is required.").ConfigureAwait(false);
+        return;
+    }
+    context.Response.ContentType = "text/plain; version=0.0.4";
+    await context.Response.WriteAsync(metrics.ExportPrometheus(), context.RequestAborted).ConfigureAwait(false);
+});
 app.MapGrpcService<StorageGrpcService>();
 app.MapGrpcService<ShareGrpcService>();
 app.MapGrpcService<AgentGrpcService>();
 app.MapGrpcService<ServiceBusGrpcService>();
 app.MapGrpcService<AuditGrpcService>();
+EndpointCapabilityValidation.Validate(app);
 #endregion
 
 app.Run();

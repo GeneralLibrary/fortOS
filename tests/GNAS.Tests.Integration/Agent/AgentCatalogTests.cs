@@ -37,6 +37,19 @@ public class AgentCatalogTests
         await Assert.ThrowsAsync<InvalidDataException>(() => catalog.InstallTemplateAsync(source, CancellationToken.None));
     }
 
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task EmptyCatalog_SeedsBuiltInTemplates()
+    {
+        using var root = new AgentTestDataRoot(nameof(EmptyCatalog_SeedsBuiltInTemplates));
+        var catalog = new AgentCatalog();
+
+        var templates = await catalog.ListTemplatesAsync(CancellationToken.None);
+
+        Assert.Contains(templates, t => t.Id == "nginx-basic");
+        Assert.Contains(templates, t => t.Id == "alpine-worker");
+    }
+
     private static string ValidTemplateYaml(string id, string name, string description) => $@"id: {id}
 name: {name}
 version: 1.2.3

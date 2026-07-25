@@ -132,6 +132,34 @@ gnas --server http://localhost:5000 --token "$NAS_TOKEN" service list
 gnas audit verify --output json
 ```
 
+部署 Agent（模板 + 镜像 + 数据卷）：
+
+```bash
+gnas agent deploy nginx-basic --image nginx:alpine --agent-id web-nginx --volume /srv/nas/agents-data/web-nginx:/data:rw
+```
+
+文件管理（创建、读取、软删除、恢复）：
+
+```bash
+gnas file write /srv/nas/demo/hello.txt --content "hello gnas" --overwrite
+gnas file read /srv/nas/demo/hello.txt
+gnas file delete /srv/nas/demo/hello.txt --confirm
+```
+
+备份任务与手动执行：
+
+```bash
+gnas backup task set media-backup --source /srv/nas/media --target /srv/nas/backup/media --cron interval:60
+gnas backup task run media-backup
+gnas backup run list --task-id media-backup
+```
+
+恢复流程（rsync/snapshot）：
+
+```bash
+gnas recovery start /srv/nas/media --source /srv/nas/backup/media --mode rsync --dry-run --confirm
+```
+
 不带参数运行且终端可交互时，`gnas` 会进入 TUI 仪表盘。
 
 ## 开发与验证

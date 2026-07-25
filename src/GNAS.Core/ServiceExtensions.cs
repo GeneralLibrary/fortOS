@@ -17,6 +17,7 @@ public static class ServiceExtensions
     public static IServiceCollection AddGnasCore(this IServiceCollection services, string? dataRoot = null, string? configPath = null)
     {
         services.AddSingleton<IDatabaseProvider>(_ => new DatabaseProvider(dataRoot));
+        services.AddSingleton<SqliteLeaseService>();
         services.AddSingleton<IGnasConfiguration>(_ => new GnasConfiguration(configPath));
         return services;
     }

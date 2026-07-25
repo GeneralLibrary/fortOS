@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using GNAS.Security.Models;
 
 namespace GNAS.Api.Middleware;
 
@@ -22,15 +23,18 @@ public sealed class RateLimitMiddleware
         var limit = IsLogin(context.Request.Path)
             ? configuration.GetValue("rateLimit:loginPerMinute", 5)
             : configuration.GetValue("rateLimit:defaultPerMinute", 100);
-        var key = $"{context.Connection.RemoteIpAddress}|{(IsLogin(context.Request.Path) ? "login" : "default")}";
+        var subject = (context.Items["NasTokenPayload"] as NasTokenPayload)?.Sub;
+        var identity = string.IsNullOrWhiteSpace(subject) ? context.Connection.RemoteIpAddress?.ToString() ?? "unknown" : $"subject:{subject}";
+        var key = $"{identity}|{(IsLogin(context.Request.Path) ? "login" : "default")}";
         var now = DateTimeOffset.UtcNow;
+        foreach (var expired in counters.Where(pair => pair.Value.WindowStart.AddMinutes(2) <= now).Select(pair => pair.Key).ToArray())
+            counters.TryRemove(expired, out _);
         var counter = counters.AddOrUpdate(key, _ => new Counter(now, 1), (_, old) => old.WindowStart.AddMinutes(1) <= now ? new Counter(now, 1) : old with { Count = old.Count + 1 });
         if (counter.Count > limit)
         {
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             var retry = Math.Max(1, (int)(counter.WindowStart.AddMinutes(1) - now).TotalSeconds);
             context.Response.Headers.RetryAfter = retry.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            await context.Response.WriteAsJsonAsync(new { error = "请求过于频繁。", code = "RATE_LIMITED", traceId = context.Items["X-Trace-Id"] }, context.RequestAborted).ConfigureAwait(false);
+            await ApiProblem.WriteAsync(context, StatusCodes.Status429TooManyRequests, "RATE_LIMITED", "请求过于频繁。").ConfigureAwait(false);
             return;
         }
 

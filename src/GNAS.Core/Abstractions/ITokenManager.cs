@@ -13,4 +13,6 @@ public interface ITokenManager
     Task<string> RenewTokenAsync(string token, CancellationToken ct);
     /// <summary>检查令牌是否已吊销。</summary>
     Task<bool> IsTokenRevokedAsync(string jti, CancellationToken ct);
+    /// <summary>Generate and activate a new signing key; prior keys remain valid for existing tokens.</summary>
+    Task<string> RotateSigningKeyAsync(CancellationToken ct);
 }

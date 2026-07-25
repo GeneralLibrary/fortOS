@@ -138,7 +138,9 @@ public sealed class AgentGrpcService : Proto.AgentService.AgentServiceBase
     /// <inheritdoc />
     public override async Task<Proto.DeployAgentResponse> DeployAgent(Proto.DeployAgentRequest request, ServerCallContext context)
     {
-        var service = await agents.DeployAgentAsync(request.TemplateId, ToCore(request.Config), string.Empty, context.CancellationToken).ConfigureAwait(false);
+        var ownerToken = ExtractBearerToken(context.RequestHeaders)
+            ?? throw new RpcException(new Status(StatusCode.Unauthenticated, "缺少 Bearer token。"));
+        var service = await agents.DeployAgentAsync(request.TemplateId, ToCore(request.Config), ownerToken, context.CancellationToken).ConfigureAwait(false);
         return new Proto.DeployAgentResponse { Success = true, AgentId = request.Config.AgentId, ComposeFilePath = service.ComposeFile ?? string.Empty, ErrorCode = Proto.ErrorCode.Ok };
     }
 
@@ -169,6 +171,17 @@ public sealed class AgentGrpcService : Proto.AgentService.AgentServiceBase
         return result;
     }
     private static Proto.AgentActionResult Ok(string agentId, string message) => new() { Success = true, AgentId = agentId, Message = message, ErrorCode = Proto.ErrorCode.Ok };
+
+    private static string? ExtractBearerToken(Metadata headers)
+    {
+        var value = headers.FirstOrDefault(h => string.Equals(h.Key, "authorization", StringComparison.OrdinalIgnoreCase))?.Value;
+        if (value is null || !value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return value[7..].Trim();
+    }
 }
 
 /// <summary>服务总线 gRPC 服务。</summary>

@@ -39,8 +39,10 @@ internal static class Program
         root.Add(options.NoColor);
         root.Add(StatusCommand.Create(options));
         root.Add(DiskCommand.Create(options));
+        root.Add(FileCommand.Create(options));
         root.Add(ShareCommand.Create(options));
         root.Add(SnapshotCommand.Create(options));
+        root.Add(BackupCommand.Create(options));
         root.Add(RecycleCommand.Create(options));
         root.Add(ServiceCommand.Create(options));
         root.Add(AgentCommand.Create(options));

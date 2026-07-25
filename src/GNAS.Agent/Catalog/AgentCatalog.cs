@@ -13,9 +13,55 @@ namespace GNAS.Agent.Catalog;
 public sealed partial class AgentCatalog : IAgentCatalog
 {
     private static readonly Regex IdPattern = AgentIdRegex();
+    private static readonly IReadOnlyDictionary<string, string> BuiltInTemplates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["nginx-basic"] = """
+id: nginx-basic
+name: Nginx Basic
+version: 1.0.0
+description: Minimal nginx static server template.
+capabilities_required:
+  - agent:deploy
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: nginx:alpine
+compose:
+  services:
+    {{.AgentId}}:
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      labels:
+        gnas.template: nginx-basic
+""",
+        ["alpine-worker"] = """
+id: alpine-worker
+name: Alpine Worker
+version: 1.0.0
+description: Minimal long-running worker template.
+capabilities_required:
+  - agent:deploy
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: alpine:3.20
+compose:
+  services:
+    {{.AgentId}}:
+      image: "{{.ImageName}}"
+      command: ["/bin/sh", "-c", "while true; do sleep 3600; done"]
+      restart: unless-stopped
+      labels:
+        gnas.template: alpine-worker
+""",
+    };
     private readonly HttpClient _httpClient;
     private readonly IDeserializer _deserializer;
     private readonly ISerializer _serializer;
+    private readonly SemaphoreSlim _seedLock = new(1, 1);
+    private int _seeded;
 
     /// <summary>
     /// 初始化 Agent 模板目录。
@@ -31,6 +77,7 @@ public sealed partial class AgentCatalog : IAgentCatalog
     /// <inheritdoc />
     public async Task<IReadOnlyList<AgentTemplate>> ListTemplatesAsync(CancellationToken ct)
     {
+        await EnsureBuiltInTemplatesAsync(ct).ConfigureAwait(false);
         if (!Directory.Exists(AgentPaths.CatalogRoot))
         {
             return [];
@@ -50,6 +97,7 @@ public sealed partial class AgentCatalog : IAgentCatalog
     public async Task<AgentTemplate?> GetTemplateAsync(string templateId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(templateId);
+        await EnsureBuiltInTemplatesAsync(ct).ConfigureAwait(false);
         var path = Path.Combine(AgentPaths.CatalogRoot, templateId + ".template.yaml");
         return File.Exists(path) ? await LoadTemplateAsync(path, ct).ConfigureAwait(false) : null;
     }
@@ -57,6 +105,7 @@ public sealed partial class AgentCatalog : IAgentCatalog
     /// <inheritdoc />
     public async Task<IReadOnlyList<AgentTemplate>> SearchTemplatesAsync(string query, CancellationToken ct)
     {
+        await EnsureBuiltInTemplatesAsync(ct).ConfigureAwait(false);
         var needle = query ?? string.Empty;
         var templates = await ListTemplatesAsync(ct).ConfigureAwait(false);
         return [.. templates.Where(t => Contains(t.Id, needle) || Contains(t.Name, needle) || Contains(t.Description, needle))];
@@ -66,6 +115,7 @@ public sealed partial class AgentCatalog : IAgentCatalog
     public async Task<AgentTemplate> InstallTemplateAsync(string source, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        await EnsureBuiltInTemplatesAsync(ct).ConfigureAwait(false);
         var yaml = await ReadSourceAsync(source, ct).ConfigureAwait(false);
         var template = ParseAndValidate(yaml, source);
         Directory.CreateDirectory(AgentPaths.CatalogRoot);
@@ -79,6 +129,7 @@ public sealed partial class AgentCatalog : IAgentCatalog
     public async Task<AgentTemplate> UpdateTemplateAsync(string templateId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(templateId);
+        await EnsureBuiltInTemplatesAsync(ct).ConfigureAwait(false);
         var sourcePath = GetSourcePath(templateId);
         if (!File.Exists(sourcePath))
         {
@@ -186,6 +237,42 @@ public sealed partial class AgentCatalog : IAgentCatalog
     private static bool Contains(string? value, string query) => value?.Contains(query, StringComparison.OrdinalIgnoreCase) == true;
 
     private static string GetSourcePath(string templateId) => Path.Combine(AgentPaths.CatalogRoot, templateId + ".source");
+
+    /// <summary>
+    /// 首次访问模板目录时自动写入最小内置模板，避免空目录导致无法开箱部署。
+    /// </summary>
+    private async Task EnsureBuiltInTemplatesAsync(CancellationToken ct)
+    {
+        if (Volatile.Read(ref _seeded) == 1)
+        {
+            return;
+        }
+
+        await _seedLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_seeded == 1)
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(AgentPaths.CatalogRoot);
+            if (!Directory.EnumerateFiles(AgentPaths.CatalogRoot, "*.template.yaml", SearchOption.TopDirectoryOnly).Any())
+            {
+                foreach (var pair in BuiltInTemplates)
+                {
+                    var destination = Path.Combine(AgentPaths.CatalogRoot, pair.Key + ".template.yaml");
+                    await File.WriteAllTextAsync(destination, pair.Value, ct).ConfigureAwait(false);
+                }
+            }
+
+            _seeded = 1;
+        }
+        finally
+        {
+            _seedLock.Release();
+        }
+    }
 
     [GeneratedRegex("^[a-z][a-z0-9-]{1,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex AgentIdRegex();

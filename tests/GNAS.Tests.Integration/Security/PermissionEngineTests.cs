@@ -27,4 +27,22 @@ public class PermissionEngineTests
         Assert.False(deniedByTrust.Granted);
         Assert.Contains("信任", deniedByTrust.DenyReason);
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task PermissionEngine_InheritsParentAcl_AndMostSpecificAclOverridesIt()
+    {
+        using var fixture = new SecurityFixture();
+        var manager = fixture.CreateTokenManager();
+        var engine = new PermissionEngine(manager, fixture.Database);
+        var token = await manager.IssueTokenAsync("user:alice", TokenType.Session, ["files:file:read"], 3, TimeSpan.FromHours(1), ["user:alice"], null, CancellationToken.None);
+
+        engine.AddAcl("/shares/team", "user:alice", ["files:file:read"]);
+        var inherited = await engine.CheckPermissionAsync(token, "files:file:read", "/shares/team/reports/q1.txt", NasDataLevel.Personal, CancellationToken.None);
+        Assert.True(inherited.Granted, inherited.DenyReason);
+
+        engine.AddAcl("/shares/team/reports", "user:bob", ["files:file:read"]);
+        var overridden = await engine.CheckPermissionAsync(token, "files:file:read", "/shares/team/reports/q1.txt", NasDataLevel.Personal, CancellationToken.None);
+        Assert.False(overridden.Granted);
+    }
 }

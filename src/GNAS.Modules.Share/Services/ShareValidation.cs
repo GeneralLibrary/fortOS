@@ -31,7 +31,8 @@ public static class ShareValidation
     public static void ValidatePath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!Path.IsPathFullyQualified(path) || path.Contains('\n') || path.Contains('\r'))
+        var isAbsolute = Path.IsPathFullyQualified(path) || path.StartsWith("/", StringComparison.Ordinal);
+        if (!isAbsolute || path.Contains('\n') || path.Contains('\r'))
         {
             throw new ArgumentException("共享路径必须为不含换行的绝对路径。", nameof(path));
         }

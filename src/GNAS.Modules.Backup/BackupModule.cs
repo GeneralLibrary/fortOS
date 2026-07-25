@@ -1,7 +1,7 @@
-using System.Text.Json;
 using GNAS.Core;
 using GNAS.Modules.Backup.Services;
 using GNAS.Modules.Host;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Modules.Backup;
 
@@ -9,7 +9,7 @@ namespace GNAS.Modules.Backup;
 public sealed class BackupModule : NasModuleBase
 {
     private BackupScheduler? scheduler;
-    private string TasksPath => Path.Combine(Context.DataDirectory, "config", "backup-tasks.json");
+    private BackupTaskStore? taskStore;
 
     /// <inheritdoc />
     public override string ModuleId => "backup";
@@ -26,30 +26,33 @@ public sealed class BackupModule : NasModuleBase
     /// <summary>加载备份任务。</summary>
     public async Task<IReadOnlyList<BackupTask>> ListTasksAsync(CancellationToken ct)
     {
-        if (!File.Exists(TasksPath))
-        {
-            return [];
-        }
-
-        await using var stream = File.OpenRead(TasksPath);
-        return await JsonSerializer.DeserializeAsync<List<BackupTask>>(stream, cancellationToken: ct).ConfigureAwait(false) ?? [];
+        if (taskStore is null) throw new InvalidOperationException("备份模块尚未初始化。");
+        return await taskStore.ListAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>保存备份任务。</summary>
     public async Task SaveTasksAsync(IEnumerable<BackupTask> tasks, CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(TasksPath)!);
-        await using var stream = File.Create(TasksPath);
-        await JsonSerializer.SerializeAsync(stream, tasks, new JsonSerializerOptions { WriteIndented = true }, ct).ConfigureAwait(false);
+        if (taskStore is null) throw new InvalidOperationException("备份模块尚未初始化。");
+        await taskStore.ReplaceAllAsync(tasks, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     protected override async Task OnInitializeAsync(CancellationToken ct)
     {
+        var database = Services.GetRequiredService<IDatabaseProvider>();
+        taskStore = new BackupTaskStore(database);
+        await database.InitializeAsync(ct).ConfigureAwait(false);
         var process = Services.GetService(typeof(IProcessManager)) as IProcessManager;
         if (process is not null)
         {
-            scheduler = new BackupScheduler(() => ListTasksAsync(CancellationToken.None), new RsyncBackupService(process), EventBus, Logger);
+            var executor = Services.GetService<BackupExecutionService>();
+            scheduler = executor is null
+                ? new BackupScheduler(() => ListTasksAsync(CancellationToken.None), new RsyncBackupService(process), EventBus, Logger)
+                : new BackupScheduler(
+                    () => ListTasksAsync(CancellationToken.None),
+                    async (task, token) => (await executor.RunAsync(task, token).ConfigureAwait(false)).Success,
+                    Logger);
             scheduler.Start(ct);
         }
 

@@ -50,7 +50,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     /// <inheritdoc />
     public async Task LoadRulesAsync(CancellationToken ct)
     {
-        var loaded = new List<AlertRule>();
+        var loaded = new List<AlertRule>(CreateDefaultSloRules());
         loaded.AddRange(await LoadYamlRulesAsync(ct).ConfigureAwait(false));
         loaded.AddRange(await LoadDatabaseRulesAsync(ct).ConfigureAwait(false));
         lock (_sync)
@@ -93,6 +93,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
             if (!Compare(metric.Value, rule.Condition.Operator, rule.Condition.Value))
             {
                 lock (_sync) _metricSince.Remove(rule.RuleId);
+                await ResolveAsync(rule, metric, ct).ConfigureAwait(false);
                 continue;
             }
 
@@ -218,6 +219,31 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
         }
     }
 
+    private async Task ResolveAsync(AlertRule rule, MetricData metric, CancellationToken ct)
+    {
+        ActiveAlert[] resolved;
+        lock (_sync)
+        {
+            resolved = _activeAlerts.Where(alert => alert.RuleId == rule.RuleId).ToArray();
+            if (resolved.Length == 0) return;
+            _activeAlerts.RemoveAll(alert => alert.RuleId == rule.RuleId);
+            _lastFired.Remove(rule.RuleId);
+        }
+
+        await _eventBus.PublishAsync(
+            "alert.resolved",
+            "observability.alert.resolved",
+            JsonSerializer.Serialize(new
+            {
+                rule.RuleId,
+                metric.MetricName,
+                metric.Value,
+                alertIds = resolved.Select(alert => alert.AlertId).ToArray(),
+                resolvedAt = DateTimeOffset.UtcNow,
+            }, JsonOptions),
+            ct).ConfigureAwait(false);
+    }
+
     private IEnumerable<INotifier> SelectNotifiers(string severity)
     {
         var lower = severity.ToLowerInvariant();
@@ -266,6 +292,25 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
         "lt" or "<" => value < threshold,
         "eq" or "==" => Math.Abs(value - (threshold ?? 0)) < double.Epsilon,
         _ => false
+    };
+
+    private static IReadOnlyList<AlertRule> CreateDefaultSloRules() =>
+    [
+        SloRule("slo-backup-freshness", "备份新鲜度超标", "warning", "gnas_backup_freshness_hours", "gt", 24),
+        SloRule("slo-backup-failures", "备份失败", "critical", "gnas_backup_failure_total", "gt", 0),
+        SloRule("slo-protocol-health", "共享协议不可用", "critical", "gnas_protocol_health", "lt", 1),
+        SloRule("slo-agent-restarts", "Agent 重启风暴", "warning", "gnas_agent_restarts_total", "gt", 5),
+        SloRule("slo-http-errors", "HTTP 5xx 错误", "warning", "gnas_http_errors_total", "gt", 0),
+    ];
+
+    private static AlertRule SloRule(string id, string name, string severity, string metric, string op, double value) => new()
+    {
+        RuleId = id,
+        Name = name,
+        Description = $"GNAS 默认 SLO 规则：{name}",
+        Severity = severity,
+        Condition = new AlertCondition { Type = "metric", Metric = metric, Operator = op, Value = value },
+        CooldownSeconds = 300,
     };
 
     private sealed class AlertRulesDocument

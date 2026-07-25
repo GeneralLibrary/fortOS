@@ -8,7 +8,7 @@ namespace GNAS.Security.KeyStore;
 /// <summary>
 /// 使用软件加密回退实现的 NAS 密钥存储。
 /// </summary>
-public sealed class NasKeyStore : INasKeyStore
+public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
 {
     private const string DefaultDataRoot = "/srv/nas";
     private readonly string _keyStoreDirectory;
@@ -152,6 +152,47 @@ public sealed class NasKeyStore : INasKeyStore
         {
             _sync.Release();
         }
+    }
+
+    /// <summary>Atomically re-encrypts all keystore entries under a newly generated master key.</summary>
+    public async Task RotateMasterKeyAsync(CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GNAS_MASTER_KEY")))
+            throw new ConfigurationException("????? GNAS_MASTER_KEY ?????????");
+        await _sync.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            EnsureDirectory();
+            var oldKey = await GetMasterKeyCoreAsync(ct).ConfigureAwait(false);
+            var replacements = new List<(string Target, string Temporary)>();
+            try
+            {
+                var newKey = RandomNumberGenerator.GetBytes(32);
+                foreach (var path in Directory.EnumerateFiles(_keyStoreDirectory, "*.key"))
+                {
+                    if (string.Equals(Path.GetFileName(path), "master.key", StringComparison.OrdinalIgnoreCase)) continue;
+                    var plaintext = DecryptWithMaster(oldKey, await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false));
+                    var temporary = path + ".rotate-" + Guid.CreateVersion7().ToString("N");
+                    await File.WriteAllBytesAsync(temporary, EncryptWithMaster(newKey, plaintext), ct).ConfigureAwait(false);
+                    SetFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                    replacements.Add((path, temporary));
+                }
+                var masterPath = Path.Combine(_keyStoreDirectory, "master.key");
+                var masterTemporary = masterPath + ".rotate-" + Guid.CreateVersion7().ToString("N");
+                await File.WriteAllTextAsync(masterTemporary, Convert.ToBase64String(newKey), ct).ConfigureAwait(false);
+                SetFileMode(masterTemporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                foreach (var replacement in replacements) File.Move(replacement.Temporary, replacement.Target, overwrite: true);
+                File.Move(masterTemporary, masterPath, overwrite: true);
+                _masterKey = newKey;
+            }
+            catch
+            {
+                foreach (var replacement in replacements)
+                    if (File.Exists(replacement.Temporary)) File.Delete(replacement.Temporary);
+                throw;
+            }
+        }
+        finally { _sync.Release(); }
     }
 
     /// <inheritdoc />

@@ -48,10 +48,10 @@ public sealed class PermissionEngine : IPermissionEngine
 
         lock (_aclSync)
         {
-            if (!_memoryAcls.TryGetValue(resourcePath, out var principals))
+            if (!_memoryAcls.TryGetValue(ResourceAclService.NormalizePath(resourcePath), out var principals))
             {
                 principals = new Dictionary<string, NAbilitySet>(StringComparer.Ordinal);
-                _memoryAcls[resourcePath] = principals;
+                _memoryAcls[ResourceAclService.NormalizePath(resourcePath)] = principals;
             }
 
             principals[principal] = set;
@@ -118,56 +118,47 @@ public sealed class PermissionEngine : IPermissionEngine
 
     private async Task<Dictionary<string, NAbilitySet>> LoadAclsAsync(string resourcePath, CancellationToken ct)
     {
-        var result = new Dictionary<string, NAbilitySet>(StringComparer.Ordinal);
-        lock (_aclSync)
+        // A resource ACL is authoritative for its subtree. Walk leaf to root so a
+        // more-specific ACL cannot accidentally be widened by an ancestor.
+        foreach (var candidate in EnumerateAclPaths(resourcePath))
         {
-            if (_memoryAcls.TryGetValue(resourcePath, out var memory))
+            var result = new Dictionary<string, NAbilitySet>(StringComparer.Ordinal);
+            lock (_aclSync)
             {
-                foreach (var pair in memory)
+                if (_memoryAcls.TryGetValue(candidate, out var memory))
                 {
-                    result[pair.Key] = pair.Value;
+                    foreach (var pair in memory) result[pair.Key] = pair.Value;
                 }
             }
+
+            if (_database is not null)
+            {
+                await _database.InitializeAsync(ct).ConfigureAwait(false);
+                await using var connection = await _database.GetConnectionAsync(ct).ConfigureAwait(false);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT principal, capabilities_json FROM resource_acls WHERE resource_path = $resource_path;";
+                command.Parameters.AddWithValue("$resource_path", candidate);
+                await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                    result[reader.GetString(0)] = NAbilitySet.FromJson(reader.IsDBNull(1) ? "[]" : reader.GetString(1));
+            }
+
+            if (result.Count > 0) return result;
         }
 
-        if (_database is null)
-        {
-            return result;
-        }
-
-        await EnsureAclTableAsync(ct).ConfigureAwait(false);
-        await using var connection = await _database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT principal, capabilities_json FROM resource_acls WHERE resource_path = $resource_path;";
-        command.Parameters.AddWithValue("$resource_path", resourcePath);
-        await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        while (await reader.ReadAsync(ct).ConfigureAwait(false))
-        {
-            result[reader.GetString(0)] = NAbilitySet.FromJson(reader.IsDBNull(1) ? "[]" : reader.GetString(1));
-        }
-
-        return result;
+        return new Dictionary<string, NAbilitySet>(StringComparer.Ordinal);
     }
 
-    private async Task EnsureAclTableAsync(CancellationToken ct)
+    private static IEnumerable<string> EnumerateAclPaths(string path)
     {
-        if (_database is null)
+        var current = ResourceAclService.NormalizePath(path);
+        while (!string.IsNullOrWhiteSpace(current))
         {
-            return;
+            yield return current;
+            var parent = Path.GetDirectoryName(current)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(parent) || string.Equals(parent, current, StringComparison.Ordinal)) yield break;
+            current = parent;
         }
-
-        await _database.InitializeAsync(ct).ConfigureAwait(false);
-        await using var connection = await _database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-CREATE TABLE IF NOT EXISTS resource_acls (
-    resource_path TEXT NOT NULL,
-    principal TEXT NOT NULL,
-    capabilities_json TEXT DEFAULT '[]',
-    PRIMARY KEY(resource_path, principal)
-);
-""";
-        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     private static bool ValidateDelegationChain(IEnumerable<string> chain)

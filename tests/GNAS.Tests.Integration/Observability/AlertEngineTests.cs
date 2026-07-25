@@ -53,6 +53,29 @@ public sealed class AlertEngineTests
         Assert.Equal("critical", alerts.Single().Severity);
     }
 
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task EvaluateMetricAsync_HealthyValueResolvesActiveAlert()
+    {
+        var notifier = new TestNotifier();
+        var engine = CreateEngine(notifier);
+        await engine.AddRuleAsync(new AlertRule
+        {
+            RuleId = "availability-rule",
+            Name = "可用性规则",
+            Description = "测试告警恢复",
+            Severity = "critical",
+            Condition = new AlertCondition { Type = "metric", Metric = "service.health", Operator = "lt", Value = 1 },
+            CooldownSeconds = 0
+        }, CancellationToken.None);
+
+        await engine.EvaluateMetricAsync(new MetricData { MetricName = "service.health", Unit = "ratio", Value = 0 }, CancellationToken.None);
+        Assert.Single(await engine.ListActiveAlertsAsync(CancellationToken.None));
+
+        await engine.EvaluateMetricAsync(new MetricData { MetricName = "service.health", Unit = "ratio", Value = 1 }, CancellationToken.None);
+        Assert.Empty(await engine.ListActiveAlertsAsync(CancellationToken.None));
+    }
+
     private static AlertEngine CreateEngine(TestNotifier notifier)
     {
         var root = ObservabilityTestPaths.CreateDataRoot("alert-engine");

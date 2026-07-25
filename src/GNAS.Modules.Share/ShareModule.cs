@@ -156,11 +156,12 @@ public sealed class ShareModule : NasModuleBase
         var rendered = new RenderedShareConfigs(
             new SmbConfigGenerator().Generate(shares),
             new NfsExportsGenerator().Generate(shares),
-            new FtpConfigGenerator().Generate(shares));
+            new FtpConfigGenerator().Generate(shares),
+            new WebDavConfigGenerator().Generate(shares));
         await File.WriteAllTextAsync(Path.Combine(configDir, "smb.conf"), rendered.Smb, ct).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(configDir, "exports"), rendered.NfsExports, ct).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(configDir, "vsftpd.conf"), rendered.Ftp, ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(configDir, "webdav.conf"), new WebDavConfigGenerator().Generate(shares), ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(configDir, "webdav.conf"), rendered.WebDav, ct).ConfigureAwait(false);
         return rendered;
     }
 

@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using GNAS.Agent.Collector;
+using GNAS.Api.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using GNAS.Core;
 using GNAS.Modules.Agent;
 using GNAS.Modules.Backup.Services;
@@ -35,6 +37,7 @@ public sealed class HealthController : GnasControllerBase
     private static readonly DateTimeOffset StartedAt = DateTimeOffset.UtcNow;
 
     /// <summary>返回 API 健康状态。</summary>
+    [AllowAnonymous]
     [HttpGet]
     public object Get() => new { status = "ok", version = typeof(Program).Assembly.GetName().Version?.ToString(), uptime = DateTimeOffset.UtcNow - StartedAt, traceId = TraceId };
 }
@@ -136,13 +139,30 @@ public sealed class RecycleController : GnasControllerBase
         ? Directory.EnumerateFiles(Path.Combine(share, ".recycle"), "*", SearchOption.AllDirectories).Select(f => new { id = Convert.ToBase64String(Encoding.UTF8.GetBytes(f)), path = f, size = new FileInfo(f).Length })
         : Array.Empty<object>();
 
-    /// <summary>恢复回收站文件。</summary>
+    /// <summary>恢复回收站文件（兼容旧路由）。</summary>
     [HttpPost("restore/{id}")]
-    public object Restore(string id, [FromBody] RestoreRecycleRequest request)
+    public object RestoreLegacy(string id, [FromBody] RestoreRecycleRequest? request)
+        => RestoreCore(id, request?.TargetPath);
+
+    /// <summary>恢复回收站文件。</summary>
+    [HttpPost("{share}/restore/{id}")]
+    public object Restore(string share, string id, [FromBody] RestoreRecycleRequest? request)
     {
         var source = Encoding.UTF8.GetString(Convert.FromBase64String(id));
-        Directory.CreateDirectory(Path.GetDirectoryName(request.TargetPath)!);
-        System.IO.File.Move(source, request.TargetPath, overwrite: true);
+        if (!source.StartsWith(Path.GetFullPath(share), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("回收站项目不属于指定共享路径。", nameof(id));
+        }
+
+        return RestoreCore(id, request?.TargetPath);
+    }
+
+    private static object RestoreCore(string id, string? targetPath)
+    {
+        var source = Encoding.UTF8.GetString(Convert.FromBase64String(id));
+        var destination = string.IsNullOrWhiteSpace(targetPath) ? InferOriginalPath(source) : targetPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        System.IO.File.Move(source, destination, overwrite: true);
         return new { success = true };
     }
 
@@ -150,6 +170,31 @@ public sealed class RecycleController : GnasControllerBase
     [HttpDelete("empty")]
     public object EmptyRecycle([FromQuery] string share, [FromQuery] int retentionDays = 0)
         => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
+
+    /// <summary>按共享路径清空回收站。</summary>
+    [HttpDelete("{share}/empty")]
+    public object EmptyRecycleByRoute(string share, [FromQuery] int retentionDays = 0)
+        => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
+
+    private static string InferOriginalPath(string recyclePath)
+    {
+        var marker = $"{Path.DirectorySeparatorChar}.recycle{Path.DirectorySeparatorChar}";
+        var index = recyclePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index <= 0)
+        {
+            throw new ArgumentException("回收站路径格式无效，无法推导原始路径。", nameof(recyclePath));
+        }
+
+        var root = recyclePath[..index];
+        var rest = recyclePath[(index + marker.Length)..];
+        var slashIndex = rest.IndexOf(Path.DirectorySeparatorChar);
+        if (slashIndex < 0 || slashIndex + 1 >= rest.Length)
+        {
+            throw new ArgumentException("回收站路径格式无效，缺少原始相对路径。", nameof(recyclePath));
+        }
+
+        return Path.Combine(root, rest[(slashIndex + 1)..]);
+    }
 }
 
 /// <summary>Agent 控制器。</summary>
@@ -160,6 +205,11 @@ public sealed class AgentsController : GnasControllerBase
 
     /// <summary>初始化 Agent 控制器。</summary>
     public AgentsController(AgentModule agents) => this.agents = agents;
+
+    /// <summary>兼容旧协议的 Agent 部署入口。</summary>
+    [HttpPost]
+    public Task<ServiceDefinition> DeployLegacy([FromBody] LegacyDeployAgentRequest request, CancellationToken ct)
+        => agents.DeployAgentAsync(request.Template, BuildLegacyConfig(request), OwnerToken, ct);
 
     /// <summary>部署 Agent。</summary>
     [HttpPost("deploy")]
@@ -189,6 +239,103 @@ public sealed class AgentsController : GnasControllerBase
     /// <summary>列出 Agent 模板目录。</summary>
     [HttpGet("catalog")]
     public Task<IReadOnlyList<AgentTemplate>> Catalog([FromServices] IAgentCatalog catalog, CancellationToken ct) => catalog.ListTemplatesAsync(ct);
+
+    /// <summary>搜索 Agent 模板。</summary>
+    [HttpGet("catalog/search")]
+    public Task<IReadOnlyList<AgentTemplate>> SearchCatalog([FromServices] IAgentCatalog catalog, [FromQuery] string query, CancellationToken ct)
+        => catalog.SearchTemplatesAsync(query, ct);
+
+    /// <summary>安装 Agent 模板。</summary>
+    [HttpPost("catalog/install")]
+    public Task<AgentTemplate> InstallCatalog([FromServices] IAgentCatalog catalog, [FromBody] InstallAgentTemplateRequest request, CancellationToken ct)
+        => catalog.InstallTemplateAsync(request.Source, ct);
+
+    /// <summary>更新 Agent 模板。</summary>
+    [HttpPost("catalog/{templateId}/update")]
+    public Task<AgentTemplate> UpdateCatalog([FromServices] IAgentCatalog catalog, string templateId, CancellationToken ct)
+        => catalog.UpdateTemplateAsync(templateId, ct);
+
+    private static AgentConfig BuildLegacyConfig(LegacyDeployAgentRequest request)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Template);
+        var parameters = request.Parameters ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var agentId = Read(parameters, "agentId", "agent-id", "id") ?? $"agent-{Guid.CreateVersion7():N}"[..14];
+        var displayName = Read(parameters, "displayName", "display-name", "name") ?? agentId;
+        var imageName = Read(parameters, "image", "imageName", "image-name")
+            ?? throw new ArgumentException("旧版部署请求必须提供 image 参数。", nameof(request));
+        var capabilities = SplitCsv(Read(parameters, "capabilities", "caps"));
+        var volumes = SplitCsv(Read(parameters, "volumes", "volume"))
+            .Select(ParseVolume)
+            .ToArray();
+        var ports = SplitCsv(Read(parameters, "ports", "port"))
+            .Select(ParsePort)
+            .ToArray();
+        return new AgentConfig
+        {
+            AgentId = agentId,
+            DisplayName = displayName,
+            ImageName = imageName,
+            Capabilities = capabilities,
+            VolumeMapping = volumes,
+            PortMapping = ports,
+        };
+    }
+
+    private static string? Read(IReadOnlyDictionary<string, string> values, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static string[] SplitCsv(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static VolumeMapping ParseVolume(string value)
+    {
+        var parts = value.Split(':', StringSplitOptions.TrimEntries);
+        if (parts.Length < 2 || parts.Length > 3)
+        {
+            throw new ArgumentException("卷映射格式应为 host:container[:ro|rw]。", nameof(value));
+        }
+
+        return new VolumeMapping
+        {
+            HostPath = parts[0],
+            ContainerPath = parts[1],
+            ReadOnly = parts.Length == 3 && string.Equals(parts[2], "ro", StringComparison.OrdinalIgnoreCase),
+        };
+    }
+
+    private static PortMapping ParsePort(string value)
+    {
+        var protocol = "tcp";
+        var pair = value;
+        var slash = value.IndexOf('/', StringComparison.Ordinal);
+        if (slash >= 0)
+        {
+            protocol = value[(slash + 1)..];
+            pair = value[..slash];
+        }
+
+        var numbers = pair.Split(':', StringSplitOptions.TrimEntries);
+        if (numbers.Length != 2
+            || !int.TryParse(numbers[0], out var host)
+            || !int.TryParse(numbers[1], out var container))
+        {
+            throw new ArgumentException("端口映射格式应为 host:container[/tcp|udp]。", nameof(value));
+        }
+
+        return new PortMapping { HostPort = host, ContainerPort = container, Protocol = protocol };
+    }
 }
 
 /// <summary>Agent 推送日志控制器。</summary>
@@ -322,13 +469,66 @@ public sealed class UpsController : GnasControllerBase
 [Route("api/recovery")]
 public sealed class RecoveryController : GnasControllerBase
 {
-    /// <summary>启动系统恢复流程占位实现。</summary>
+    /// <summary>启动恢复流程并立即执行。</summary>
     [HttpPost("start")]
-    public async Task<object> Start([FromBody] RecoveryRequest request, [FromServices] IEventBus bus, CancellationToken ct)
+    public async Task<object> Start([FromBody] RecoveryRequest request, [FromServices] IEventBus bus, [FromServices] IProcessManager process, [FromServices] IFileSystem fileSystem, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Target);
+        var mode = ResolveRecoveryMode(request);
         await bus.PublishAsync("system.recovery.started", "system.recovery.started", JsonSerializer.Serialize(request), ct).ConfigureAwait(false);
-        return new { accepted = true, message = "恢复任务已记录；执行器将在后续阶段接管。" };
+        var result = mode switch
+        {
+            "snapshot" => await RunSnapshotRecoveryAsync(request, process, fileSystem, ct).ConfigureAwait(false),
+            "rsync" => await RunRsyncRecoveryAsync(request, process, ct).ConfigureAwait(false),
+            _ => throw new ArgumentException($"不支持的恢复模式：{mode}", nameof(request)),
+        };
+        var success = result.ExitCode == 0;
+        await bus.PublishAsync(
+            success ? "system.recovery.completed" : "system.recovery.failed",
+            success ? "system.recovery.completed" : "system.recovery.failed",
+            JsonSerializer.Serialize(new { request.Target, mode, result.ExitCode, result.Stdout, result.Stderr }),
+            ct).ConfigureAwait(false);
+        return new
+        {
+            success,
+            mode,
+            request.Target,
+            result.ExitCode,
+            result.Stdout,
+            result.Stderr
+        };
+    }
+
+    private static string ResolveRecoveryMode(RecoveryRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Mode))
+        {
+            return request.Mode.Trim().ToLowerInvariant();
+        }
+
+        return string.IsNullOrWhiteSpace(request.SnapshotId) ? "rsync" : "snapshot";
+    }
+
+    private static Task<CommandResult> RunSnapshotRecoveryAsync(RecoveryRequest request, IProcessManager process, IFileSystem fileSystem, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.SnapshotId))
+        {
+            throw new ArgumentException("snapshot 模式必须提供 snapshotId。", nameof(request));
+        }
+
+        var snapshots = new SnapshotService(process, fileSystem);
+        return snapshots.RestoreSnapshotAsync(request.SnapshotId, request.Target, ct);
+    }
+
+    private static Task<CommandResult> RunRsyncRecoveryAsync(RecoveryRequest request, IProcessManager process, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Source))
+        {
+            throw new ArgumentException("rsync 模式必须提供 source。", nameof(request));
+        }
+
+        var rsync = new RsyncBackupService(process);
+        return rsync.SyncAsync(request.Source, request.Target, request.DryRun, ct);
     }
 }
 
@@ -337,6 +537,7 @@ public sealed class RecoveryController : GnasControllerBase
 public sealed class AuthController : GnasControllerBase
 {
     /// <summary>本地登录。</summary>
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<object> Login([FromBody] LoginRequest request, [FromServices] IIdentityService identity, CancellationToken ct)
     {
@@ -355,6 +556,7 @@ public sealed class AuthController : GnasControllerBase
     /// 首次启动（尚无任何用户）时允许匿名调用以创建首个管理员账户；
     /// 存在用户后，<see cref="Middleware.NasTokenMiddleware"/> 强制要求令牌，且此处校验用户管理能力。
     /// </summary>
+    [BootstrapOnly]
     [HttpPost("register")]
     public async Task<object> Register([FromBody] RegisterRequest request, [FromServices] IIdentityService identity, CancellationToken ct)
     {
@@ -420,8 +622,12 @@ public sealed record RestoreSnapshotRequest(string Target);
 public sealed record RestoreRecycleRequest(string TargetPath);
 /// <summary>部署 Agent 请求。</summary>
 public sealed record DeployAgentRequest(string TemplateId, AgentConfig Config);
+/// <summary>兼容旧版 CLI 的部署请求。</summary>
+public sealed record LegacyDeployAgentRequest(string Template, Dictionary<string, string>? Parameters);
+/// <summary>安装 Agent 模板请求。</summary>
+public sealed record InstallAgentTemplateRequest(string Source);
 /// <summary>恢复请求。</summary>
-public sealed record RecoveryRequest(string Target, string? Mode);
+public sealed record RecoveryRequest(string Target, string? Mode, string? Source, string? SnapshotId, bool DryRun = false);
 /// <summary>登录请求。</summary>
 public sealed record LoginRequest(string Username, string Password, string? Totp);
 /// <summary>注册用户请求。</summary>

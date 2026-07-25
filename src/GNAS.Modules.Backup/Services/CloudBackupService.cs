@@ -30,7 +30,11 @@ public sealed class CloudBackupService
         {
             return await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "rclone", Arguments = arguments, TimeoutSeconds = 7200 }, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (CommandExecutionException ex)
+        {
+            return new CommandResult { ExitCode = ex.ExitCode, Stdout = ex.Stdout, Stderr = ex.Stderr };
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException or PlatformException)
         {
             return new CommandResult { ExitCode = 127, Stderr = "rclone 不可用，已优雅失败。" };
         }

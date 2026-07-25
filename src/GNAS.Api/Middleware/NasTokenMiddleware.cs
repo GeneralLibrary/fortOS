@@ -37,7 +37,7 @@ public sealed class NasTokenMiddleware
 
         if (string.IsNullOrWhiteSpace(token))
         {
-            if (await NoUsersExistAsync(database, context.RequestAborted).ConfigureAwait(false))
+            if (context.GetEndpoint()?.Metadata.GetMetadata<GNAS.Api.Authorization.BootstrapOnlyAttribute>() is not null && await NoUsersExistAsync(database, context.RequestAborted).ConfigureAwait(false))
             {
                 logger.LogWarning("未检测到本地用户，API 处于首次启动匿名引导模式。创建用户后将自动要求认证。");
                 await next(context).ConfigureAwait(false);
@@ -106,7 +106,6 @@ public sealed class NasTokenMiddleware
 
     private static async Task UnauthorizedAsync(HttpContext context, string error, string code)
     {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await context.Response.WriteAsJsonAsync(new { error, code, traceId = context.Items["X-Trace-Id"] }, context.RequestAborted).ConfigureAwait(false);
+        await ApiProblem.WriteAsync(context, StatusCodes.Status401Unauthorized, code, error).ConfigureAwait(false);
     }
 }

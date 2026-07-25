@@ -16,6 +16,7 @@ namespace GNAS.Security.Services;
 public sealed class NasTokenManager : ITokenManager
 {
     private const string SigningKeyId = "nas-token-signing";
+    private const string ActiveSigningKeyName = "token-signing-active-kid";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly INasKeyStore _keyStore;
     private readonly IDatabaseProvider _database;
@@ -83,12 +84,14 @@ public sealed class NasTokenManager : ITokenManager
 
         try
         {
-            var keyBytes = await _keyStore.GetOrCreateSigningKeyAsync(SigningKeyId, ct).ConfigureAwait(false);
+            var keyId = ReadKeyId(token);
+            var keyBytes = await _keyStore.GetSecretAsync($"signing-{keyId}", ct).ConfigureAwait(false);
+            if (keyBytes is null) return Failed("?????????");
             using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(keyBytes, out _);
             var validationKey = new RsaSecurityKey(rsa)
             {
-                KeyId = SigningKeyId,
+                KeyId = keyId,
                 CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false },
             };
             var parameters = new TokenValidationParameters
@@ -208,12 +211,13 @@ public sealed class NasTokenManager : ITokenManager
 
     private async Task<string> CreateJwtAsync(NasTokenPayload payload, CancellationToken ct)
     {
-        var keyBytes = await _keyStore.GetOrCreateSigningKeyAsync(SigningKeyId, ct).ConfigureAwait(false);
+        var keyId = await GetActiveSigningKeyIdAsync(ct).ConfigureAwait(false);
+        var keyBytes = await _keyStore.GetOrCreateSigningKeyAsync(keyId, ct).ConfigureAwait(false);
         using var rsa = RSA.Create();
         rsa.ImportPkcs8PrivateKey(keyBytes, out _);
         var signingKey = new RsaSecurityKey(rsa)
         {
-            KeyId = SigningKeyId,
+            KeyId = keyId,
             CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false },
         };
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.RsaSha256);
@@ -285,6 +289,34 @@ CREATE TABLE IF NOT EXISTS resource_acls (
 """;
         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
+
+    public async Task<string> RotateSigningKeyAsync(CancellationToken ct)
+    {
+        var keyId = $"nas-token-signing-{Guid.CreateVersion7():N}";
+        await _keyStore.GetOrCreateSigningKeyAsync(keyId, ct).ConfigureAwait(false);
+        await _keyStore.StoreSecretAsync(ActiveSigningKeyName, System.Text.Encoding.UTF8.GetBytes(keyId), ct).ConfigureAwait(false);
+        return keyId;
+    }
+
+    private async Task<string> GetActiveSigningKeyIdAsync(CancellationToken ct)
+    {
+        var stored = await _keyStore.GetSecretAsync(ActiveSigningKeyName, ct).ConfigureAwait(false);
+        if (stored is not null)
+        {
+            var value = System.Text.Encoding.UTF8.GetString(stored);
+            if (IsSafeKeyId(value)) return value;
+        }
+        await _keyStore.GetOrCreateSigningKeyAsync(SigningKeyId, ct).ConfigureAwait(false);
+        return SigningKeyId;
+    }
+
+    private static string ReadKeyId(string token)
+    {
+        var kid = new JwtSecurityTokenHandler().ReadJwtToken(token).Header.Kid;
+        return IsSafeKeyId(kid) ? kid! : SigningKeyId;
+    }
+
+    private static bool IsSafeKeyId(string? keyId) => !string.IsNullOrWhiteSpace(keyId) && keyId.Length <= 128 && keyId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
     private TimeSpan GetDefaultLifetime()
     {
