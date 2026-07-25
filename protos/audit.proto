@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package gnas.v1;
+option csharp_namespace = "GNAS.Proto";
+
+
+service AuditService {
+  rpc QueryLogs (LogQueryRequest) returns (LogQueryResponse);
+  rpc StreamLogs (LogQueryRequest) returns (stream LogEntry);
+  rpc VerifyChain (VerifyChainRequest) returns (VerifyChainResponse);
+  rpc ExportAuditChain (ExportRequest) returns (stream ExportChunk);
+}
+
+message LogEntry {
+  string log_id = 1;
+  int64 timestamp_unix = 2;
+  string category = 3;
+  string level = 4;
+  string source_component = 5;
+  string message = 6;
+  string trace_id = 7;
+  string user_id = 8;
+  string agent_id = 9;
+  map<string, string> properties = 10;
+  repeated string tags = 11;
+}
+
+message LogQueryRequest {
+  string category = 1;
+  string min_level = 2;
+  int64 from_unix = 3;
+  int64 to_unix = 4;
+  string search_text = 5;
+  repeated string tags = 6;
+  int32 limit = 7;
+  int32 offset = 8;
+  string service_id = 9;
+  string agent_id = 10;
+  string trace_id = 11;
+}
+
+message LogQueryResponse {
+  repeated LogEntry entries = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+}
+
+message VerifyChainRequest {
+  int64 from_unix = 1;
+  int64 to_unix = 2;
+}
+
+message VerifyChainResponse {
+  bool valid = 1;
+  int64 total_entries = 2;
+  int32 invalid_entries = 3;
+  string first_broken_at = 4;
+  string message = 5;
+}
+
+message ExportRequest {
+  int64 date_unix = 1;
+}
+
+message ExportChunk {
+  bytes content = 1;
+  int32 sequence = 2;
+  bool last = 3;
+}

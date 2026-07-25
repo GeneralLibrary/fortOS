@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package gnas.v1;
+option csharp_namespace = "GNAS.Proto";
+
+import "common.proto";
+
+service StorageService {
+  rpc ListDisks (ListDisksRequest) returns (ListDisksResponse);
+  rpc GetDisk (GetDiskRequest) returns (DiskInfo);
+  rpc CreatePartition (CreatePartitionRequest) returns (StorageOperationResult);
+  rpc CreateRaid (CreateRaidRequest) returns (StorageOperationResult);
+  rpc GetSmartData (GetSmartDataRequest) returns (SmartData);
+  rpc WatchRaidRebuild (RaidRebuildRequest) returns (stream RebuildProgress);
+}
+
+message ListDisksRequest {
+  PageRequest page = 1;
+}
+
+message ListDisksResponse {
+  repeated DiskInfo disks = 1;
+  PageInfo page = 2;
+}
+
+message GetDiskRequest {
+  string disk_path = 1;
+}
+
+message DiskInfo {
+  string path = 1;
+  string model = 2;
+  string serial = 3;
+  int64 size_bytes = 4;
+  string interface_type = 5;
+  bool is_ssd = 6;
+  string smart_status = 7;
+  int32 temperature_celsius = 8;
+  double used_percent = 9;
+}
+
+message CreatePartitionRequest {
+  string disk_path = 1;
+  string name = 2;
+  string filesystem = 3;
+  int64 start_bytes = 4;
+  int64 size_bytes = 5;
+}
+
+message CreateRaidRequest {
+  RaidLevel level = 1;
+  repeated string disk_paths = 2;
+  string pool_name = 3;
+  string filesystem = 4;
+}
+
+enum RaidLevel {
+  RAID_LEVEL_UNKNOWN = 0;
+  RAID_LEVEL_0 = 1;
+  RAID_LEVEL_1 = 2;
+  RAID_LEVEL_5 = 3;
+  RAID_LEVEL_6 = 4;
+  RAID_LEVEL_10 = 5;
+}
+
+message StorageOperationResult {
+  bool success = 1;
+  string resource_id = 2;
+  string message = 3;
+  ErrorCode error_code = 4;
+}
+
+message GetSmartDataRequest {
+  string disk_path = 1;
+}
+
+message SmartData {
+  string disk_path = 1;
+  string health = 2;
+  int32 temperature_celsius = 3;
+  string raw_json = 4;
+}
+
+message RaidRebuildRequest {
+  string pool_id = 1;
+}
+
+message RebuildProgress {
+  string pool_id = 1;
+  double percent_complete = 2;
+  int64 bytes_remaining = 3;
+  int64 estimated_seconds = 4;
+}

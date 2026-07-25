@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package gnas.v1;
+option csharp_namespace = "GNAS.Proto";
+
+import "common.proto";
+import "audit.proto";
+
+service AgentService {
+  rpc ListAgentTemplates (TemplateListRequest) returns (TemplateListResponse);
+  rpc DeployAgent (DeployAgentRequest) returns (DeployAgentResponse);
+  rpc StartAgent (AgentActionRequest) returns (AgentActionResult);
+  rpc StopAgent (AgentActionRequest) returns (AgentActionResult);
+  rpc RemoveAgent (AgentActionRequest) returns (AgentActionResult);
+  rpc GetAgentLogs (AgentLogRequest) returns (stream LogEntry);
+}
+
+message AgentConfig {
+  string agent_id = 1;
+  string display_name = 2;
+  string image_name = 3;
+  repeated string capabilities = 4;
+  repeated VolumeMapping volume_mapping = 5;
+  repeated PortMapping port_mapping = 6;
+  ResourceQuota resource_quota = 7;
+}
+
+message VolumeMapping {
+  string host_path = 1;
+  string container_path = 2;
+  bool read_only = 3;
+}
+
+message PortMapping {
+  int32 host_port = 1;
+  int32 container_port = 2;
+  string protocol = 3;
+}
+
+message ResourceQuota {
+  double cpu_limit = 1;
+  int64 memory_limit_bytes = 2;
+  int32 io_weight = 3;
+}
+
+message AgentTemplate {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  string description = 4;
+  repeated string capabilities_required = 5;
+  repeated AgentTemplateParameter parameters = 6;
+  string compose_template = 7;
+}
+
+message AgentTemplateParameter {
+  string name = 1;
+  string type = 2;
+  bool required = 3;
+  string default_value = 4;
+}
+
+message TemplateListRequest {
+  PageRequest page = 1;
+}
+
+message TemplateListResponse {
+  repeated AgentTemplate templates = 1;
+  PageInfo page = 2;
+}
+
+message DeployAgentRequest {
+  string template_id = 1;
+  AgentConfig config = 2;
+}
+
+message DeployAgentResponse {
+  bool success = 1;
+  string agent_id = 2;
+  string compose_file_path = 3;
+  string message = 4;
+  ErrorCode error_code = 5;
+}
+
+message AgentActionRequest {
+  string agent_id = 1;
+}
+
+message AgentActionResult {
+  bool success = 1;
+  string agent_id = 2;
+  string message = 3;
+  ErrorCode error_code = 4;
+}
+
+message AgentLogRequest {
+  string agent_id = 1;
+  int32 tail_lines = 2;
+  bool follow = 3;
+}

@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package gnas.v1;
+option csharp_namespace = "GNAS.Proto";
+
+import "common.proto";
+
+service ShareService {
+  rpc CreateShare (CreateShareRequest) returns (ShareResult);
+  rpc ListShares (ListSharesRequest) returns (ListSharesResponse);
+  rpc DeleteShare (DeleteShareRequest) returns (ShareResult);
+  rpc GetConnectedClients (ClientsRequest) returns (stream ConnectedClient);
+}
+
+message ShareDefinition {
+  string share_id = 1;
+  string name = 2;
+  string path = 3;
+  string description = 4;
+  repeated ShareProtocol protocols = 5;
+  bool read_only = 6;
+  bool guest_ok = 7;
+  bool browseable = 8;
+  bool recycle_bin = 9;
+  NasDataLevel data_level = 10;
+}
+
+enum ShareProtocol {
+  SHARE_PROTOCOL_UNKNOWN = 0;
+  SHARE_PROTOCOL_SMB = 1;
+  SHARE_PROTOCOL_NFS = 2;
+  SHARE_PROTOCOL_FTP = 3;
+  SHARE_PROTOCOL_SFTP = 4;
+  SHARE_PROTOCOL_WEBDAV = 5;
+}
+
+enum NasDataLevel {
+  NAS_DATA_LEVEL_PUBLIC = 0;
+  NAS_DATA_LEVEL_INTERNAL = 1;
+  NAS_DATA_LEVEL_PERSONAL = 2;
+  NAS_DATA_LEVEL_SENSITIVE = 3;
+  NAS_DATA_LEVEL_SYSTEM = 4;
+}
+
+message CreateShareRequest {
+  ShareDefinition share = 1;
+}
+
+message ListSharesRequest {
+  PageRequest page = 1;
+}
+
+message ListSharesResponse {
+  repeated ShareDefinition shares = 1;
+  PageInfo page = 2;
+}
+
+message DeleteShareRequest {
+  string share_id = 1;
+}
+
+message ShareResult {
+  bool success = 1;
+  string share_id = 2;
+  string message = 3;
+  ErrorCode error_code = 4;
+}
+
+message ClientsRequest {
+  string share_id = 1;
+}
+
+message ConnectedClient {
+  string client_id = 1;
+  string user_id = 2;
+  string client_ip = 3;
+  string protocol = 4;
+  int64 connected_at_unix = 5;
+}

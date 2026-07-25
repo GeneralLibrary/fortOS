@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package gnas.v1;
+option csharp_namespace = "GNAS.Proto";
+
+import "common.proto";
+
+service ServiceBusService {
+  rpc ListServices (ListServicesRequest) returns (ListServicesResponse);
+  rpc StartService (ServiceActionRequest) returns (ServiceActionResult);
+  rpc StopService (ServiceActionRequest) returns (ServiceActionResult);
+  rpc RestartService (ServiceActionRequest) returns (ServiceActionResult);
+  rpc WatchServiceEvents (ServiceWatchRequest) returns (stream ServiceEvent);
+}
+
+message ListServicesRequest {
+  PageRequest page = 1;
+}
+
+message ListServicesResponse {
+  repeated ServiceStatusInfo services = 1;
+  PageInfo page = 2;
+}
+
+message ServiceActionRequest {
+  string service_id = 1;
+}
+
+message ServiceActionResult {
+  bool success = 1;
+  string service_id = 2;
+  string message = 3;
+  ErrorCode error_code = 4;
+}
+
+message ServiceWatchRequest {
+  string service_id = 1;
+}
+
+message ServiceStatusInfo {
+  string service_id = 1;
+  string status = 2;
+  string type = 3;
+  int32 pid = 4;
+  double cpu_percent = 5;
+  int64 memory_bytes = 6;
+  int64 uptime_seconds = 7;
+}
+
+message ServiceEvent {
+  string event_id = 1;
+  string service_id = 2;
+  string event_type = 3;
+  string message = 4;
+  int64 timestamp_unix = 5;
+}

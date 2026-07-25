@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GNAS.Api\GNAS.Api.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Agent\GNAS.Agent.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.ServiceBus\GNAS.ServiceBus.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Observability\GNAS.Observability.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules\GNAS.Modules.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules.Share\GNAS.Modules.Share.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules.Backup\GNAS.Modules.Backup.csproj" />
+    <ProjectReference Include="..\..\src\GNAS.Modules.Storage\GNAS.Modules.Storage.csproj" />
+  </ItemGroup>
+
+</Project>
