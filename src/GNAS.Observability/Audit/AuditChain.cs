@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 
 namespace GNAS.Observability.Audit;
 
-/// <summary>基于 SQLite 和 HMAC 的不可篡改审计链。</summary>
+/// <summary>Non-tamperable audit chain based on SQLite and HMAC.</summary>
 public sealed class AuditChain : IAuditChain
 {
     private const string GenesisHash = "GENESIS";
@@ -17,7 +17,7 @@ public sealed class AuditChain : IAuditChain
     private bool _loaded;
     private string _lastHash = GenesisHash;
 
-    /// <summary>初始化审计链。</summary>
+    /// <summary>Initialize audit chain.</summary>
     public AuditChain(IDatabaseProvider database, INasKeyStore keyStore)
     {
         _database = database;
@@ -94,12 +94,12 @@ VALUES ($log_id, $timestamp, $action, $resource, $user_id, $granted, $previous_h
             var entry = JsonSerializer.Deserialize<LogEntry>(json, JsonOptions);
             if (entry?.Audit is null)
             {
-                return Broken(sequence, total, "审计条目 JSON 无效。 ");
+                return Broken(sequence, total, "Invalid audit entry JSON.");
             }
 
             if (expectedPrevious is not null && previousHash != expectedPrevious)
             {
-                return Broken(sequence, total, "审计链前置哈希不连续。 ");
+                return Broken(sequence, total, "Audit chain previous hash discontinuity.");
             }
 
             var recomputed = ComputeHash(previousHash, entry.Timestamp, entry.Audit.Action, entry.Audit.Resource, entry.UserId, entry.Audit.Granted, entry.Audit.AfterState);
@@ -107,13 +107,13 @@ VALUES ($log_id, $timestamp, $action, $resource, $user_id, $granted, $previous_h
             if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(currentHash), Encoding.UTF8.GetBytes(recomputed)) ||
                 !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(signature), Encoding.UTF8.GetBytes(recomputedSignature)))
             {
-                return Broken(sequence, total, "审计链哈希或签名不匹配。 ");
+                return Broken(sequence, total, "Audit chain hash or signature mismatch.");
             }
 
             expectedPrevious = currentHash;
         }
 
-        return new ChainVerificationResult { IsValid = true, TotalEntries = total, Message = "审计链完整。" };
+        return new ChainVerificationResult { IsValid = true, TotalEntries = total, Message = "Audit chain is intact." };
     }
 
     /// <inheritdoc />

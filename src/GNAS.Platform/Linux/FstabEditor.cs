@@ -3,24 +3,24 @@ using System.Text;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// /etc/fstab 内容编辑器。
-/// 提供纯函数式的条目增删，保证幂等：同一挂载点只保留一条 GNAS 管理的记录，
-/// 且不触碰非 GNAS 管理的既有条目（根分区、swap 等）。
+/// /etc/fstab content editor.
+/// Provides a pure-functional entry add/remove, guaranteeing idempotence: only one GNAS-managed record per mount point,
+/// and does not touch existing entries not managed by GNAS (root partition, swap, etc.).
 /// </summary>
 public static class FstabEditor
 {
-    /// <summary>GNAS 托管条目的行尾标记，用于区分手工维护的条目。</summary>
+    /// <summary>Line-end marker for GNAS-managed entries, used to distinguish manually maintained entries.</summary>
     public const string ManagedMarker = "# gnas-managed";
 
     /// <summary>
-    /// 插入或更新一条挂载记录。
-    /// 若同一挂载点已存在 GNAS 托管条目则替换，否则追加到文件末尾。
+    /// Inserts or updates a mount record.
+    /// Replaces if a GNAS-managed entry already exists for the same mount point, otherwise appends to the end of the file.
     /// </summary>
-    /// <param name="content">现有 fstab 内容。</param>
-    /// <param name="device">设备路径。</param>
-    /// <param name="mountPoint">挂载点。</param>
-    /// <param name="fsType">文件系统类型。</param>
-    /// <returns>更新后的 fstab 内容。</returns>
+    /// <param name="content">Existing fstab content.</param>
+    /// <param name="device">Device path.</param>
+    /// <param name="mountPoint">Mount point.</param>
+    /// <param name="fsType">File system type.</param>
+    /// <returns>Updated fstab content.</returns>
     public static string UpsertEntry(string content, string device, string mountPoint, string fsType)
     {
         var builder = new StringBuilder();
@@ -37,11 +37,11 @@ public static class FstabEditor
     }
 
     /// <summary>
-    /// 移除指定挂载点的 GNAS 托管记录；非托管条目保持原样。
+    /// Removes the GNAS-managed record for the specified mount point; unmanaged entries remain unchanged.
     /// </summary>
-    /// <param name="content">现有 fstab 内容。</param>
-    /// <param name="mountPoint">挂载点。</param>
-    /// <returns>更新后的 fstab 内容。</returns>
+    /// <param name="content">Existing fstab content.</param>
+    /// <param name="mountPoint">Mount point.</param>
+    /// <returns>Updated fstab content.</returns>
     public static string RemoveEntry(string content, string mountPoint)
     {
         var builder = new StringBuilder();

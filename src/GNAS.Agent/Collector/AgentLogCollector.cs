@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Agent.Collector;
 
 /// <summary>
-/// 汇聚 Docker 事件、容器日志、卷文件日志与 API 推送日志。
+/// Aggregates Docker events, container logs, volume file logs, and API push logs.
 /// </summary>
 public sealed class AgentLogCollector : BackgroundService
 {
@@ -26,7 +26,7 @@ public sealed class AgentLogCollector : BackgroundService
     private bool _dockerUnavailableLogged;
 
     /// <summary>
-    /// 初始化 Agent 日志采集器。
+    /// Initialize the Agent log collector.
     /// </summary>
     public AgentLogCollector(ILogPipeline logPipeline, IEventBus eventBus, ILogger<AgentLogCollector>? logger = null)
     {
@@ -42,7 +42,7 @@ public sealed class AgentLogCollector : BackgroundService
     }
 
     /// <summary>
-    /// 接收 API 层推送的 Agent 日志。
+    /// Receives Agent logs pushed from the API layer.
     /// </summary>
     public ValueTask PushAsync(LogEntry entry, CancellationToken ct) => _channel.Writer.WriteAsync(Enrich(entry), ct);
 
@@ -91,7 +91,7 @@ public sealed class AgentLogCollector : BackgroundService
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 await WarnDockerUnavailableAsync(ct).ConfigureAwait(false);
-                _logger?.LogWarning(ex, "Docker events 采集不可用。");
+                _logger?.LogWarning(ex, "Docker events collection unavailable.");
             }
             finally
             {
@@ -231,7 +231,7 @@ public sealed class AgentLogCollector : BackgroundService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger?.LogDebug(ex, "容器日志采集失败: {AgentId}", agentId);
+            _logger?.LogDebug(ex, "Container log collection failed: {AgentId}", agentId);
         }
         finally
         {
@@ -321,7 +321,7 @@ public sealed class AgentLogCollector : BackgroundService
             Category = LogCategory.System,
             Level = LogLevel.Warning,
             SourceComponent = "GNAS.Agent.AgentLogCollector",
-            Message = "Docker CLI 不可用，Agent Docker 日志采集通道已降级。",
+            Message = "Docker CLI unavailable, Agent Docker log collection channel has been degraded.",
         }, ct).ConfigureAwait(false);
     }
 

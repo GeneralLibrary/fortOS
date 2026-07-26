@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Modules.Host;
 
-/// <summary>NAS 模块宿主，负责内置模块和 DLL 模块的生命周期。</summary>
+/// <summary>NAS module host, responsible for the lifecycle of built-in modules and DLL modules.</summary>
 public sealed class ModuleHost : IModuleHost, IDisposable
 {
     private readonly IServiceProvider services;
@@ -18,7 +18,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
     private readonly object syncRoot = new();
     private bool disposed;
 
-    /// <summary>初始化模块宿主。</summary>
+    /// <summary>Initialize the module host.</summary>
     public ModuleHost(IServiceProvider services, IEventBus eventBus, ILoggerFactory loggerFactory, IEnumerable<INasModule>? builtInModules = null)
     {
         this.services = services;
@@ -28,7 +28,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         builtIns = builtInModules?.ToList() ?? [];
     }
 
-    /// <summary>注册进程内模块。</summary>
+    /// <summary>Register in-process modules.</summary>
     public void RegisterBuiltInModule(INasModule module)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -37,7 +37,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         {
             if (builtIns.Any(m => string.Equals(m.ModuleId, module.ModuleId, StringComparison.OrdinalIgnoreCase)) || loaded.ContainsKey(module.ModuleId))
             {
-                throw new InvalidOperationException($"模块 {module.ModuleId} 已注册或已加载。");
+                throw new InvalidOperationException($"Module {module.ModuleId} is already registered or loaded.");
             }
 
             builtIns.Add(module);
@@ -73,7 +73,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
                     var candidate = CreateCandidate(path);
                     if (candidate.Module.Version is null)
                     {
-                        logger.LogError("跳过模块 {Path}: Version 为空。", path);
+                        logger.LogError("Skipping module {Path}: Version is null.", path);
                         candidate.Dispose();
                         remaining.Remove(path);
                         progressed = true;
@@ -92,7 +92,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "加载模块 {Path} 失败。", path);
+                    logger.LogError(ex, "Failed to load module {Path}.", path);
                     remaining.Remove(path);
                     progressed = true;
                 }
@@ -101,7 +101,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
 
         foreach (var path in remaining)
         {
-            logger.LogError("跳过模块 {Path}: 依赖缺失或存在循环依赖。", path);
+            logger.LogError("Skipping module {Path}: missing dependencies or circular dependency detected.", path);
         }
 
         return await GetLoadedModulesAsync(ct).ConfigureAwait(false);
@@ -116,13 +116,13 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         {
             if (candidate.Module.Version is null)
             {
-                throw new InvalidOperationException($"模块 {path} 的 Version 为空。");
+                throw new InvalidOperationException($"Module {path} has a null Version.");
             }
 
             var missing = candidate.Module.Dependencies.Where(d => !loaded.ContainsKey(d)).ToArray();
             if (missing.Length > 0)
             {
-                throw new InvalidOperationException($"模块 {candidate.Module.ModuleId} 依赖缺失: {string.Join(", ", missing)}。");
+                throw new InvalidOperationException($"Module {candidate.Module.ModuleId} has missing dependencies: {string.Join(", ", missing)}.");
             }
 
             await InitializeCandidateAsync(candidate, ct).ConfigureAwait(false);
@@ -189,7 +189,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "关闭模块 {ModuleId} 时发生错误。", entry.Module.ModuleId);
+                logger.LogWarning(ex, "Error shutting down module {ModuleId}.", entry.Module.ModuleId);
             }
 
             entry.Dispose();
@@ -208,7 +208,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         var missing = module.Dependencies.Where(d => !loaded.ContainsKey(d)).ToArray();
         if (missing.Length > 0)
         {
-            logger.LogError("跳过内置模块 {ModuleId}: 依赖缺失 {Dependencies}。", module.ModuleId, string.Join(", ", missing));
+            logger.LogError("Skipping built-in module {ModuleId}: missing dependencies {Dependencies}.", module.ModuleId, string.Join(", ", missing));
             return;
         }
 
@@ -224,7 +224,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         var module = candidate.Module;
         if (loaded.ContainsKey(module.ModuleId))
         {
-            throw new InvalidOperationException($"模块 {module.ModuleId} 已加载。");
+            throw new InvalidOperationException($"Module {module.ModuleId} is already loaded.");
         }
 
         await module.InitializeAsync(CreateContext(module.ModuleId), ct).ConfigureAwait(false);
@@ -250,9 +250,9 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         var alc = new ModuleAssemblyLoadContext(fullPath);
         var assembly = alc.LoadFromAssemblyPath(fullPath);
         var moduleType = assembly.GetTypes().FirstOrDefault(t => !t.IsAbstract && typeof(INasModule).IsAssignableFrom(t))
-            ?? throw new InvalidOperationException($"{path} 中未找到 INasModule 实现。");
+            ?? throw new InvalidOperationException($"No INasModule implementation found in {path}.");
         var module = Activator.CreateInstance(moduleType) as INasModule
-            ?? throw new InvalidOperationException($"类型 {moduleType.FullName} 无法创建为 INasModule。");
+            ?? throw new InvalidOperationException($"Type {moduleType.FullName} could not be created as INasModule.");
         return new LoadedModule(module, alc);
     }
 

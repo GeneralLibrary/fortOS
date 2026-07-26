@@ -1,9 +1,9 @@
 namespace GNAS.Modules.Share.Services;
 
-/// <summary>共享回收站服务，提供删除迁移与保留清理。</summary>
+/// <summary>Share recycle bin service, provides deletion migration and retention cleanup.</summary>
 public sealed class RecycleBinService
 {
-    /// <summary>将文件移动到按用户隔离的回收站。</summary>
+    /// <summary>Moves a file to a user-isolated recycle bin.</summary>
     public string MoveToRecycleBin(string sharePath, string filePath, string username)
     {
         ShareValidation.ValidatePath(sharePath);
@@ -13,7 +13,7 @@ public sealed class RecycleBinService
         var source = Path.GetFullPath(filePath);
         if (!source.StartsWith(root, StringComparison.Ordinal))
         {
-            throw new ArgumentException("文件必须位于共享目录内。", nameof(filePath));
+            throw new ArgumentException("File must be located within the share directory.", nameof(filePath));
         }
 
         var relative = Path.GetRelativePath(root, source);
@@ -23,7 +23,7 @@ public sealed class RecycleBinService
         return target;
     }
 
-    /// <summary>删除超过保留天数的回收站文件。</summary>
+    /// <summary>Deletes recycle bin files exceeding the retention period.</summary>
     public int Cleanup(string sharePath, int retentionDays)
     {
         ShareValidation.ValidatePath(sharePath);

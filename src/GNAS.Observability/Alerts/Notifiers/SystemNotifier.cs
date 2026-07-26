@@ -3,12 +3,12 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Alerts.Notifiers;
 
-/// <summary>写入系统日志的告警通知器。</summary>
+/// <summary>Alert notifier that writes to system log.</summary>
 public sealed class SystemNotifier : INotifier
 {
     private readonly ILogPipeline _pipeline;
 
-    /// <summary>初始化系统通知器。</summary>
+    /// <summary>Initialize system notifier.</summary>
     public SystemNotifier(ILogPipeline pipeline)
     {
         _pipeline = pipeline;

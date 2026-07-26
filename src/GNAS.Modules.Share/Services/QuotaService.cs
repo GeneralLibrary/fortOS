@@ -2,18 +2,18 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Share.Services;
 
-/// <summary>配额服务，优先使用 xfs_quota/btrfs qgroup；工具缺失时优雅失败。</summary>
+/// <summary>Quota service, prefers xfs_quota/btrfs qgroup; fails gracefully when tools are missing.</summary>
 public sealed class QuotaService
 {
     private readonly IProcessManager processManager;
 
-    /// <summary>创建配额服务。</summary>
+    /// <summary>Create quota service.</summary>
     public QuotaService(IProcessManager processManager)
     {
         this.processManager = processManager;
     }
 
-    /// <summary>设置目录配额。</summary>
+    /// <summary>Set directory quota.</summary>
     public async Task<CommandResult> SetQuotaAsync(string path, long bytes, string fileSystemType, CancellationToken ct)
     {
         ShareValidation.ValidatePath(path);
@@ -25,7 +25,7 @@ public sealed class QuotaService
         }
         catch (Exception ex) when (ex is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return new CommandResult { ExitCode = 127, Stderr = $"配额工具 {tool} 不可用，已优雅跳过。" };
+            return new CommandResult { ExitCode = 127, Stderr = $"Quota tool {tool} is not available, gracefully skipping." };
         }
     }
 

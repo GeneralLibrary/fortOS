@@ -5,7 +5,8 @@ using GNAS.Core;
 namespace GNAS.ServiceBus.Hosts;
 
 /// <summary>
-/// 通过 systemd 管理发行版提供的系统服务，避免另起守护进程与系统单元争用端口。
+/// Manages distribution-provided system services through systemd, avoiding
+/// separate daemons that compete with system units for ports.
 /// </summary>
 public sealed partial class SystemdServiceHost : IServiceHost
 {
@@ -13,7 +14,7 @@ public sealed partial class SystemdServiceHost : IServiceHost
     private readonly IEventBus _eventBus;
     private ServiceDefinition? _definition;
 
-    /// <summary>初始化 systemd 服务宿主。</summary>
+    /// <summary>Initialize the systemd service host.</summary>
     public SystemdServiceHost(IProcessManager processManager, IEventBus eventBus)
     {
         _processManager = processManager;
@@ -29,7 +30,7 @@ public sealed partial class SystemdServiceHost : IServiceHost
         var unit = GetValidatedUnit(definition);
         _definition = definition;
         var result = await ExecuteSystemctlAsync($"start {Quote(unit)}", ct).ConfigureAwait(false);
-        EnsureSuccess(result, unit, "启动");
+        EnsureSuccess(result, unit, "start");
         await _eventBus.PublishAsync(
             $"service.{definition.ServiceId}.started",
             "service.started",
@@ -47,7 +48,7 @@ public sealed partial class SystemdServiceHost : IServiceHost
 
         var unit = GetValidatedUnit(_definition);
         var result = await ExecuteSystemctlAsync($"stop {Quote(unit)}", ct).ConfigureAwait(false);
-        EnsureSuccess(result, unit, "停止");
+        EnsureSuccess(result, unit, "stop");
         await _eventBus.PublishAsync(
             $"service.{_definition.ServiceId}.stopped",
             "service.stopped",
@@ -123,7 +124,7 @@ public sealed partial class SystemdServiceHost : IServiceHost
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"systemd 单元 {unit} {operation}失败：{result.Stderr}");
+                $"systemd unit {unit} {operation} failed: {result.Stderr}");
         }
     }
 
@@ -133,7 +134,7 @@ public sealed partial class SystemdServiceHost : IServiceHost
         if (string.IsNullOrWhiteSpace(definition.SystemdUnit)
             || !SystemdUnitRegex().IsMatch(definition.SystemdUnit))
         {
-            throw new ArgumentException("systemd 服务必须配置安全的单元名称。", nameof(definition));
+            throw new ArgumentException("systemd service must have a secure unit name configured.", nameof(definition));
         }
 
         return definition.SystemdUnit;

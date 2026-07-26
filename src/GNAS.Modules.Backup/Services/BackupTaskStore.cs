@@ -3,7 +3,7 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Backup.Services;
 
-/// <summary>备份任务 SQLite 仓库。</summary>
+/// <summary>Backup task SQLite store.</summary>
 public sealed class BackupTaskStore
 {
     private readonly IDatabaseProvider _database;

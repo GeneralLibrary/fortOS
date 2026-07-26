@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace GNAS.Api.Controllers;
 
 /// <summary>
-/// 备份任务与执行控制器。
+/// Backup task and execution controller.
 /// </summary>
 [Route("api/backup")]
 public sealed class BackupController : GnasControllerBase
@@ -17,7 +17,7 @@ public sealed class BackupController : GnasControllerBase
     private readonly BackupRunHistoryStore _historyStore;
     private readonly BackupExecutionService _executor;
 
-    /// <summary>初始化备份控制器。</summary>
+    /// <summary>Initializes the backup controller.</summary>
     public BackupController(BackupModule backupModule, IEventBus eventBus, BackupRunHistoryStore historyStore, BackupExecutionService executor)
     {
         _backupModule = backupModule;
@@ -26,7 +26,7 @@ public sealed class BackupController : GnasControllerBase
         _executor = executor;
     }
 
-    /// <summary>列出备份任务。</summary>
+    /// <summary>List backup tasks.</summary>
     [HttpGet("tasks")]
     public async Task<IReadOnlyList<BackupTask>> ListTasks(CancellationToken ct)
     {
@@ -34,7 +34,7 @@ public sealed class BackupController : GnasControllerBase
         return await _backupModule.ListTasksAsync(ct).ConfigureAwait(false);
     }
 
-    /// <summary>创建或更新备份任务。</summary>
+    /// <summary>Create or update backup task.</summary>
     [HttpPut("tasks/{taskId}")]
     public async Task<BackupTask> UpsertTask(string taskId, [FromBody] BackupTask task, CancellationToken ct)
     {
@@ -55,7 +55,7 @@ public sealed class BackupController : GnasControllerBase
         return normalized;
     }
 
-    /// <summary>删除备份任务。</summary>
+    /// <summary>Delete backup task.</summary>
     [HttpDelete("tasks/{taskId}")]
     public async Task<object> DeleteTask(string taskId, CancellationToken ct)
     {
@@ -64,14 +64,14 @@ public sealed class BackupController : GnasControllerBase
         var removed = tasks.RemoveAll(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
         if (removed == 0)
         {
-            throw new InvalidOperationException($"备份任务不存在：{taskId}");
+            throw new InvalidOperationException($"Backup task does not exist: {taskId}");
         }
 
         await _backupModule.SaveTasksAsync(tasks, ct).ConfigureAwait(false);
         return new { success = true, taskId };
     }
 
-    /// <summary>手动执行备份任务。</summary>
+    /// <summary>Manually execute backup task.</summary>
     [HttpPost("tasks/{taskId}/run")]
     public async Task<object> RunTask(string taskId, CancellationToken ct)
     {
@@ -81,7 +81,7 @@ public sealed class BackupController : GnasControllerBase
         return new { success = record.Success, taskId = task.TaskId, record.ExitCode, record.Stdout, record.Stderr, runId = record.RunId, state = record.State };
     }
 
-    /// <summary>读取备份运行历史。</summary>
+    /// <summary>Read backup run history.</summary>
     [HttpGet("runs")]
     public async Task<Page<BackupRunRecord>> GetRuns([FromQuery] string? taskId, [FromQuery] int offset = 0, [FromQuery] int limit = 100, CancellationToken ct = default)
     {
@@ -89,7 +89,7 @@ public sealed class BackupController : GnasControllerBase
         return await _historyStore.QueryPageAsync(taskId, new PageRequest(offset, limit), ct).ConfigureAwait(false);
     }
 
-    /// <summary>恢复备份数据到目标。</summary>
+    /// <summary>Restore backup data to target.</summary>
     [HttpPost("tasks/{taskId}/restore")]
     public async Task<object> RestoreTask(string taskId, [FromBody] RestoreBackupRequest request, CancellationToken ct)
     {
@@ -103,21 +103,21 @@ public sealed class BackupController : GnasControllerBase
 
     private async Task<BackupTask> GetTaskAsync(string taskId, CancellationToken ct)
         => (await _backupModule.ListTasksAsync(ct).ConfigureAwait(false)).FirstOrDefault(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase))
-           ?? throw new InvalidOperationException($"备份任务不存在：{taskId}");
+           ?? throw new InvalidOperationException($"Backup task does not exist: {taskId}");
 
     private void EnsureCapability(string requiredCapability)
     {
         if (HttpContext.Items["NasTokenPayload"] is not NasTokenPayload payload)
         {
-            throw new PermissionDeniedException("缺少认证上下文。");
+            throw new PermissionDeniedException("Missing authentication context.");
         }
 
         if (!payload.Capabilities.Satisfies(requiredCapability) && !payload.Capabilities.Satisfies("admin:**"))
         {
-            throw new PermissionDeniedException($"执行备份操作需要能力 {requiredCapability}。");
+            throw new PermissionDeniedException($"Backup operation requires capability {requiredCapability}.");
         }
     }
 }
 
-/// <summary>恢复备份请求。</summary>
+/// <summary>Restore backup request.</summary>
 public sealed record RestoreBackupRequest(string? SourceOverride, string? TargetOverride, bool DryRun);

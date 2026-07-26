@@ -4,14 +4,14 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Logging;
 
-/// <summary>可选 Loki Push API 日志存储。</summary>
+/// <summary>Optional Loki Push API log store.</summary>
 public sealed class LokiLogStore : ILogStore
 {
     private readonly HttpClient _httpClient;
     private readonly string? _url;
     private readonly ILogger<LokiLogStore>? _logger;
 
-    /// <summary>初始化 Loki 日志存储。</summary>
+    /// <summary>Initialize Loki log store.</summary>
     public LokiLogStore(IGnasConfiguration? configuration = null, HttpClient? httpClient = null, ILogger<LokiLogStore>? logger = null)
     {
         _url = configuration?.GetValue("logging:loki:url");
@@ -24,7 +24,7 @@ public sealed class LokiLogStore : ILogStore
     {
         if (string.IsNullOrWhiteSpace(_url))
         {
-            _logger?.LogWarning("Loki 未配置，跳过日志推送。 ");
+            _logger?.LogWarning("Loki not configured, skipping log push.");
             return;
         }
 
@@ -51,12 +51,12 @@ public sealed class LokiLogStore : ILogStore
             using var response = await _httpClient.PostAsJsonAsync(endpoint, payload, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                _logger?.LogWarning("Loki 推送失败：{StatusCode}", response.StatusCode);
+                _logger?.LogWarning("Loki push failed: {StatusCode}", response.StatusCode);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger?.LogWarning(ex, "Loki 不可达，跳过日志推送。 ");
+            _logger?.LogWarning(ex, "Loki unreachable, skipping log push.");
         }
     }
 
@@ -71,5 +71,5 @@ public sealed class LokiLogStore : ILogStore
 
     /// <inheritdoc />
     public Task<IReadOnlyList<LogEntry>> QueryAsync(LogQuery query, CancellationToken ct)
-        => throw new NotSupportedException("LokiLogStore 不支持本地 QueryAsync；请通过 Loki 自身查询 API 检索日志。 ");
+        => throw new NotSupportedException("LokiLogStore does not support local QueryAsync; please query logs via Loki's own query API.");
 }

@@ -1,20 +1,20 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 存储配额类型。
+/// Storage quota type.
 /// </summary>
 public enum QuotaType
 {
     /// <summary>
-    /// 用户配额。
+    /// User quota.
     /// </summary>
     User,
     /// <summary>
-    /// 共享配额。
+    /// Share quota.
     /// </summary>
     Share,
     /// <summary>
-    /// 用户组配额。
+    /// Group quota.
     /// </summary>
     Group,
 }

@@ -23,12 +23,12 @@ using System.Text.Json.Serialization;
 
 if (!OperatingSystem.IsLinux())
 {
-    throw new PlatformNotSupportedException("GNAS API 仅支持 Linux。");
+    throw new PlatformNotSupportedException("GNAS API only supports Linux.");
 }
 
 var builder = WebApplication.CreateBuilder(args);
 
-#region 服务注册
+#region Service Registration
 builder.Services.AddGnasCore();
 builder.Services.AddPlatformServices();
 builder.Services.AddGnasSecurity(builder.Configuration);
@@ -49,7 +49,7 @@ builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<UpdateModu
 builder.Services.AddSingleton<FileManagerService>();
 builder.Services.AddSingleton<BackupRunHistoryStore>();
 builder.Services.AddSingleton<BackupExecutionService>();
-// GNAS 仅运行于 Linux；同步供给系统用户与 smbpasswd，使 SMB 客户端可使用同一套凭据。
+// GNAS runs only on Linux; synchronizes system users with smbpasswd so SMB clients can use the same credentials.
 builder.Services.AddSingleton<ISystemUserProvisioner, SambaUserProvisioner>();
 builder.Services.AddAgentServices();
 builder.Services.AddObservability(builder.Configuration);
@@ -69,7 +69,7 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-#region 请求管线
+#region Request Pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -113,5 +113,5 @@ EndpointCapabilityValidation.Validate(app);
 
 app.Run();
 
-/// <summary>WebApplicationFactory 测试入口标记。</summary>
+/// <summary>WebApplicationFactory test entry point marker.</summary>
 public partial class Program { }

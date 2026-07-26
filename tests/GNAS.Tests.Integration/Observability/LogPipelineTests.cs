@@ -48,6 +48,6 @@ public sealed class LogPipelineTests
             if (await condition()) return;
             await Task.Delay(50);
         }
-        Assert.Fail("等待日志管线处理超时。 ");
+        Assert.Fail("Timed out waiting for log pipeline processing.");
     }
 }

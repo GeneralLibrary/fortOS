@@ -8,15 +8,15 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GNAS.Agent;
 
 /// <summary>
-/// Agent 集成层依赖注入扩展。
+/// Agent integration layer dependency injection extensions.
 /// </summary>
 public static class AgentServiceExtensions
 {
     /// <summary>
-    /// 注册 Agent Catalog、Token Broker、Compose Generator 与后台采集服务。
+    /// Registers Agent Catalog, Token Broker, Compose Generator, and background collection services.
     /// </summary>
-    /// <param name="services">服务集合。</param>
-    /// <returns>服务集合。</returns>
+    /// <param name="services">Service collection.</param>
+    /// <returns>Service collection.</returns>
     public static IServiceCollection AddAgentServices(this IServiceCollection services)
     {
         services.AddSingleton<AgentTokenRegistry>();

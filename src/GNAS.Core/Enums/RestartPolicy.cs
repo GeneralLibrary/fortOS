@@ -1,24 +1,24 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 服务重启策略。
+/// Service restart policy.
 /// </summary>
 public enum RestartPolicy
 {
     /// <summary>
-    /// 总是重启。
+    /// Always restart.
     /// </summary>
     Always,
     /// <summary>
-    /// 失败时重启。
+    /// Restart on failure.
     /// </summary>
     OnFailure,
     /// <summary>
-    /// 从不自动重启。
+    /// Never restart automatically.
     /// </summary>
     Never,
     /// <summary>
-    /// 按指数退避重启。
+    /// Restart with exponential backoff.
     /// </summary>
     ExponentialBackoff,
 }

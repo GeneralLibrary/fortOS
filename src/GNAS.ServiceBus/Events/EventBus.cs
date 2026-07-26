@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.ServiceBus.Events;
 
 /// <summary>
-/// 基于内存通道的事件总线。
+/// In-memory channel-based event bus.
 /// </summary>
 public sealed class EventBus : IEventBus, IDisposable
 {
@@ -15,9 +15,9 @@ public sealed class EventBus : IEventBus, IDisposable
     private bool _disposed;
 
     /// <summary>
-    /// 初始化事件总线。
+    /// Initialize the event bus.
     /// </summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <param name="logger">Logger.</param>
     public EventBus(ILogger<EventBus> logger)
     {
         _logger = logger;
@@ -94,7 +94,7 @@ public sealed class EventBus : IEventBus, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "事件处理器失败: Pattern={Pattern}, Topic={Topic}", subscription.Pattern, envelope.Topic);
+                    _logger.LogError(ex, "Event handler failed: Pattern={Pattern}, Topic={Topic}", subscription.Pattern, envelope.Topic);
                 }
             }
         }

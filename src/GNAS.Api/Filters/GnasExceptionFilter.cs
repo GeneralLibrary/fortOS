@@ -5,12 +5,12 @@ using GNAS.Api.Middleware;
 
 namespace GNAS.Api.Filters;
 
-/// <summary>统一异常响应过滤器。</summary>
+/// <summary>Unified exception response filter.</summary>
 public sealed class GnasExceptionFilter : IExceptionFilter
 {
     private readonly ILogger<GnasExceptionFilter> logger;
 
-    /// <summary>初始化异常过滤器。</summary>
+    /// <summary>Initializes the exception filter.</summary>
     public GnasExceptionFilter(ILogger<GnasExceptionFilter> logger) => this.logger = logger;
 
     /// <inheritdoc />
@@ -18,7 +18,7 @@ public sealed class GnasExceptionFilter : IExceptionFilter
     {
         var traceId = context.HttpContext.Items["X-Trace-Id"]?.ToString();
         var (status, code, error) = Map(context.Exception);
-        if (status >= 500) logger.LogError(context.Exception, "API 请求失败。");
+        if (status >= 500) logger.LogError(context.Exception, "API request failed.");
         var problem = new ProblemDetails
         {
             Status = status,
@@ -40,6 +40,6 @@ public sealed class GnasExceptionFilter : IExceptionFilter
         ConfigurationException ex => (StatusCodes.Status400BadRequest, ex.ErrorCode, ex.Message),
         ArgumentException ex => (StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message),
         GnasException ex => (StatusCodes.Status500InternalServerError, ex.ErrorCode, ex.Message),
-        _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "服务器内部错误。"),
+        _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "Internal server error."),
     };
 }

@@ -2,25 +2,25 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Network.Services;
 
-/// <summary>VLAN 配置助手。</summary>
+/// <summary>VLAN configuration helper.</summary>
 public sealed class VlanConfig
 {
     private readonly IProcessManager processManager;
 
-    /// <summary>创建 VLAN 配置助手。</summary>
+    /// <summary>Create the VLAN configuration helper.</summary>
     public VlanConfig(IProcessManager processManager)
     {
         this.processManager = processManager;
     }
 
-    /// <summary>创建 VLAN 接口。</summary>
+    /// <summary>Create a VLAN interface.</summary>
     public Task<CommandResult> AddAsync(string parentInterface, int vlanId, string vlanInterface, CancellationToken ct)
     {
         Validate(parentInterface);
         Validate(vlanInterface);
         if (vlanId is <= 0 or > 4094)
         {
-            throw new ArgumentOutOfRangeException(nameof(vlanId), "VLAN ID 必须在 1-4094。");
+            throw new ArgumentOutOfRangeException(nameof(vlanId), "VLAN ID must be between 1 and 4094.");
         }
 
         return processManager.ExecuteCommandAsync(new ProcessStartConfig
@@ -35,7 +35,7 @@ public sealed class VlanConfig
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         if (value.Contains('\n') || value.Contains('\r') || value.Contains(';') || value.Contains(' '))
         {
-            throw new ArgumentException("接口名称非法。", nameof(value));
+            throw new ArgumentException("Invalid interface name.", nameof(value));
         }
     }
 }

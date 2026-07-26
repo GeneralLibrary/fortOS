@@ -7,15 +7,15 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// Linux 用户账户管理器。
+/// Linux user account manager.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxUserAccount : IUserAccount
 {
     private readonly CommandExecutor _executor;
 
-    /// <summary>初始化 Linux 用户账户管理器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the Linux user account manager.</summary>
+    /// <param name="logger">Logger.</param>
     public LinuxUserAccount(ILogger<LinuxUserAccount> logger)
     {
         _executor = new CommandExecutor(logger);
@@ -68,12 +68,12 @@ public sealed partial class LinuxUserAccount : IUserAccount
 
     private static void ValidateName(string value, string parameterName)
     {
-        if (!NameRegex().IsMatch(value)) throw new ArgumentException("名称不安全。", parameterName);
+        if (!NameRegex().IsMatch(value)) throw new ArgumentException("Unsafe name.", parameterName);
     }
 
     private static void ValidatePath(string path)
     {
-        if (!PathRegex().IsMatch(path)) throw new ArgumentException("路径不安全。", nameof(path));
+        if (!PathRegex().IsMatch(path)) throw new ArgumentException("Unsafe path.", nameof(path));
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";

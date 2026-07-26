@@ -1,32 +1,32 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 服务运行状态。
+/// Service running status.
 /// </summary>
 public enum ServiceStatus
 {
     /// <summary>
-    /// 已停止。
+    /// Stopped.
     /// </summary>
     Stopped,
     /// <summary>
-    /// 启动中。
+    /// Starting.
     /// </summary>
     Starting,
     /// <summary>
-    /// 运行中。
+    /// Running.
     /// </summary>
     Running,
     /// <summary>
-    /// 停止中。
+    /// Stopping.
     /// </summary>
     Stopping,
     /// <summary>
-    /// 运行失败。
+    /// Failed.
     /// </summary>
     Failed,
     /// <summary>
-    /// 状态未知。
+    /// Unknown.
     /// </summary>
     Unknown,
 }

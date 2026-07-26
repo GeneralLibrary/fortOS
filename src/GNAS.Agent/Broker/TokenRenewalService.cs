@@ -5,7 +5,7 @@ using Microsoft.Extensions.Hosting;
 namespace GNAS.Agent.Broker;
 
 /// <summary>
-/// 在 Agent 令牌接近过期前发布事件并自动续期。
+/// Publishes events and automatically renews Agent tokens before they expire.
 /// </summary>
 public sealed class TokenRenewalService : BackgroundService
 {
@@ -14,7 +14,7 @@ public sealed class TokenRenewalService : BackgroundService
     private readonly IEventBus _eventBus;
 
     /// <summary>
-    /// 初始化令牌续期后台服务。
+    /// Initialize the token renewal background service.
     /// </summary>
     public TokenRenewalService(AgentTokenRegistry registry, ITokenBroker broker, IEventBus eventBus)
     {

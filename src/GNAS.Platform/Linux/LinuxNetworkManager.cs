@@ -10,15 +10,15 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// Linux 网络管理器。
+/// Linux network manager.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxNetworkManager : INetworkManager
 {
     private readonly CommandExecutor _executor;
 
-    /// <summary>初始化 Linux 网络管理器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the Linux network manager.</summary>
+    /// <param name="logger">Logger.</param>
     public LinuxNetworkManager(ILogger<LinuxNetworkManager> logger)
     {
         _executor = new CommandExecutor(logger);
@@ -169,9 +169,9 @@ public sealed partial class LinuxNetworkManager : INetworkManager
 
     private static void ValidateNetConfig(NetConfig config)
     {
-        if (!string.IsNullOrWhiteSpace(config.Address) && !IsCidr(config.Address)) throw new ArgumentException("IP 地址无效。", nameof(config));
-        if (!string.IsNullOrWhiteSpace(config.Gateway) && !IPAddress.TryParse(config.Gateway, out _)) throw new ArgumentException("网关无效。", nameof(config));
-        if (config.DnsServers.Any(d => !IPAddress.TryParse(d, out _))) throw new ArgumentException("DNS 地址无效。", nameof(config));
+        if (!string.IsNullOrWhiteSpace(config.Address) && !IsCidr(config.Address)) throw new ArgumentException("Invalid IP address.", nameof(config));
+        if (!string.IsNullOrWhiteSpace(config.Gateway) && !IPAddress.TryParse(config.Gateway, out _)) throw new ArgumentException("Invalid gateway.", nameof(config));
+        if (config.DnsServers.Any(d => !IPAddress.TryParse(d, out _))) throw new ArgumentException("Invalid DNS address.", nameof(config));
     }
 
     private static bool IsCidr(string value)
@@ -183,19 +183,19 @@ public sealed partial class LinuxNetworkManager : INetworkManager
     private static void ValidateRule(FirewallRule rule)
     {
         ValidateRuleId(rule.RuleId);
-        if (rule.Port is < 1 or > 65535) throw new ArgumentException("端口无效。", nameof(rule));
-        if (!string.IsNullOrWhiteSpace(rule.Protocol) && rule.Protocol is not ("tcp" or "udp")) throw new ArgumentException("协议无效。", nameof(rule));
-        if (!string.IsNullOrWhiteSpace(rule.Source) && !IsCidr(rule.Source) && !IPAddress.TryParse(rule.Source, out _)) throw new ArgumentException("来源地址无效。", nameof(rule));
+        if (rule.Port is < 1 or > 65535) throw new ArgumentException("Invalid port.", nameof(rule));
+        if (!string.IsNullOrWhiteSpace(rule.Protocol) && rule.Protocol is not ("tcp" or "udp")) throw new ArgumentException("Invalid protocol.", nameof(rule));
+        if (!string.IsNullOrWhiteSpace(rule.Source) && !IsCidr(rule.Source) && !IPAddress.TryParse(rule.Source, out _)) throw new ArgumentException("Invalid source address.", nameof(rule));
     }
 
     private static void ValidateInterfaceName(string name)
     {
-        if (!SafeNameRegex().IsMatch(name)) throw new ArgumentException("接口名称不安全。", nameof(name));
+        if (!SafeNameRegex().IsMatch(name)) throw new ArgumentException("Unsafe interface name.", nameof(name));
     }
 
     private static void ValidateRuleId(string ruleId)
     {
-        if (!SafeNameRegex().IsMatch(ruleId)) throw new ArgumentException("规则标识不安全。", nameof(ruleId));
+        if (!SafeNameRegex().IsMatch(ruleId)) throw new ArgumentException("Unsafe rule identifier.", nameof(ruleId));
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";

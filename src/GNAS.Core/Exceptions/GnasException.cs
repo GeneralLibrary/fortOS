@@ -1,21 +1,21 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// GNAS 基础异常，携带统一错误码和链路追踪标识。
+/// GNAS base exception carrying a unified error code and trace ID.
 /// </summary>
 public class GnasException : Exception
 {
-    /// <summary>错误码。</summary>
+    /// <summary>Error code.</summary>
     public string ErrorCode { get; }
 
-    /// <summary>链路追踪标识。</summary>
+    /// <summary>Trace ID.</summary>
     public string? TraceId { get; }
 
-    /// <summary>初始化 GNAS 异常。</summary>
-    /// <param name="message">异常消息。</param>
-    /// <param name="errorCode">错误码。</param>
-    /// <param name="traceId">链路追踪标识。</param>
-    /// <param name="innerException">内部异常。</param>
+    /// <summary>Initialize a GNAS exception.</summary>
+    /// <param name="message">Exception message.</param>
+    /// <param name="errorCode">Error code.</param>
+    /// <param name="traceId">Trace ID.</param>
+    /// <param name="innerException">Inner exception.</param>
     public GnasException(string message, string errorCode, string? traceId = null, Exception? innerException = null)
         : base(message, innerException)
     {

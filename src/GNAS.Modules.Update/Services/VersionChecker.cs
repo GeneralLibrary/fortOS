@@ -3,12 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace GNAS.Modules.Update.Services;
 
-/// <summary>GitHub Releases 版本检查器。</summary>
+/// <summary>GitHub Releases version checker.</summary>
 public sealed class VersionChecker
 {
     private readonly HttpClient httpClient;
 
-    /// <summary>创建版本检查器。</summary>
+    /// <summary>Create the version checker.</summary>
     public VersionChecker(HttpClient httpClient)
     {
         this.httpClient = httpClient;
@@ -18,7 +18,7 @@ public sealed class VersionChecker
         }
     }
 
-    /// <summary>检查最新版本；网络失败时返回不可用结果。</summary>
+    /// <summary>Check the latest version; returns an unavailable result on network failure.</summary>
     public async Task<VersionCheckResult> CheckLatestAsync(string owner, string repo, Version currentVersion, CancellationToken ct)
     {
         Validate(owner);
@@ -29,14 +29,14 @@ public sealed class VersionChecker
             var tag = release?.TagName?.TrimStart('v', 'V');
             if (tag is null || !Version.TryParse(tag, out var latest))
             {
-                return new VersionCheckResult(false, null, currentVersion, "无法解析最新版本。");
+                return new VersionCheckResult(false, null, currentVersion, "Unable to parse the latest version.");
             }
 
             return new VersionCheckResult(latest > currentVersion, latest, currentVersion, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            return new VersionCheckResult(false, null, currentVersion, $"版本检查网络失败: {ex.Message}");
+            return new VersionCheckResult(false, null, currentVersion, $"Version check network failure: {ex.Message}");
         }
     }
 
@@ -45,12 +45,12 @@ public sealed class VersionChecker
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         if (value.Contains('/') || value.Contains('\n') || value.Contains('\r'))
         {
-            throw new ArgumentException("GitHub owner/repo 名称非法。", nameof(value));
+            throw new ArgumentException("GitHub owner/repo name is invalid.", nameof(value));
         }
     }
 
     private sealed record GitHubRelease([property: JsonPropertyName("tag_name")] string? TagName);
 }
 
-/// <summary>版本检查结果。</summary>
+/// <summary>Version check result.</summary>
 public sealed record VersionCheckResult(bool UpdateAvailable, Version? LatestVersion, Version CurrentVersion, string? ErrorMessage);

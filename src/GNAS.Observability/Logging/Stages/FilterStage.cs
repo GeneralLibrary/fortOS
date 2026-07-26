@@ -3,12 +3,12 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Logging.Stages;
 
-/// <summary>日志级别过滤阶段。</summary>
+/// <summary>Log level filtering stage.</summary>
 public sealed class FilterStage : ILogStage
 {
     private readonly IGnasConfiguration? _configuration;
 
-    /// <summary>初始化日志级别过滤阶段。</summary>
+    /// <summary>Initialize log level filtering stage.</summary>
     public FilterStage(IGnasConfiguration? configuration = null)
     {
         _configuration = configuration;

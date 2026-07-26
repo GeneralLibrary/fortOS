@@ -1,4 +1,4 @@
-# GNAS 集成测试专用 Compose
+# GNAS Integration Test Compose
 services:
   gnas-test:
     build: .

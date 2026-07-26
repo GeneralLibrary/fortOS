@@ -2,20 +2,20 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Backup.Services;
 
-/// <summary>文件系统快照服务，支持 btrfs 与 zfs，其他文件系统优雅返回不支持。</summary>
+/// <summary>Filesystem snapshot service, supports btrfs and zfs, other filesystems gracefully return not supported.</summary>
 public sealed class SnapshotService
 {
     private readonly IProcessManager processManager;
     private readonly IFileSystem fileSystem;
 
-    /// <summary>创建快照服务。</summary>
+    /// <summary>Creates a snapshot service.</summary>
     public SnapshotService(IProcessManager processManager, IFileSystem fileSystem)
     {
         this.processManager = processManager;
         this.fileSystem = fileSystem;
     }
 
-    /// <summary>创建快照。</summary>
+    /// <summary>Creates a snapshot.</summary>
     public async Task<CommandResult> CreateSnapshotAsync(string target, string snapshotName, CancellationToken ct)
     {
         ValidatePath(target);
@@ -25,11 +25,11 @@ public sealed class SnapshotService
         {
             "btrfs" => await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "btrfs", Arguments = $"subvolume snapshot -r {Quote(target)} {Quote(Path.Combine(target, ".snapshots", snapshotName))}" }, ct).ConfigureAwait(false),
             "zfs" => await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "zfs", Arguments = $"snapshot {target}@{snapshotName}" }, ct).ConfigureAwait(false),
-            _ => new CommandResult { ExitCode = 95, Stderr = $"文件系统 {fs.FileSystemType} 不支持原生快照。" }
+            _ => new CommandResult { ExitCode = 95, Stderr = $"Filesystem {fs.FileSystemType} does not support native snapshots." }
         };
     }
 
-    /// <summary>列出快照。</summary>
+    /// <summary>Lists snapshots.</summary>
     public async Task<CommandResult> ListSnapshotsAsync(string target, CancellationToken ct)
     {
         ValidatePath(target);
@@ -38,11 +38,11 @@ public sealed class SnapshotService
         {
             "btrfs" => await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "btrfs", Arguments = $"subvolume list -s {Quote(target)}" }, ct).ConfigureAwait(false),
             "zfs" => await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "zfs", Arguments = $"list -t snapshot -o name -H {target}" }, ct).ConfigureAwait(false),
-            _ => new CommandResult { ExitCode = 95, Stderr = $"文件系统 {fs.FileSystemType} 不支持原生快照。" }
+            _ => new CommandResult { ExitCode = 95, Stderr = $"Filesystem {fs.FileSystemType} does not support native snapshots." }
         };
     }
 
-    /// <summary>恢复快照。</summary>
+    /// <summary>Restores a snapshot.</summary>
     public Task<CommandResult> RestoreSnapshotAsync(string snapshot, string target, CancellationToken ct)
     {
         ValidateName(snapshot);
@@ -50,7 +50,7 @@ public sealed class SnapshotService
         return processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "btrfs", Arguments = $"subvolume snapshot {Quote(snapshot)} {Quote(target)}" }, ct);
     }
 
-    /// <summary>删除快照。</summary>
+    /// <summary>Deletes a snapshot.</summary>
     public Task<CommandResult> DeleteSnapshotAsync(string snapshot, CancellationToken ct)
     {
         ValidatePath(snapshot);
@@ -62,7 +62,7 @@ public sealed class SnapshotService
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (path.Contains('\n') || path.Contains('\r'))
         {
-            throw new ArgumentException("路径不能包含换行。", nameof(path));
+            throw new ArgumentException("Path cannot contain newlines.", nameof(path));
         }
     }
 
@@ -71,7 +71,7 @@ public sealed class SnapshotService
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (name.Contains('\n') || name.Contains('\r') || name.Contains(';') || name.Contains(' '))
         {
-            throw new ArgumentException("快照名称非法。", nameof(name));
+            throw new ArgumentException("Invalid snapshot name.", nameof(name));
         }
     }
 

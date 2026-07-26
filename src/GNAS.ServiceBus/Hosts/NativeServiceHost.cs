@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.ServiceBus.Hosts;
 
 /// <summary>
-/// 原生进程服务宿主。
+/// Native process service host.
 /// </summary>
 public sealed class NativeServiceHost : IServiceHost
 {
@@ -19,12 +19,12 @@ public sealed class NativeServiceHost : IServiceHost
     private bool _stopping;
 
     /// <summary>
-    /// 初始化原生进程服务宿主。
+    /// Initialize the native process service host.
     /// </summary>
-    /// <param name="processManager">进程管理器。</param>
-    /// <param name="eventBus">事件总线。</param>
-    /// <param name="logger">日志记录器。</param>
-    /// <param name="logPipeline">可选日志管线。</param>
+    /// <param name="processManager">Process manager.</param>
+    /// <param name="eventBus">Event bus.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="logPipeline">Optional log pipeline.</param>
     public NativeServiceHost(IProcessManager processManager, IEventBus eventBus, ILogger<NativeServiceHost> logger, ILogPipeline? logPipeline = null)
     {
         _processManager = processManager;
@@ -42,7 +42,7 @@ public sealed class NativeServiceHost : IServiceHost
         ArgumentNullException.ThrowIfNull(definition);
         if (string.IsNullOrWhiteSpace(definition.Executable))
         {
-            throw new ArgumentException("原生服务必须配置可执行文件。", nameof(definition));
+            throw new ArgumentException("Native service must have an executable configured.", nameof(definition));
         }
 
         _definition = definition;
@@ -106,7 +106,7 @@ public sealed class NativeServiceHost : IServiceHost
                 await _eventBus.PublishAsync(topic, type, "{}", ct).ConfigureAwait(false);
                 if (_logPipeline is not null)
                 {
-                    await _logPipeline.ProcessRawAsync($"服务 {serviceId} 进程已退出。", LogCategory.System, serviceId, ct).ConfigureAwait(false);
+                    await _logPipeline.ProcessRawAsync($"Service {serviceId} process has exited.", LogCategory.System, serviceId, ct).ConfigureAwait(false);
                 }
 
                 return;
@@ -117,7 +117,7 @@ public sealed class NativeServiceHost : IServiceHost
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "监控原生服务退出失败: {ServiceId}", serviceId);
+            _logger.LogError(ex, "Failed to monitor native service exit: {ServiceId}", serviceId);
         }
     }
 }

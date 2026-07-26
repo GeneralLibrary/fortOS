@@ -21,11 +21,11 @@ public class PermissionEngineTests
 
         var deniedByCapability = await engine.CheckPermissionAsync(token, "storage:share:media:write", "/data/media", NasDataLevel.Personal, ct);
         Assert.False(deniedByCapability.Granted);
-        Assert.Contains("能力", deniedByCapability.DenyReason);
+        Assert.Contains("capability", deniedByCapability.DenyReason);
 
         var deniedByTrust = await engine.CheckPermissionAsync(token, "storage:share:media:read", "/data/media", NasDataLevel.Sensitive, ct);
         Assert.False(deniedByTrust.Granted);
-        Assert.Contains("信任", deniedByTrust.DenyReason);
+        Assert.Contains("trust", deniedByTrust.DenyReason);
     }
 
     [Fact]

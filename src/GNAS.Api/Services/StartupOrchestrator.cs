@@ -2,13 +2,13 @@ using GNAS.Core;
 
 namespace GNAS.Api.Services;
 
-/// <summary>后台启动编排器；失败只记录日志，避免开发环境因外部服务未就绪而退出。</summary>
+/// <summary>Background startup orchestrator; failures are only logged to avoid exiting in development environments due to unready external services.</summary>
 public sealed class StartupOrchestrator : IHostedService
 {
     private readonly IServiceProvider services;
     private readonly ILogger<StartupOrchestrator> logger;
 
-    /// <summary>初始化启动编排器。</summary>
+    /// <summary>Initializes the startup orchestrator.</summary>
     public StartupOrchestrator(IServiceProvider services, ILogger<StartupOrchestrator> logger)
     {
         this.services = services;
@@ -32,14 +32,14 @@ public sealed class StartupOrchestrator : IHostedService
             using var scope = services.CreateScope();
             await scope.ServiceProvider.GetRequiredService<IModuleHost>().DiscoverAndLoadAsync(ct).ConfigureAwait(false);
             await scope.ServiceProvider.GetRequiredService<IServiceSupervisor>().StartAllAutomaticAsync(ct).ConfigureAwait(false);
-            logger.LogInformation("GNAS API 启动编排完成。");
+            logger.LogInformation("GNAS API startup orchestration completed.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "GNAS API 启动编排失败，服务将以降级模式继续运行。");
+            logger.LogWarning(ex, "GNAS API startup orchestration failed, service will continue running in degraded mode.");
         }
     }
 }

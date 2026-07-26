@@ -1,10 +1,10 @@
 namespace GNAS.Core;
 
-/// <summary>日志处理管线接口。</summary>
+/// <summary>Log processing pipeline interface.</summary>
 public interface ILogPipeline
 {
-    /// <summary>处理结构化日志。</summary>
+    /// <summary>Process a structured log entry.</summary>
     Task ProcessAsync(LogEntry entry, CancellationToken ct);
-    /// <summary>处理原始日志文本。</summary>
+    /// <summary>Process raw log text.</summary>
     Task ProcessRawAsync(string rawText, LogCategory category, string sourceComponent, CancellationToken ct);
 }

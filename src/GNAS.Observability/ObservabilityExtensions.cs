@@ -10,10 +10,10 @@ using Serilog;
 
 namespace GNAS.Observability;
 
-/// <summary>可观测性层依赖注入扩展。</summary>
+/// <summary>Observability layer dependency injection extensions.</summary>
 public static class ObservabilityExtensions
 {
-    /// <summary>注册日志、审计链、告警和 Serilog 集成。</summary>
+    /// <summary>Register logging, audit chain, alerts, and Serilog integration.</summary>
     public static IServiceCollection AddObservability(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<GnasMetrics>();
@@ -49,12 +49,12 @@ public static class ObservabilityExtensions
     }
 }
 
-/// <summary>使用真实服务提供器延迟配置 Serilog 的后台服务。</summary>
+/// <summary>Background service that lazily configures Serilog using the real service provider.</summary>
 public sealed class LazySerilogBootstrapper : IHostedService
 {
     private readonly ILogPipeline _pipeline;
 
-    /// <summary>初始化 Serilog 延迟引导器。</summary>
+    /// <summary>Initialize Serilog lazy bootstrapper.</summary>
     public LazySerilogBootstrapper(ILogPipeline pipeline)
     {
         _pipeline = pipeline;

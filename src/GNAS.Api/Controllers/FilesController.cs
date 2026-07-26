@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Api.Controllers;
 
 /// <summary>
-/// NAS 文件管理控制器。
+/// NAS file management controller.
 /// </summary>
 [Route("api/files")]
 public sealed class FilesController : GnasControllerBase
@@ -16,7 +16,7 @@ public sealed class FilesController : GnasControllerBase
     private readonly ILogPipeline _logs;
     private readonly IPermissionEngine _permissions;
 
-    /// <summary>初始化文件管理控制器。</summary>
+    /// <summary>Initializes the file management controller.</summary>
     public FilesController(FileManagerService files, ILogPipeline logs, IPermissionEngine permissions)
     {
         _files = files;
@@ -24,12 +24,12 @@ public sealed class FilesController : GnasControllerBase
         _permissions = permissions;
     }
 
-    /// <summary>列出目录。</summary>
+    /// <summary>List directory.</summary>
     [HttpGet]
     public Task<IReadOnlyList<ManagedFileEntry>> List([FromQuery] string path, [FromQuery] bool recursive, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:read", "files.list", path, () => _files.ListAsync(path, recursive, ct), ct);
 
-    /// <summary>分页列出目录；保留旧列表响应以兼容现有客户端。</summary>
+    /// <summary>Paginated directory listing; keeps the legacy list response for client compatibility.</summary>
     [HttpGet("page")]
     public async Task<Page<ManagedFileEntry>> ListPage([FromQuery] string path, [FromQuery] bool recursive, [FromQuery] int offset = 0, [FromQuery] int limit = 100, CancellationToken ct = default)
     {
@@ -38,24 +38,24 @@ public sealed class FilesController : GnasControllerBase
         return new Page<ManagedFileEntry>(entries.Skip(request.NormalizedOffset).Take(request.NormalizedLimit).ToArray(), request.NormalizedOffset, request.NormalizedLimit, entries.Count);
     }
 
-    /// <summary>读取路径元数据。</summary>
+    /// <summary>Read path metadata.</summary>
     [HttpGet("stat")]
     public Task<ManagedFileStat> Stat([FromQuery] string path, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:read", "files.stat", path, () => _files.StatAsync(path, ct), ct);
 
-    /// <summary>读取文件内容。</summary>
+    /// <summary>Read file content.</summary>
     [HttpGet("content")]
     public Task<ManagedFileContent> Read([FromQuery] string path, [FromQuery] string encoding = "text", CancellationToken ct = default)
         => ExecuteAuditedAsync("files:file:read", "files.read", path, () => _files.ReadAsync(path, string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase), ct), ct);
 
-    /// <summary>流式下载，支持 ETag 条件请求与 HTTP Range。</summary>
+    /// <summary>Streaming download, supports ETag conditional requests and HTTP Range.</summary>
     [HttpGet("download")]
     public async Task<IActionResult> Download([FromQuery] string path, CancellationToken ct)
     {
         var decision = await _permissions.CheckPermissionAsync(OwnerToken, "files:file:read", path, NasDataLevel.Personal, ct).ConfigureAwait(false);
         if (!decision.Granted)
         {
-            throw new PermissionDeniedException(decision.DenyReason ?? "没有读取该文件的权限。");
+            throw new PermissionDeniedException(decision.DenyReason ?? "No permission to read this file.");
         }
         var stat = await _files.StatAsync(path, ct).ConfigureAwait(false);
         if (!stat.Exists || stat.IsDirectory) return NotFound();
@@ -67,70 +67,70 @@ public sealed class FilesController : GnasControllerBase
         return new FileStreamResult(stream, "application/octet-stream") { EnableRangeProcessing = true, FileDownloadName = Path.GetFileName(stat.Path) };
     }
 
-    /// <summary>创建可恢复上传会话。</summary>
+    /// <summary>Create resumable upload session.</summary>
     [HttpPost("uploads")]
     public async Task<UploadSession> CreateUpload([FromBody] CreateUploadRequest request, CancellationToken ct)
         => await ExecuteAuditedAsync("files:file:write", "files.upload.create", request.Path, () => _files.CreateUploadSessionAsync(request.Path, CurrentSubject, request.SizeBytes, request.Sha256, ct), ct).ConfigureAwait(false);
 
-    /// <summary>追加一个上传分块，Content-Range 必须与服务端 expected offset 一致。</summary>
+    /// <summary>Append an upload chunk; Content-Range must match the server's expected offset.</summary>
     [HttpPut("uploads/{sessionId}")]
     public async Task<UploadSession> AppendUpload(string sessionId, CancellationToken ct)
     {
         var range = Request.Headers.ContentRange.ToString();
-        if (!TryParseContentRange(range, out var start, out var length)) throw new ArgumentException("Content-Range 格式无效。");
+        if (!TryParseContentRange(range, out var start, out var length)) throw new ArgumentException("Invalid Content-Range format.");
         try { return await _files.AppendUploadAsync(sessionId, CurrentSubject, start, Request.Body, length, ct).ConfigureAwait(false); }
         catch (UploadOffsetConflictException ex) { Response.Headers["Upload-Offset"] = ex.ExpectedOffset.ToString(System.Globalization.CultureInfo.InvariantCulture); throw; }
     }
 
-    /// <summary>原子完成上传，可用 If-Match 防止覆盖新版本。</summary>
+    /// <summary>Atomically complete upload; use If-Match to prevent overwriting a newer version.</summary>
     [HttpPost("uploads/{sessionId}/finalize")]
     public Task<ManagedFileStat> FinalizeUpload(string sessionId, CancellationToken ct)
         => _files.FinalizeUploadAsync(sessionId, CurrentSubject, Request.Headers.IfMatch.ToString(), ct);
 
-    /// <summary>查询上传会话状态。</summary>
+    /// <summary>Query upload session status.</summary>
     [HttpGet("uploads/{sessionId}")]
     public Task<UploadSession> UploadStatus(string sessionId, CancellationToken ct) => _files.GetUploadSessionAsync(sessionId, CurrentSubject, ct);
 
-    /// <summary>中止上传会话并删除临时文件。</summary>
+    /// <summary>Abort upload session and delete temporary files.</summary>
     [HttpDelete("uploads/{sessionId}")]
     public Task AbortUpload(string sessionId, CancellationToken ct) => _files.AbortUploadAsync(sessionId, CurrentSubject, ct);
 
-    /// <summary>创建文件。</summary>
+    /// <summary>Create file.</summary>
     [HttpPost("write")]
     public Task<ManagedFileStat> Write([FromBody] WriteFileRequest request, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:write", "files.write", request.Path, () => _files.WriteAsync(request.Path, request.Content, request.Encoding ?? "text", request.Overwrite, ct), ct);
 
-    /// <summary>更新文件。</summary>
+    /// <summary>Update file.</summary>
     [HttpPut("content")]
     public Task<ManagedFileStat> Update([FromBody] UpdateFileRequest request, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:write", "files.update", request.Path, () => _files.WriteAsync(request.Path, request.Content, request.Encoding ?? "text", overwrite: true, ct), ct);
 
-    /// <summary>创建目录。</summary>
+    /// <summary>Create directory.</summary>
     [HttpPost("mkdir")]
     public Task<ManagedFileStat> Mkdir([FromBody] CreateDirectoryRequest request, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:write", "files.mkdir", request.Path, () => _files.CreateDirectoryAsync(request.Path, ct), ct);
 
-    /// <summary>移动路径。</summary>
+    /// <summary>Move path.</summary>
     [HttpPost("move")]
     public Task<ManagedFileStat> Move([FromBody] MoveFileRequest request, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:write", "files.move", request.SourcePath, () => _files.MoveAsync(request.SourcePath, request.DestinationPath, request.Overwrite, ct), ct);
 
-    /// <summary>复制路径。</summary>
+    /// <summary>Copy path.</summary>
     [HttpPost("copy")]
     public Task<ManagedFileStat> Copy([FromBody] CopyFileRequest request, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:write", "files.copy", request.SourcePath, () => _files.CopyAsync(request.SourcePath, request.DestinationPath, request.Overwrite, ct), ct);
 
-    /// <summary>删除路径，默认软删除。</summary>
+    /// <summary>Delete path, soft delete by default.</summary>
     [HttpDelete]
     public Task<ManagedDeleteResult> Delete([FromQuery] string path, [FromQuery] bool hard = false, CancellationToken ct = default)
         => ExecuteAuditedAsync("files:file:delete", "files.delete", path, () => _files.DeleteAsync(path, hard, CurrentSubject, ct), ct);
 
-    /// <summary>恢复软删除路径。</summary>
+    /// <summary>Restore soft-deleted path.</summary>
     [HttpPost("restore")]
     public Task<ManagedFileStat> Restore([FromBody] RestoreFileRequest request, CancellationToken ct)
         => ExecuteAuditedAsync("files:file:delete", "files.restore", request.RecyclePath, () => _files.RestoreAsync(request.RecyclePath, request.TargetPath, ct), ct);
 
-    /// <summary>修改 Linux 权限位。</summary>
+    /// <summary>Modify Linux permission bits.</summary>
     [HttpPost("chmod")]
     public Task<object> Chmod([FromBody] ChmodRequest request, CancellationToken ct)
         => ExecuteAuditedAsync<object>("files:file:admin", "files.chmod", request.Path, async () =>
@@ -139,7 +139,7 @@ public sealed class FilesController : GnasControllerBase
             return new { success = true, path = request.Path, mode = request.Mode };
         }, ct);
 
-    /// <summary>修改 Linux 所有者。</summary>
+    /// <summary>Modify Linux owner.</summary>
     [HttpPost("chown")]
     public Task<object> Chown([FromBody] ChownRequest request, CancellationToken ct)
         => ExecuteAuditedAsync<object>("files:file:admin", "files.chown", request.Path, async () =>
@@ -157,7 +157,7 @@ public sealed class FilesController : GnasControllerBase
         if (!decision.Granted)
         {
             await WriteAuditAsync(action, resource, granted: false, decision.DenyReason, ct).ConfigureAwait(false);
-            throw new PermissionDeniedException($"执行 {action} 被拒绝：{decision.DenyReason}");
+            throw new PermissionDeniedException($"Execution of {action} was denied: {decision.DenyReason}");
         }
 
         try
@@ -207,21 +207,21 @@ public sealed class FilesController : GnasControllerBase
     }
 }
 
-/// <summary>写入文件请求。</summary>
+/// <summary>Write file request.</summary>
 public sealed record WriteFileRequest(string Path, string Content, string? Encoding, bool Overwrite);
-/// <summary>更新文件请求。</summary>
+/// <summary>Update file request.</summary>
 public sealed record UpdateFileRequest(string Path, string Content, string? Encoding);
-/// <summary>创建目录请求。</summary>
+/// <summary>Create directory request.</summary>
 public sealed record CreateDirectoryRequest(string Path);
-/// <summary>移动请求。</summary>
+/// <summary>Move request.</summary>
 public sealed record MoveFileRequest(string SourcePath, string DestinationPath, bool Overwrite);
-/// <summary>复制请求。</summary>
+/// <summary>Copy request.</summary>
 public sealed record CopyFileRequest(string SourcePath, string DestinationPath, bool Overwrite);
-/// <summary>恢复请求。</summary>
+/// <summary>Restore request.</summary>
 public sealed record RestoreFileRequest(string RecyclePath, string TargetPath);
-/// <summary>chmod 请求。</summary>
+/// <summary>Chmod request.</summary>
 public sealed record ChmodRequest(string Path, string Mode);
-/// <summary>chown 请求。</summary>
+/// <summary>Chown request.</summary>
 public sealed record ChownRequest(string Path, string Owner);
-/// <summary>创建可恢复上传请求。</summary>
+/// <summary>Create resumable upload request.</summary>
 public sealed record CreateUploadRequest(string Path, long? SizeBytes, string? Sha256);

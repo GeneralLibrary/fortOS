@@ -8,7 +8,7 @@ using YamlDotNet.Serialization.NamingConventions;
 namespace GNAS.Agent.Catalog;
 
 /// <summary>
-/// 基于本地 YAML 文件的 Agent 模板目录。
+/// Agent template catalog based on local YAML files.
 /// </summary>
 public sealed partial class AgentCatalog : IAgentCatalog
 {
@@ -66,9 +66,9 @@ compose:
     private int _seeded;
 
     /// <summary>
-    /// 初始化 Agent 模板目录。
+    /// Initialize the Agent template catalog.
     /// </summary>
-    /// <param name="httpClient">可选 HTTP 客户端。</param>
+    /// <param name="httpClient">Optional HTTP client.</param>
     public AgentCatalog(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? new HttpClient();
@@ -135,14 +135,14 @@ compose:
         var sourcePath = GetSourcePath(templateId);
         if (!File.Exists(sourcePath))
         {
-            throw new FileNotFoundException($"模板 {templateId} 没有可更新的来源记录。", sourcePath);
+            throw new FileNotFoundException($"Template {templateId} has no updatable source record.", sourcePath);
         }
 
         var source = (await File.ReadAllTextAsync(sourcePath, ct).ConfigureAwait(false)).Trim();
         var template = await InstallTemplateAsync(source, ct).ConfigureAwait(false);
         if (!string.Equals(template.Id, templateId, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException($"来源模板标识 {template.Id} 与请求标识 {templateId} 不一致。");
+            throw new InvalidOperationException($"Source template identifier {template.Id} does not match the requested identifier {templateId}.");
         }
 
         return template;
@@ -165,14 +165,14 @@ compose:
 
             if (uri.Scheme != Uri.UriSchemeFile)
             {
-                throw new NotSupportedException($"不支持的模板来源协议：{uri.Scheme}。");
+                throw new NotSupportedException($"Unsupported template source protocol: {uri.Scheme}.");
             }
         }
 
         var path = uri?.Scheme == Uri.UriSchemeFile ? uri.LocalPath : source;
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException("模板来源文件不存在。", path);
+            throw new FileNotFoundException("Template source file does not exist.", path);
         }
 
         return await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
@@ -182,8 +182,8 @@ compose:
     {
         try
         {
-            var dto = _deserializer.Deserialize<TemplateDto>(yaml) ?? throw new InvalidOperationException("模板为空。");
-            var compose = _serializer.Serialize(dto.Compose ?? throw new InvalidOperationException("模板缺少 compose。"));
+            var dto = _deserializer.Deserialize<TemplateDto>(yaml) ?? throw new InvalidOperationException("Template is empty.");
+            var compose = _serializer.Serialize(dto.Compose ?? throw new InvalidOperationException("Template missing compose section."));
             var template = new AgentTemplate
             {
                 Id = dto.Id ?? string.Empty,
@@ -206,7 +206,7 @@ compose:
         }
         catch (YamlException ex)
         {
-            throw new InvalidDataException($"模板 YAML 解析失败：{sourceName}。", ex);
+            throw new InvalidDataException($"Template YAML parsing failed: {sourceName}.", ex);
         }
     }
 
@@ -214,24 +214,24 @@ compose:
     {
         if (string.IsNullOrWhiteSpace(template.Id) || string.IsNullOrWhiteSpace(template.Name) || string.IsNullOrWhiteSpace(template.Version) || string.IsNullOrWhiteSpace(template.ComposeTemplate))
         {
-            throw new InvalidDataException("模板缺少 id、name、version 或 compose 必填字段。");
+            throw new InvalidDataException("Template is missing required fields: id, name, version, or compose.");
         }
 
         if (!IdPattern.IsMatch(template.Id))
         {
-            throw new InvalidDataException("模板 id 必须匹配 ^[a-z][a-z0-9-]{1,63}$。");
+            throw new InvalidDataException("Template id must match ^[a-z][a-z0-9-]{1,63}$.");
         }
 
         if (!System.Version.TryParse(template.Version, out _))
         {
-            throw new InvalidDataException("模板 version 必须是可解析版本号。");
+            throw new InvalidDataException("Template version must be a parseable version number.");
         }
 
         foreach (var parameter in template.Parameters)
         {
             if (string.IsNullOrWhiteSpace(parameter.Name) || string.IsNullOrWhiteSpace(parameter.Type))
             {
-                throw new InvalidDataException("模板参数必须包含 name 和 type。");
+                throw new InvalidDataException("Template parameters must include name and type.");
             }
         }
     }
@@ -241,7 +241,8 @@ compose:
     private static string GetSourcePath(string templateId) => Path.Combine(AgentPaths.CatalogRoot, templateId + ".source");
 
     /// <summary>
-    /// 首次访问模板目录时自动写入最小内置模板，避免空目录导致无法开箱部署。
+    /// Automatically writes minimal built-in templates on first access to the
+    /// catalog to avoid empty-directory deployment failures.
     /// </summary>
     private async Task EnsureBuiltInTemplatesAsync(CancellationToken ct)
     {

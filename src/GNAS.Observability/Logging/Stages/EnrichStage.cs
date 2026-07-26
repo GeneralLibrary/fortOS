@@ -4,7 +4,7 @@ using GNAS.Core;
 
 namespace GNAS.Observability.Logging.Stages;
 
-/// <summary>日志上下文补充阶段。</summary>
+/// <summary>Log context enrichment stage.</summary>
 public sealed class EnrichStage : ILogStage
 {
     /// <inheritdoc />

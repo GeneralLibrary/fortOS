@@ -1,12 +1,12 @@
 namespace GNAS.Core;
 
-/// <summary>不可篡改审计链接口。</summary>
+/// <summary>Tamper-proof audit chain interface.</summary>
 public interface IAuditChain
 {
-    /// <summary>追加审计日志。</summary>
+    /// <summary>Append an audit log entry.</summary>
     Task AppendAsync(LogEntry entry, CancellationToken ct);
-    /// <summary>验证链完整性。</summary>
+    /// <summary>Verify chain integrity.</summary>
     Task<ChainVerificationResult> VerifyIntegrityAsync(DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct);
-    /// <summary>导出审计链。</summary>
+    /// <summary>Export the audit chain.</summary>
     Task ExportAsync(DateOnly date, string path, CancellationToken ct);
 }

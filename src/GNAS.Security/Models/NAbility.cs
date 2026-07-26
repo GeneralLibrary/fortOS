@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace GNAS.Security.Models;
 
 /// <summary>
-/// 表示 GNAS 细粒度能力标识。
+/// Represents a GNAS fine-grained capability identifier.
 /// </summary>
 public sealed record NAbility
 {
@@ -11,12 +11,12 @@ public sealed record NAbility
     private readonly string[] _segments;
 
     /// <summary>
-    /// 初始化能力标识。
+    /// Initialize the capability identifier.
     /// </summary>
-    /// <param name="domain">能力域。</param>
-    /// <param name="resource">资源名称。</param>
-    /// <param name="action">动作名称。</param>
-    /// <param name="scope">可选作用域。</param>
+    /// <param name="domain">Capability domain.</param>
+    /// <param name="resource">Resource name.</param>
+    /// <param name="action">Action name.</param>
+    /// <param name="scope">Optional scope.</param>
     public NAbility(string domain, string resource, string action, string? scope = null)
         : this(scope is null ? [domain, resource, action] : [domain, resource, scope, action])
     {
@@ -32,70 +32,70 @@ public sealed record NAbility
     }
 
     /// <summary>
-    /// 能力域。
+    /// Capability domain.
     /// </summary>
     public string Domain { get; }
 
     /// <summary>
-    /// 资源名称。
+    /// Resource name.
     /// </summary>
     public string Resource { get; }
 
     /// <summary>
-    /// 动作名称。
+    /// Action name.
     /// </summary>
     public string Action { get; }
 
     /// <summary>
-    /// 可选作用域。
+    /// Optional scope.
     /// </summary>
     public string? Scope { get; }
 
     /// <summary>
-    /// 是否包含通配符。
+    /// Whether it contains wildcards.
     /// </summary>
     public bool IsWildcard => _segments.Any(static s => s is "*" or "**");
 
     /// <summary>
-    /// 能力片段快照。
+    /// Capability segment snapshot.
     /// </summary>
     public IReadOnlyList<string> Segments => _segments;
 
     /// <summary>
-    /// 解析能力字符串。
+    /// Parses a capability string.
     /// </summary>
-    /// <param name="value">能力字符串。</param>
-    /// <returns>能力标识。</returns>
-    /// <exception cref="ArgumentException">能力字符串为空或格式无效。</exception>
+    /// <param name="value">Capability string.</param>
+    /// <returns>Capability identifier.</returns>
+    /// <exception cref="ArgumentException">Capability string is empty or has an invalid format.</exception>
     public static NAbility Parse(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException("NAbility 不能为空。", nameof(value));
+            throw new ArgumentException("NAbility cannot be empty.", nameof(value));
         }
 
         var segments = value.Split(':', StringSplitOptions.None);
         var validLength = segments.Length is 3 or 4 || (segments.Length == 2 && segments[1] == "**");
         if (!validLength)
         {
-            throw new ArgumentException("NAbility 必须为 domain:resource:action、domain:resource:scope:action 或 domain:** 格式。", nameof(value));
+            throw new ArgumentException("NAbility must be in domain:resource:action, domain:resource:scope:action, or domain:** format.", nameof(value));
         }
 
         foreach (var segment in segments)
         {
             if (string.IsNullOrWhiteSpace(segment))
             {
-                throw new ArgumentException("NAbility 片段不能为空。", nameof(value));
+                throw new ArgumentException("NAbility segment cannot be empty.", nameof(value));
             }
 
             if (segment.Contains("**", StringComparison.Ordinal) && segment != "**")
             {
-                throw new ArgumentException("NAbility 的 ** 通配符必须独占一个片段。", nameof(value));
+                throw new ArgumentException("NAbility ** wildcard must occupy a segment by itself.", nameof(value));
             }
 
             if (!SegmentPattern.IsMatch(segment))
             {
-                throw new ArgumentException($"NAbility 片段 '{segment}' 包含非法字符。", nameof(value));
+                throw new ArgumentException($"NAbility segment '{segment}' contains illegal characters.", nameof(value));
             }
         }
 
@@ -103,10 +103,10 @@ public sealed record NAbility
     }
 
     /// <summary>
-    /// 判断当前能力是否满足所需能力。
+    /// Determines whether the current capability satisfies the required capability.
     /// </summary>
-    /// <param name="required">所需能力。</param>
-    /// <returns>满足时返回 true。</returns>
+    /// <param name="required">Required capability.</param>
+    /// <returns>Returns true if satisfied.</returns>
     public bool Matches(NAbility required) => MatchSegments(_segments, 0, required._segments, 0);
 
     /// <inheritdoc />

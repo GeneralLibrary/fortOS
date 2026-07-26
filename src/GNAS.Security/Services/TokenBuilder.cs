@@ -3,7 +3,7 @@ using GNAS.Core;
 namespace GNAS.Security.Services;
 
 /// <summary>
-/// NasToken 流式构建器。
+/// NasToken fluent builder.
 /// </summary>
 public sealed class TokenBuilder
 {
@@ -17,40 +17,40 @@ public sealed class TokenBuilder
     private string? _deviceBinding;
 
     /// <summary>
-    /// 初始化令牌构建器。
+    /// Initialize the token builder.
     /// </summary>
-    /// <param name="tokenManager">令牌管理器。</param>
+    /// <param name="tokenManager">Token manager.</param>
     public TokenBuilder(ITokenManager tokenManager)
     {
         _tokenManager = tokenManager;
     }
 
     /// <summary>
-    /// 设置用户主体。
+    /// Sets the user subject.
     /// </summary>
-    /// <param name="username">用户名。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="username">Username.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder ForUser(string username) => ForSubject($"user:{username}", TokenType.Session);
 
     /// <summary>
-    /// 设置 Agent 主体。
+    /// Sets the Agent subject.
     /// </summary>
-    /// <param name="agentId">Agent 标识。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="agentId">Agent ID.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder ForAgent(string agentId) => ForSubject($"agent:{agentId}", TokenType.Agent);
 
     /// <summary>
-    /// 设置服务主体。
+    /// Sets the service subject.
     /// </summary>
-    /// <param name="serviceId">服务标识。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="serviceId">Service ID.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder ForService(string serviceId) => ForSubject($"service:{serviceId}", TokenType.Service);
 
     /// <summary>
-    /// 添加能力。
+    /// Adds a capability.
     /// </summary>
-    /// <param name="capability">能力字符串。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="capability">Capability string.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder WithCapability(string capability)
     {
         _capabilities.Add(capability);
@@ -58,10 +58,10 @@ public sealed class TokenBuilder
     }
 
     /// <summary>
-    /// 设置信任级别。
+    /// Sets the trust level.
     /// </summary>
-    /// <param name="trustLevel">信任级别。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="trustLevel">Trust level.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder WithTrustLevel(int trustLevel)
     {
         _trustLevel = trustLevel;
@@ -69,10 +69,10 @@ public sealed class TokenBuilder
     }
 
     /// <summary>
-    /// 设置有效期。
+    /// Sets the lifetime.
     /// </summary>
-    /// <param name="lifetime">有效期。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="lifetime">Lifetime.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder WithLifetime(TimeSpan lifetime)
     {
         _lifetime = lifetime;
@@ -80,10 +80,10 @@ public sealed class TokenBuilder
     }
 
     /// <summary>
-    /// 添加委托来源。
+    /// Adds a delegation source.
     /// </summary>
-    /// <param name="principal">委托主体。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="principal">Delegation subject.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder WithDelegationFrom(string principal)
     {
         _delegationChain.Add(principal);
@@ -91,10 +91,10 @@ public sealed class TokenBuilder
     }
 
     /// <summary>
-    /// 设置设备绑定。
+    /// Sets the device binding.
     /// </summary>
-    /// <param name="deviceBinding">设备绑定。</param>
-    /// <returns>构建器。</returns>
+    /// <param name="deviceBinding">Device binding.</param>
+    /// <returns>Builder.</returns>
     public TokenBuilder WithDeviceBinding(string deviceBinding)
     {
         _deviceBinding = deviceBinding;
@@ -102,15 +102,15 @@ public sealed class TokenBuilder
     }
 
     /// <summary>
-    /// 构建并签发令牌。
+    /// Builds and issues the token.
     /// </summary>
-    /// <param name="ct">取消令牌。</param>
-    /// <returns>JWT 字符串。</returns>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>JWT string.</returns>
     public Task<string> BuildAsync(CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_subject))
         {
-            throw new InvalidOperationException("必须先设置令牌主体。");
+            throw new InvalidOperationException("The token subject must be set first.");
         }
 
         return _tokenManager.IssueTokenAsync(_subject, _tokenType, _capabilities, _trustLevel, _lifetime, _delegationChain, _deviceBinding, ct);

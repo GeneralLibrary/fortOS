@@ -3,28 +3,28 @@ using GNAS.Core;
 namespace GNAS.Security.Models;
 
 /// <summary>
-/// 表示 NasToken 的结构化载荷。
+/// Represents the structured payload of a NasToken.
 /// </summary>
 public sealed record NasTokenPayload
 {
-    /// <summary>签发者。</summary>
+    /// <summary>Issuer.</summary>
     public required string Iss { get; init; }
-    /// <summary>主体。</summary>
+    /// <summary>Subject.</summary>
     public required string Sub { get; init; }
-    /// <summary>签发时间。</summary>
+    /// <summary>Issued at.</summary>
     public DateTimeOffset Iat { get; init; }
-    /// <summary>过期时间。</summary>
+    /// <summary>Expiration time.</summary>
     public DateTimeOffset Exp { get; init; }
-    /// <summary>令牌类型。</summary>
+    /// <summary>Token type.</summary>
     public TokenType TokenType { get; init; }
-    /// <summary>信任级别，范围 0 到 5。</summary>
+    /// <summary>Trust level, ranging from 0 to 5.</summary>
     public int TrustLevel { get; init; }
-    /// <summary>能力集合。</summary>
+    /// <summary>Capability set.</summary>
     public NAbilitySet Capabilities { get; init; } = new();
-    /// <summary>委托链。</summary>
+    /// <summary>Delegation chain.</summary>
     public string[] DelegationChain { get; init; } = [];
-    /// <summary>设备绑定。</summary>
+    /// <summary>Device binding.</summary>
     public string? DeviceBinding { get; init; }
-    /// <summary>JWT 标识。</summary>
+    /// <summary>JWT identifier.</summary>
     public required string Jti { get; init; }
 }

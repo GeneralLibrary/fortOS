@@ -1,24 +1,24 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 令牌类型。
+/// Token type.
 /// </summary>
 public enum TokenType
 {
     /// <summary>
-    /// 访问令牌。
+    /// Access token.
     /// </summary>
     Access,
     /// <summary>
-    /// 会话令牌。
+    /// Session token.
     /// </summary>
     Session,
     /// <summary>
-    /// Agent 令牌。
+    /// Agent token.
     /// </summary>
     Agent,
     /// <summary>
-    /// 服务令牌。
+    /// Service token.
     /// </summary>
     Service,
 }

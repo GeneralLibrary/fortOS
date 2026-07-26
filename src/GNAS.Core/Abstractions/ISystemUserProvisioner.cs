@@ -1,15 +1,16 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 系统用户供给抽象。
-/// 用于在 GNAS 内部用户（SQLite）创建或删除时，将账户桥接到底层系统
-/// （如 Linux 系统用户 + Samba 用户数据库），使共享协议客户端可以使用同一套凭据认证。
-/// 实现必须是尽力而为的：供给失败不应阻断 GNAS 内部用户的生命周期操作。
+/// System user provisioning abstraction.
+/// Used to bridge accounts to the underlying system (e.g., Linux system users + Samba user database)
+/// when GNAS internal users (SQLite) are created or deleted, so that sharing protocol clients
+/// can authenticate with the same credentials.
+/// Implementations must be best-effort: provisioning failure should not block the GNAS user lifecycle.
 /// </summary>
 public interface ISystemUserProvisioner
 {
-    /// <summary>为指定用户名和明文密码供给系统侧账户（幂等）。</summary>
+    /// <summary>Provision a system-side account for the given username and plaintext password (idempotent).</summary>
     Task ProvisionAsync(string username, string password, CancellationToken ct);
-    /// <summary>移除指定用户名的系统侧账户（幂等）。</summary>
+    /// <summary>Remove the system-side account for the given username (idempotent).</summary>
     Task RemoveAsync(string username, CancellationToken ct);
 }

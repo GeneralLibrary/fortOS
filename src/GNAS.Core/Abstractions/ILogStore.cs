@@ -1,12 +1,12 @@
 namespace GNAS.Core;
 
-/// <summary>日志存储接口。</summary>
+/// <summary>Log store interface.</summary>
 public interface ILogStore
 {
-    /// <summary>追加日志。</summary>
+    /// <summary>Append a log entry.</summary>
     Task AppendAsync(LogEntry entry, CancellationToken ct);
-    /// <summary>批量追加日志。</summary>
+    /// <summary>Batch append log entries.</summary>
     Task AppendBatchAsync(IEnumerable<LogEntry> entries, CancellationToken ct);
-    /// <summary>查询日志。</summary>
+    /// <summary>Query logs.</summary>
     Task<IReadOnlyList<LogEntry>> QueryAsync(LogQuery query, CancellationToken ct);
 }

@@ -3,10 +3,10 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Share.Services;
 
-/// <summary>NFS exports 配置生成器。</summary>
+/// <summary>NFS exports configuration generator.</summary>
 public sealed class NfsExportsGenerator
 {
-    /// <summary>生成 /etc/exports 内容。</summary>
+    /// <summary>Generate /etc/exports content.</summary>
     public string Generate(IEnumerable<ShareDefinition> shares)
     {
         var sb = new StringBuilder();

@@ -2,9 +2,9 @@ using GNAS.Core;
 
 namespace GNAS.Observability.Alerts.Notifiers;
 
-/// <summary>告警通知器接口。</summary>
+/// <summary>Alert notifier interface.</summary>
 public interface INotifier
 {
-    /// <summary>发送活跃告警通知。</summary>
+    /// <summary>Send active alert notification.</summary>
     Task NotifyAsync(ActiveAlert alert, AlertRule rule, CancellationToken ct);
 }

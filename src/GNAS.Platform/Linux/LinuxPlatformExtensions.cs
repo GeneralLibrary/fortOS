@@ -5,14 +5,14 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// Linux 平台服务注册扩展。
+/// Linux platform service registration extensions.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public static class LinuxPlatformExtensions
 {
-    /// <summary>注册 Linux 平台服务。</summary>
-    /// <param name="services">服务集合。</param>
-    /// <returns>服务集合。</returns>
+    /// <summary>Registers Linux platform services.</summary>
+    /// <param name="services">Service collection.</param>
+    /// <returns>Service collection.</returns>
     public static IServiceCollection AddLinuxPlatform(this IServiceCollection services)
     {
         services.AddSingleton<IDiskManager, LinuxDiskManager>();

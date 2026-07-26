@@ -4,14 +4,14 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Alerts.Notifiers;
 
-/// <summary>基于 HTTP Webhook 的告警通知器。</summary>
+/// <summary>Alert notifier based on HTTP Webhook.</summary>
 public sealed class WebhookNotifier : INotifier
 {
     private readonly IGnasConfiguration _configuration;
     private readonly HttpClient _httpClient;
     private readonly ILogger<WebhookNotifier>? _logger;
 
-    /// <summary>初始化 Webhook 通知器。</summary>
+    /// <summary>Initialize Webhook notifier.</summary>
     public WebhookNotifier(IGnasConfiguration configuration, HttpClient? httpClient = null, ILogger<WebhookNotifier>? logger = null)
     {
         _configuration = configuration;
@@ -25,7 +25,7 @@ public sealed class WebhookNotifier : INotifier
         var urls = _configuration.GetArray("alerts:webhook:urls");
         if (urls.Length == 0)
         {
-            _logger?.LogWarning("Webhook 未配置，跳过告警推送。 ");
+            _logger?.LogWarning("Webhook not configured, skipping alert push.");
             return;
         }
 
@@ -37,7 +37,7 @@ public sealed class WebhookNotifier : INotifier
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger?.LogWarning(ex, "Webhook 告警推送失败。 ");
+                _logger?.LogWarning(ex, "Webhook alert push failed.");
             }
         }
     }

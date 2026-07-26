@@ -1,136 +1,276 @@
-# GNAS — 鸿蒙启发的新一代 NAS 系统
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-Linux%20x64%20%7C%20ARM64-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/runtime-.NET%2010-512BD4?logo=dotnet" alt=".NET 10">
+  <img src="https://img.shields.io/badge/ubuntu-24.04%20runner-brightgreen?logo=githubactions" alt="CI">
+  <a href="https://github.com/GeneralLibrary/gnas/actions/workflows/ci.yml"><img src="https://github.com/GeneralLibrary/gnas/actions/workflows/ci.yml/badge.svg" alt="GNAS CI"></a>
+  <img src="https://img.shields.io/badge/docker-compose%20v2-2496ED?logo=docker" alt="Docker Compose v2">
+  <img src="https://img.shields.io/github/license/GeneralLibrary/gnas" alt="License">
+</p>
 
-GNAS（General NAS）是一个以 **.NET 10 + Docker + OpenTelemetry** 构建的 Linux NAS 系统。它借鉴鸿蒙分布式安全思想，将身份、能力（NAbility）、数据分级与不可篡改审计链组合起来，为家庭、工作室与边缘设备提供可自部署、可观测、容器原生的 NAS 管理体验。
+<p align="center">
+  <h1 align="center">GNAS — General NAS</h1>
+  <p align="center"><strong>A modern, security-first Linux NAS operating system.</strong></p>
+  <p align="center">Built with .NET 10 · Container-native · Fully observable</p>
+</p>
 
-## 核心特性
+---
 
-- **Linux 原生运行**：支持 Linux x64 与 Linux ARM64，发行镜像基于 Debian 12。
-- **统一 API 网关**：REST/gRPC 暴露健康、磁盘、共享、服务、Agent、审计与告警能力。
-- **鸿蒙式安全模型**：NasToken + NAbility + NasDataLevel + ACL 联合决策。
-- **Service Bus 服务管理**：统一监管原生进程与 Docker Compose 容器服务。
-- **Agent 深度集成**：Agent Catalog、Token Broker、Compose Generator 与日志采集闭环。
-- **全链路可观测性**：结构化日志、Loki 接入、告警规则、审计链完整性校验。
-- **CLI 优先体验**：`gnas` 支持批处理、JSON 输出与终端 TUI。
+## What is GNAS?
 
-## 快速开始
+GNAS is an open-source NAS (Network Attached Storage) operating system designed for **home labs**, **SMB/studios**, and **edge deployments**. It runs bare-metal via a Debian 12 ISO or inside Docker for evaluation, exposing every management surface through a unified REST/gRPC API and a fast terminal CLI.
 
-### 系统要求
+Unlike traditional NAS software, GNAS treats **Docker containers as first-class citizens** — deploy, supervise, and audit agents with the same security model that governs native services (SMB, NFS, rsync backups, snapshots).
 
-| 项目 | 要求 |
-|------|------|
-| 操作系统 | Linux x64 / Linux ARM64；ISO 安装目标为 Debian 12 x64 |
-| 运行时 | .NET 10 SDK（开发）或 .NET 10 Runtime（部署） |
-| 容器 | Docker Engine + Docker Compose v2 |
-| 权限 | Linux 部署建议具备 `/srv/nas`、Docker socket 与必要磁盘管理权限 |
+<p align="center"><em>Inspired by HarmonyOS distributed security · Patterns from Unraid, TrueNAS SCALE, and Synology DSM</em></p>
 
-### Docker Compose 启动
+---
+
+## Features
+
+<table>
+<tr>
+<td width="50%">
+
+### Storage & File Systems
+- Disk discovery, partitioning, RAID creation (mdadm)
+- ext4 / XFS / Btrfs / ZFS formatting
+- SMART monitoring and disk health prediction
+- Storage quotas per share with enforcement
+
+### File Sharing
+- **SMB** — Samba with automatic `smbpasswd` sync
+- **NFS** — `/etc/exports` generation and `exportfs` reload
+- **FTP** — vsftpd config generation
+- Recycle bin with time-based retention policies
+
+### Data Protection
+- Snapshot scheduling (btrfs / LVM thin)
+- Rsync backup engine with cron scheduling
+- Cloud backup (rclone-compatible targets)
+- Point-in-time restore with dry-run support
+
+</td>
+<td width="50%">
+
+### Security Model
+- **NasToken** — capability-based access tokens (ATL3)
+- **NAbility** — fine-grained permissions (`storage:share:media:read`)
+- **Data classification levels** — internal, confidential, public
+- ACL-enforced file operations
+- Immutable audit chain (HMAC-chained SQLite vault)
+
+### Container Orchestration
+- Agent Catalog — YAML-based app templates
+- Token Broker — automatic Agent token issuance
+- Compose Generator — hardened `docker-compose.yml` with `read_only`, `no-new-privileges`, `cap_drop: ALL`
+- Unified lifecycle management (native + container services)
+
+### Observability
+- Five-stage log pipeline (parse → filter → classify → enrich → dispatch)
+- Loki integration for Agent log aggregation
+- Alert engine with event, metric, and availability rules
+- Prometheus `/metrics` endpoint
+- Full TraceId propagation across all layers
+
+</td>
+</tr>
+</table>
+
+### CLI & API
+
+| Interface | Description |
+|-----------|-------------|
+| `gnas` CLI | Interactive TUI dashboard + batch/JSON mode — pipeline-friendly |
+| REST API | ASP.NET Core controllers at `http://localhost:5000/api/` |
+| gRPC | High-performance IPC for storage, share, agent, and audit services |
+| Web Dashboard | Optional static dashboard served at `/dashboard` |
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+| Dependency | Minimum |
+|------------|---------|
+| Operating System | Linux x64 or ARM64 (kernel ≥ 5.15) |
+| Runtime | .NET 10 SDK or Runtime |
+| Docker | Docker Engine 24+ with Compose v2 |
+| Permissions | Access to `/srv/nas`, Docker socket, and block devices |
+
+### Docker Compose (Evaluation)
 
 ```bash
+git clone https://github.com/GeneralLibrary/gnas.git
+cd gnas
 docker compose up -d --build
-curl http://localhost:5000/api/health
 ```
 
-预期返回：
+```bash
+# Verify the API is alive
+curl http://localhost:5000/api/health
+```
 
 ```json
 {"status":"ok"}
 ```
 
-停止服务：
+> **Note:** The Docker Compose file uses `network_mode: host`, mounts `/srv/nas` as the data root, and binds the Docker socket. For NFS kernel-server support, use the bare-metal ISO installation.
 
 ```bash
+# Stop
 docker compose down
 ```
 
-> 默认 Compose 使用 host 网络、`/srv/nas` 数据根与 Docker socket，以便 GNAS 管理宿主服务与 Agent 容器。
-> Docker 模式不提供内核 NFS 服务；NFS 共享仅在 Debian ISO 裸机安装中启用。
+### Debian 12 ISO (Bare-Metal Installation)
 
-### Debian 12 ISO 安装
-
-仓库提供基于 Debian `live-build` 的 amd64 混合启动镜像。镜像同时支持
-Legacy BIOS 和 UEFI，包含 Debian 图形安装器、GNAS API/CLI、Docker Compose v2
-以及 NAS 所需的磁盘和共享工具。
-
-在 Linux x64 构建机上安装 Docker，然后执行：
+Build a bootable hybrid ISO image (Legacy BIOS + UEFI):
 
 ```bash
 VERSION=1.0.0 bash eng/iso/build.sh
 ```
 
-构建过程在固定的 Debian 12 容器中完成，宿主机不会安装 `live-build` 或 .NET SDK。
-产物写入 `artifacts/iso/`：
+Artifacts are written to `artifacts/iso/`:
 
-```text
+```
 gnas-debian12-1.0.0-amd64.iso
 gnas-debian12-1.0.0-amd64.iso.sha256
 ```
 
-验证并写入 U 盘（请将 `/dev/sdX` 替换为整块 U 盘设备，写入会清除其数据）：
+Write to USB, boot, and follow the Debian installer:
 
 ```bash
-cd artifacts/iso
 sha256sum --check gnas-debian12-1.0.0-amd64.iso.sha256
 sudo dd if=gnas-debian12-1.0.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-从 U 盘启动设备，选择 Debian Installer，按向导完成系统盘、网络和管理员账户配置。
-安装后的 GNAS 由 `gnas.service` 自动启动，默认监听 `http://0.0.0.0:5000`；
-数据根目录为 `/srv/nas`。也可以在 GitHub Actions 中手动运行 **GNAS Debian ISO**
-工作流下载 ISO 与 SHA-256 校验文件。
+GNAS starts automatically via `gnas.service` after installation, listening on `http://0.0.0.0:5000`.
 
-## 项目结构（16 个项目）
+> Pre-built ISOs are also available from the [GNAS Debian ISO](https://github.com/GeneralLibrary/gnas/actions/workflows/iso.yml) GitHub Actions workflow.
 
-```text
-GNAS.slnx
-├── src/
-│   ├── GNAS.Core/              # 核心模型、抽象、数据库与配置
-│   ├── GNAS.Platform/          # Linux 平台实现
-│   ├── GNAS.Security/          # NasToken、身份、权限与密钥存储
-│   ├── GNAS.ServiceBus/        # 服务注册、监管、事件总线、健康检查
-│   ├── GNAS.Agent/             # Agent 目录、令牌代理、Compose 生成器
-│   ├── GNAS.Modules/           # 模块宿主与模块基类
-│   ├── GNAS.Modules.Storage/   # 磁盘、RAID、文件系统模块
-│   ├── GNAS.Modules.Share/     # SMB/NFS/FTP/回收站/配额模块
-│   ├── GNAS.Modules.Network/   # 网络与防火墙配置模块
-│   ├── GNAS.Modules.Agent/     # Agent 编排模块
-│   ├── GNAS.Modules.Backup/    # 快照、rsync、云备份模块
-│   ├── GNAS.Modules.Update/    # OTA 与版本检查模块
-│   ├── GNAS.Observability/     # 日志、审计链、告警、Serilog
-│   ├── GNAS.Api/               # ASP.NET Core REST/gRPC 网关
-│   └── GNAS.Cli/               # gnas 命令列与 TUI
-└── tests/
-    └── GNAS.Tests.Integration/ # 集成与 E2E 测试
+---
+
+## CLI Usage
+
+```bash
+# System status dashboard (TUI)
+gnas
+
+# Health and metrics
+gnas status
+
+# Disk management
+gnas disk list --output json
+gnas disk format /dev/sdb --fs btrfs --label nas-pool
+
+# Create and manage shares
+gnas share create media --path /srv/nas/media --protocols smb,nfs
+gnas share list --output table
+
+# Deploy an Agent container
+gnas agent deploy nginx-basic \
+  --image nginx:alpine \
+  --agent-id web-nginx \
+  --volume /srv/nas/www:/usr/share/nginx/html:ro
+
+# Backup workflows
+gnas backup task set media-backup \
+  --source /srv/nas/media \
+  --target /srv/nas/backup/media \
+  --cron interval:60
+gnas backup task run media-backup
+
+# Restore with dry-run
+gnas recovery start /srv/nas/media \
+  --source /srv/nas/backup/media \
+  --mode rsync --dry-run --confirm
+
+# File operations
+gnas file write /srv/nas/demo/hello.txt --content "hello gnas" --overwrite
+gnas file read /srv/nas/demo/hello.txt
+
+# Audit chain verification
+gnas audit verify --output json
+
+# Remote server
+gnas --server http://192.168.1.100:5000 --token "$GNAS_TOKEN" service list
 ```
 
-## 阶段开发顺序
+---
 
-| 阶段 | Issue | 内容 |
-|------|-------|------|
-| Phase 1 | [#2](../../issues/2) | Core contracts、配置、数据库基础 |
-| Phase 2 | [#3](../../issues/3) | Platform 抽象与 Linux 实现 |
-| Phase 3 | [#4](../../issues/4) | Security、NasToken、NAbility、Identity |
-| Phase 4 | [#5](../../issues/5) | Service Bus、Registry、Supervisor、EventBus |
-| Phase 5 | [#6](../../issues/6) | Storage/Share/Network/Backup/Update 模块 |
-| Phase 6 | [#7](../../issues/7) | Agent Catalog、Token Broker、Compose Generator |
-| Phase 7 | [#8](../../issues/8) | API 网关、gRPC、CLI 命令树 |
-| Phase 8 | [#9](../../issues/9) | Observability、日志、告警、审计链 |
-| Phase 9 | [#10](../../issues/10) | Docker/CI、README、集成与 E2E 测试完善 |
+## Architecture
 
-## 依赖注入注册顺序
+```
+┌──────────────────────────────────────────────────────────────┐
+│  PRESENTATION       gnas CLI (TUI + Batch)  │  Web Dashboard │
+├──────────────────────────────────────────────────────────────┤
+│  API GATEWAY        REST (ASP.NET Core)  │  gRPC (IPC)       │
+├──────────────────────────────────────────────────────────────┤
+│  APPLICATION        Storage │ Share │ Net │ Agent │ Backup   │
+│  MODULES            Update  │ Modules Host                    │
+├──────────────────────────────────────────────────────────────┤
+│  SECURITY           NasToken · NAbility · DataLevel · Audit  │
+├──────────────────────────────────────────────────────────────┤
+│  SERVICE BUS        Registry · Supervisor · Health · Events   │
+├──────────────────────────────────────────────────────────────┤
+│  AGENT INTEGRATION  Catalog · Token Broker · Compose Gen     │
+├──────────────────────────────────────────────────────────────┤
+│  PLATFORM           IDiskMgr · IFS · INetMgr · IProcMgr      │
+│  ABSTRACTION        Linux x64  │  Linux ARM64                 │
+├──────────────────────────────────────────────────────────────┤
+│  OPERATING SYSTEM   Debian 12  │  Compatible Linux Distros    │
+└──────────────────────────────────────────────────────────────┘
+       │                                                      │
+       ▼                                                      ▼
+┌──────────────────┐                              ┌──────────────────────┐
+│  OBSERVABILITY   │                              │  CROSS-CUTTING       │
+│  LogPipeline     │                              │  Trace Propagation   │
+│  AuditChain      │                              │  Security Audit      │
+│  AlertEngine     │                              └──────────────────────┘
+└──────────────────┘
+```
 
-| 注册方法 | 所属项目 | 主要职责 |
-|----------|----------|----------|
-| `AddGnasCore` | `GNAS.Core` | `IDatabaseProvider`、`IGnasConfiguration` |
-| `AddPlatformServices` | `GNAS.Platform` | 磁盘、文件系统、进程、网络、用户平台实现 |
-| `AddGnasSecurity` | `GNAS.Security` | 密钥存储、Token、Identity、Permission Engine |
-| `AddServiceBus` | `GNAS.ServiceBus` | EventBus、Registry、Supervisor、HealthMonitor |
-| `AddModuleHost` | `GNAS.Modules` | 模块发现、初始化与生命周期管理 |
-| `AddAgentServices` | `GNAS.Agent` | Agent Catalog、Token Broker、Compose Generator、日志采集 |
-| `AddObservability` | `GNAS.Observability` | LogPipeline、AuditChain、AlertEngine、Serilog |
+| Layer | Project | Responsibility |
+|-------|---------|----------------|
+| **Core** | `GNAS.Core` | Models, abstractions, SQLite, configuration |
+| **Platform** | `GNAS.Platform` | Linux disk, filesystem, process, network, user management |
+| **Security** | `GNAS.Security` | Token issuance, identity, capabilities, key storage |
+| **Service Bus** | `GNAS.ServiceBus` | Service registry, supervisor, event bus, health checks |
+| **Modules** | `GNAS.Modules.*` | Storage, Share (SMB/NFS/FTP), Network, Agent, Backup, Update |
+| **Agent** | `GNAS.Agent` | Agent catalog, token broker, Compose generator, log collector |
+| **Observability** | `GNAS.Observability` | Log pipeline, audit chain, alert engine, Serilog, Prometheus |
+| **API** | `GNAS.Api` | REST controllers, gRPC services, middleware (auth, rate-limit, audit, idempotency) |
+| **CLI** | `GNAS.Cli` | Interactive TUI, batch commands, Spectre.Console rendering |
 
-典型 API 启动顺序：
+For a detailed architectural breakdown, see [docs/gnas-architecture.md](docs/gnas-architecture.md).
+
+---
+
+## Development
+
+```bash
+# Clone and restore
+git clone https://github.com/GeneralLibrary/gnas.git
+cd gnas
+dotnet restore GNAS.slnx
+
+# Build (warnings as errors)
+dotnet build GNAS.slnx -c Release -warnaserror:CS
+
+# Run all tests
+dotnet test GNAS.slnx -c Release
+
+# Run only unit tests (no Docker required)
+dotnet test GNAS.slnx -c Release --filter "Category!=Integration"
+
+# Run integration suite (requires Docker)
+dotnet test tests/GNAS.Tests.Integration -c Release --filter "Category=Integration"
+```
+
+### Service Registration
 
 ```csharp
+// Typical startup order in Program.cs
 services.AddGnasCore();
 services.AddPlatformServices();
 services.AddGnasSecurity(configuration);
@@ -140,94 +280,78 @@ services.AddAgentServices();
 services.AddObservability(configuration);
 ```
 
-## CLI 使用示例
+### Environment Variables
 
-查看系统状态：
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GNAS_DATA_ROOT` | `/srv/nas` | Data root directory |
+| `GNAS_CONFIG_PATH` | `/srv/nas/config/nas.yaml` | Configuration file path |
+| `ASPNETCORE_URLS` | `http://0.0.0.0:5000` | API listen address |
+| `ASPNETCORE_ENVIRONMENT` | `Production` | ASP.NET environment |
+| `GNAS_TOKEN` | — | CLI authentication token |
+| `GNAS_API_ENDPOINT` | `http://host.docker.internal:5000` | Agent API endpoint |
 
-```bash
-gnas status
+---
+
+## Project Structure
+
+```
+GNAS.slnx
+├── src/
+│   ├── GNAS.Core/                  Core models, abstractions, database, configuration
+│   ├── GNAS.Platform/              Linux platform implementations
+│   ├── GNAS.Security/              NasToken, identity, permissions, key store
+│   ├── GNAS.ServiceBus/            Service registry, supervisor, event bus, health
+│   ├── GNAS.Agent/                 Agent catalog, token broker, Compose generator
+│   ├── GNAS.Modules/               Module host and base class
+│   ├── GNAS.Modules.Storage/       Disk, RAID, filesystem modules
+│   ├── GNAS.Modules.Share/         SMB, NFS, FTP, recycle bin, quotas
+│   ├── GNAS.Modules.Network/       Network and firewall configuration
+│   ├── GNAS.Modules.Agent/         Agent orchestration module
+│   ├── GNAS.Modules.Backup/        Snapshots, rsync, cloud backup
+│   ├── GNAS.Modules.Update/        OTA updates and version checks
+│   ├── GNAS.Observability/         Logging, audit chain, alerts, Serilog
+│   ├── GNAS.Api/                   ASP.NET Core REST/gRPC gateway
+│   └── GNAS.Cli/                   Command line tool and TUI
+├── tests/
+│   └── GNAS.Tests.Integration/     Integration and E2E tests
+├── eng/iso/                        Debian ISO build scripts
+├── docs/                           Architecture and design documentation
+├── docker-compose.yml              Reference Compose deployment
+├── docker-compose.test.yml         E2E test Compose file
+└── Dockerfile                      Multi-stage container build
 ```
 
-以 JSON 输出磁盘列表：
+---
 
-```bash
-gnas disk list --output json
-```
+## Roadmap
 
-指定服务地址与令牌：
+| Milestone | Focus |
+|-----------|-------|
+| **v1.0** (current) | Core platform, security model, service bus, storage/share/backup modules, Agent orchestration, CLI + API |
+| **v1.1** | Web management UI, multi-node clustering, LDAP integration |
+| **v1.2** | Kubernetes Agent runtime, S3-compatible object storage, deduplication |
+| **v2.0** | Distributed NAS fabric, cross-site replication, plugin marketplace |
 
-```bash
-gnas --server http://localhost:5000 --token "$NAS_TOKEN" service list
-```
+---
 
-审计链校验：
+## Contributing
 
-```bash
-gnas audit verify --output json
-```
+Contributions are welcome. Before submitting a PR, please:
 
-部署 Agent（模板 + 镜像 + 数据卷）：
+1. Open an issue to discuss the proposed change.
+2. Ensure `dotnet build GNAS.slnx -c Release -warnaserror:CS` passes with zero warnings.
+3. Run `dotnet test GNAS.slnx -c Release` and verify all tests pass.
+4. Follow the existing code style and XML documentation conventions.
 
-```bash
-gnas agent deploy nginx-basic --image nginx:alpine --agent-id web-nginx --volume /srv/nas/agents-data/web-nginx:/data:rw
-```
+---
 
-文件管理（创建、读取、软删除、恢复）：
+## License
 
-```bash
-gnas file write /srv/nas/demo/hello.txt --content "hello gnas" --overwrite
-gnas file read /srv/nas/demo/hello.txt
-gnas file delete /srv/nas/demo/hello.txt --confirm
-```
+GNAS is open-source software. See [LICENSE](LICENSE) for details.
 
-备份任务与手动执行：
+---
 
-```bash
-gnas backup task set media-backup --source /srv/nas/media --target /srv/nas/backup/media --cron interval:60
-gnas backup task run media-backup
-gnas backup run list --task-id media-backup
-```
-
-恢复流程（rsync/snapshot）：
-
-```bash
-gnas recovery start /srv/nas/media --source /srv/nas/backup/media --mode rsync --dry-run --confirm
-```
-
-不带参数运行且终端可交互时，`gnas` 会进入 TUI 仪表盘。
-
-## 开发与验证
-
-还原、构建：
-
-```bash
-dotnet restore GNAS.slnx
-dotnet build GNAS.slnx
-```
-
-运行全部测试：
-
-```bash
-dotnet test
-```
-
-仅运行集成/E2E 测试：
-
-```bash
-dotnet test tests/GNAS.Tests.Integration --filter "Category=Integration"
-```
-
-CI 使用 `.github/workflows/ci.yml` 执行矩阵构建、非集成测试、发布验证与 Docker 集成测试。Docker 相关 E2E 会先检测 Docker 可用性；不可用时安全跳过该测试路径。
-
-## 配置与数据目录
-
-常用环境变量：
-
-```bash
-GNAS_DATA_ROOT=/srv/nas
-GNAS_CONFIG_PATH=/srv/nas/config/nas.yaml
-ASPNETCORE_URLS=http://0.0.0.0:5000
-ASPNETCORE_ENVIRONMENT=Production
-```
-
-数据根目录下会存放 SQLite 数据库、密钥存储、Agent Compose 文件、日志与模块数据。测试会将数据根指向 `TestArtifacts/` 下的隔离目录，避免污染宿主系统。
+<p align="center">
+  <sub>Built with ❤️ for the home lab community.</sub>
+</p>

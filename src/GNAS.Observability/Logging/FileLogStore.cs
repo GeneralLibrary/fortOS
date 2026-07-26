@@ -6,7 +6,7 @@ using GNAS.Core;
 
 namespace GNAS.Observability.Logging;
 
-/// <summary>基于 JSONL 文件和日期分片的日志存储。</summary>
+/// <summary>Log store based on JSONL files and date sharding.</summary>
 public sealed class FileLogStore : ILogStore
 {
     private const long DefaultShardBytes = 100L * 1024 * 1024;
@@ -16,7 +16,7 @@ public sealed class FileLogStore : ILogStore
     private readonly ConcurrentDictionary<LogCategory, SemaphoreSlim> _locks = new();
     private DateOnly _lastSweepDate = DateOnly.MinValue;
 
-    /// <summary>初始化文件日志存储。</summary>
+    /// <summary>Initialize file log store.</summary>
     public FileLogStore(IGnasConfiguration? configuration = null, string? dataRoot = null, long maxShardBytes = DefaultShardBytes)
     {
         var root = dataRoot ?? configuration?.GetValue("logging:data_root") ?? Environment.GetEnvironmentVariable("GNAS_DATA_ROOT") ?? "/srv/nas";
@@ -78,7 +78,7 @@ public sealed class FileLogStore : ILogStore
             .ToArray();
     }
 
-    /// <summary>压缩超过七天的日志文件。</summary>
+    /// <summary>Compress log files older than seven days.</summary>
     public async Task CompressOldFilesAsync(CancellationToken ct = default)
     {
         if (!Directory.Exists(_root)) return;

@@ -3,21 +3,21 @@ using GNAS.Security.Models;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>固定窗口限流中间件。</summary>
+/// <summary>Fixed window rate limit middleware.</summary>
 public sealed class RateLimitMiddleware
 {
     private readonly RequestDelegate next;
     private readonly IConfiguration configuration;
     private readonly ConcurrentDictionary<string, Counter> counters = new(StringComparer.Ordinal);
 
-    /// <summary>初始化限流中间件。</summary>
+    /// <summary>Initializes the rate limit middleware.</summary>
     public RateLimitMiddleware(RequestDelegate next, IConfiguration configuration)
     {
         this.next = next;
         this.configuration = configuration;
     }
 
-    /// <summary>处理请求。</summary>
+    /// <summary>Process request.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         var limit = IsLogin(context.Request.Path)
@@ -34,7 +34,7 @@ public sealed class RateLimitMiddleware
         {
             var retry = Math.Max(1, (int)(counter.WindowStart.AddMinutes(1) - now).TotalSeconds);
             context.Response.Headers.RetryAfter = retry.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            await ApiProblem.WriteAsync(context, StatusCodes.Status429TooManyRequests, "RATE_LIMITED", "请求过于频繁。").ConfigureAwait(false);
+            await ApiProblem.WriteAsync(context, StatusCodes.Status429TooManyRequests, "RATE_LIMITED", "Request too frequent.").ConfigureAwait(false);
             return;
         }
 

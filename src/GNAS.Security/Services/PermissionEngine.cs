@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 namespace GNAS.Security.Services;
 
 /// <summary>
-/// 基于 NasToken、NAbility、ACL 与数据级别的权限决策引擎。
+/// Permission decision engine based on NasToken, NAbility, ACL, and data levels.
 /// </summary>
 public sealed class PermissionEngine : IPermissionEngine
 {
@@ -20,11 +20,11 @@ public sealed class PermissionEngine : IPermissionEngine
     private readonly Dictionary<string, Dictionary<string, NAbilitySet>> _memoryAcls = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 初始化权限决策引擎。
+    /// Initialize the permission engine.
     /// </summary>
-    /// <param name="tokenManager">令牌管理器。</param>
-    /// <param name="database">可选数据库提供器。</param>
-    /// <param name="eventBus">可选事件总线。</param>
+    /// <param name="tokenManager">Token manager.</param>
+    /// <param name="database">Optional database provider.</param>
+    /// <param name="eventBus">Optional event bus.</param>
     public PermissionEngine(ITokenManager tokenManager, IDatabaseProvider? database = null, IEventBus? eventBus = null)
     {
         _tokenManager = tokenManager;
@@ -33,11 +33,11 @@ public sealed class PermissionEngine : IPermissionEngine
     }
 
     /// <summary>
-    /// 添加内存 ACL 规则。
+    /// Adds an in-memory ACL rule.
     /// </summary>
-    /// <param name="resourcePath">资源路径。</param>
-    /// <param name="principal">主体。</param>
-    /// <param name="capabilities">允许能力。</param>
+    /// <param name="resourcePath">Resource path.</param>
+    /// <param name="principal">Subject.</param>
+    /// <param name="capabilities">Allowed capabilities.</param>
     public void AddAcl(string resourcePath, string principal, IEnumerable<string> capabilities)
     {
         var set = new NAbilitySet();
@@ -64,7 +64,7 @@ public sealed class PermissionEngine : IPermissionEngine
         var validation = await _tokenManager.ValidateTokenAsync(token, ct).ConfigureAwait(false);
         if (!validation.IsValid || validation.Payload is not NasTokenPayload payload)
         {
-            return await DenyAsync(requiredCapability, dataLevel, validation.Subject, resourcePath, validation.ErrorMessage ?? "令牌无效。", ct).ConfigureAwait(false);
+            return await DenyAsync(requiredCapability, dataLevel, validation.Subject, resourcePath, validation.ErrorMessage ?? "Token is invalid.", ct).ConfigureAwait(false);
         }
 
         if (payload.Capabilities.Satisfies(NAbilityConstants.AdminAll))
@@ -83,22 +83,22 @@ public sealed class PermissionEngine : IPermissionEngine
         var matched = payload.Capabilities.FirstOrDefault(capability => capability.Matches(required));
         if (matched is null)
         {
-            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "令牌不包含所需能力。", ct).ConfigureAwait(false);
+            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "Token does not contain the required capability.", ct).ConfigureAwait(false);
         }
 
         if (!await CheckAclAsync(payload, required, resourcePath, ct).ConfigureAwait(false))
         {
-            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "资源 ACL 拒绝访问。", ct).ConfigureAwait(false);
+            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "Resource ACL denied access.", ct).ConfigureAwait(false);
         }
 
         if (payload.TrustLevel < (int)dataLevel)
         {
-            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "信任级别不足。", ct).ConfigureAwait(false);
+            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "Insufficient trust level.", ct).ConfigureAwait(false);
         }
 
         if (!ValidateDelegationChain(payload.DelegationChain))
         {
-            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "委托链格式无效。", ct).ConfigureAwait(false);
+            return await DenyAsync(requiredCapability, dataLevel, payload.Sub, resourcePath, "Invalid delegation chain format.", ct).ConfigureAwait(false);
         }
 
         var result = new PermissionResult

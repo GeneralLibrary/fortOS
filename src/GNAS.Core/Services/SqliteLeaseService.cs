@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace GNAS.Core;
 
-/// <summary>以 SQLite 事务实现的、有 fencing token 的分布式租约。</summary>
+/// <summary>Distributed lease with fencing token, backed by SQLite transactions.</summary>
 public sealed class SqliteLeaseService
 {
     private readonly IDatabaseProvider _database;
@@ -94,5 +94,5 @@ ON CONFLICT(lease_name) DO UPDATE SET owner_id = excluded.owner_id, fencing_toke
     }
 }
 
-/// <summary>租约的不可伪造持有凭据。</summary>
+/// <summary>Non-forgeable lease credential handle.</summary>
 public sealed record LeaseHandle(string Name, string Owner, long FencingToken, DateTimeOffset ExpiresAt);

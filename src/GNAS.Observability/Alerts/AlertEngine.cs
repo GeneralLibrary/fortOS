@@ -8,7 +8,7 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace GNAS.Observability.Alerts;
 
-/// <summary>告警引擎和事件订阅后台服务。</summary>
+/// <summary>Alert engine and event subscription background service.</summary>
 public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -24,7 +24,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     private readonly Dictionary<string, DateTimeOffset> _metricSince = [];
     private IDisposable? _subscription;
 
-    /// <summary>初始化告警引擎。</summary>
+    /// <summary>Initialize the alert engine.</summary>
     public AlertEngine(IGnasConfiguration configuration, IDatabaseProvider database, IEventBus eventBus, IEnumerable<INotifier> notifiers)
     {
         _configuration = configuration;
@@ -80,7 +80,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
                 }
             }
 
-            await FireAsync(rule, $"事件规则 {rule.Name} 已触发：{envelope.Topic}", ct).ConfigureAwait(false);
+            await FireAsync(rule, $"Event rule {rule.Name} triggered: {envelope.Topic}", ct).ConfigureAwait(false);
         }
     }
 
@@ -112,7 +112,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
                 }
             }
 
-            await FireAsync(rule, $"指标规则 {rule.Name} 已触发：{metric.MetricName}={metric.Value}", ct).ConfigureAwait(false);
+            await FireAsync(rule, $"Metric rule {rule.Name} triggered: {metric.MetricName}={metric.Value}", ct).ConfigureAwait(false);
         }
     }
 
@@ -296,18 +296,18 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
 
     private static IReadOnlyList<AlertRule> CreateDefaultSloRules() =>
     [
-        SloRule("slo-backup-freshness", "备份新鲜度超标", "warning", "gnas_backup_freshness_hours", "gt", 24),
-        SloRule("slo-backup-failures", "备份失败", "critical", "gnas_backup_failure_total", "gt", 0),
-        SloRule("slo-protocol-health", "共享协议不可用", "critical", "gnas_protocol_health", "lt", 1),
-        SloRule("slo-agent-restarts", "Agent 重启风暴", "warning", "gnas_agent_restarts_total", "gt", 5),
-        SloRule("slo-http-errors", "HTTP 5xx 错误", "warning", "gnas_http_errors_total", "gt", 0),
+        SloRule("slo-backup-freshness", "Backup freshness exceeds threshold", "warning", "gnas_backup_freshness_hours", "gt", 24),
+        SloRule("slo-backup-failures", "Backup failure", "critical", "gnas_backup_failure_total", "gt", 0),
+        SloRule("slo-protocol-health", "Share protocol unavailable", "critical", "gnas_protocol_health", "lt", 1),
+        SloRule("slo-agent-restarts", "Agent restart storm", "warning", "gnas_agent_restarts_total", "gt", 5),
+        SloRule("slo-http-errors", "HTTP 5xx errors", "warning", "gnas_http_errors_total", "gt", 0),
     ];
 
     private static AlertRule SloRule(string id, string name, string severity, string metric, string op, double value) => new()
     {
         RuleId = id,
         Name = name,
-        Description = $"GNAS 默认 SLO 规则：{name}",
+        Description = $"GNAS default SLO rule: {name}",
         Severity = severity,
         Condition = new AlertCondition { Type = "metric", Metric = metric, Operator = op, Value = value },
         CooldownSeconds = 300,
@@ -315,7 +315,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
 
     private sealed class AlertRulesDocument
     {
-        /// <summary>规则集合。</summary>
+        /// <summary>Rule collection.</summary>
         public List<AlertRule> Rules { get; init; } = [];
     }
 }

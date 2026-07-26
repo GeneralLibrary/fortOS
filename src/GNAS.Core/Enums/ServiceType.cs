@@ -1,24 +1,24 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 服务宿主类型。
+/// Service host type.
 /// </summary>
 public enum ServiceType
 {
     /// <summary>
-    /// 原生操作系统进程。
+    /// Native OS process.
     /// </summary>
     Native,
     /// <summary>
-    /// 容器化服务。
+    /// Containerized service.
     /// </summary>
     Container,
     /// <summary>
-    /// .NET 进程内模块。
+    /// .NET in-process module.
     /// </summary>
     Module,
     /// <summary>
-    /// 由 systemd 管理的 Linux 系统服务。
+    /// Linux system service managed by systemd.
     /// </summary>
     Systemd,
 }

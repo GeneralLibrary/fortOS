@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Modules.Backup.Services;
 
-/// <summary>备份调度器，支持 daily HH:mm 与 interval:N 分钟两类简化表达式。</summary>
+/// <summary>Backup scheduler, supports two simplified expression formats: daily HH:mm and interval:N minutes.</summary>
 public sealed class BackupScheduler
 {
     private readonly Func<Task<IReadOnlyList<BackupTask>>> tasksProvider;
@@ -13,7 +13,7 @@ public sealed class BackupScheduler
     private CancellationTokenSource? cts;
     private Task? loopTask;
 
-    /// <summary>创建备份调度器。</summary>
+    /// <summary>Creates a backup scheduler.</summary>
     public BackupScheduler(Func<Task<IReadOnlyList<BackupTask>>> tasksProvider, RsyncBackupService rsync, IEventBus eventBus, ILogger logger)
         : this(tasksProvider, async (task, ct) =>
         {
@@ -29,7 +29,7 @@ public sealed class BackupScheduler
     {
     }
 
-    /// <summary>创建使用持久化执行器的调度器。</summary>
+    /// <summary>Creates a scheduler using a persistent executor.</summary>
     public BackupScheduler(
         Func<Task<IReadOnlyList<BackupTask>>> tasksProvider,
         Func<BackupTask, CancellationToken, Task<bool>> execute,
@@ -40,7 +40,7 @@ public sealed class BackupScheduler
         this.logger = logger;
     }
 
-    /// <summary>判断任务在指定时间是否到期。</summary>
+    /// <summary>Determines whether a task is due at the specified time.</summary>
     public bool IsDue(BackupTask task, DateTimeOffset now)
     {
         if (!task.Enabled)
@@ -63,14 +63,14 @@ public sealed class BackupScheduler
         return false;
     }
 
-    /// <summary>启动调度循环。</summary>
+    /// <summary>Starts the scheduling loop.</summary>
     public void Start(CancellationToken ct)
     {
         cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         loopTask = Task.Run(() => RunAsync(cts.Token), CancellationToken.None);
     }
 
-    /// <summary>停止调度循环。</summary>
+    /// <summary>Stops the scheduling loop.</summary>
     public async Task StopAsync(CancellationToken ct)
     {
         if (cts is null || loopTask is null)
@@ -109,13 +109,13 @@ public sealed class BackupScheduler
             lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
             if (!success)
             {
-                logger.LogWarning("备份任务 {TaskId} 执行失败。", task.TaskId);
+                logger.LogWarning("Backup task {TaskId} execution failed.", task.TaskId);
             }
         }
         catch (BackupExecutionException ex)
         {
             lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
-            logger.LogWarning(ex, "备份任务 {TaskId} 执行失败，错误码 {ErrorCode}。", task.TaskId, ex.Code);
+            logger.LogWarning(ex, "Backup task {TaskId} execution failed, error code {ErrorCode}.", task.TaskId, ex.Code);
         }
     }
 }

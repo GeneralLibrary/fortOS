@@ -5,12 +5,12 @@ using Serilog.Events;
 
 namespace GNAS.Observability.Logging;
 
-/// <summary>将 Serilog 事件转入 GNAS 日志管线的接收器。</summary>
+/// <summary>Sink that routes Serilog events into the GNAS log pipeline.</summary>
 public sealed class GnasSerilogSink : ILogEventSink
 {
     private readonly ILogPipeline _pipeline;
 
-    /// <summary>初始化 Serilog 接收器。</summary>
+    /// <summary>Initialize Serilog sink.</summary>
     public GnasSerilogSink(ILogPipeline pipeline)
     {
         _pipeline = pipeline;

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>一致的 RFC7807 响应，所有错误均带有稳定 code 和 traceId。</summary>
+/// <summary>Consistent RFC7807 response, all errors include a stable code and traceId.</summary>
 public static class ApiProblem
 {
     public static Task WriteAsync(HttpContext context, int status, string code, string detail)

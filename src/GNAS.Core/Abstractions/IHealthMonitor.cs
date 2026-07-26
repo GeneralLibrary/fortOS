@@ -1,16 +1,16 @@
 namespace GNAS.Core;
 
-/// <summary>健康监控接口。</summary>
+/// <summary>Health monitor interface.</summary>
 public interface IHealthMonitor
 {
-    /// <summary>注册健康检查。</summary>
+    /// <summary>Register a health check.</summary>
     Task RegisterAsync(string serviceId, HealthCheckConfig config, CancellationToken ct);
-    /// <summary>注销健康检查。</summary>
+    /// <summary>Unregister a health check.</summary>
     Task UnregisterAsync(string serviceId, CancellationToken ct);
-    /// <summary>获取健康状态。</summary>
+    /// <summary>Get health status.</summary>
     Task<HealthStatus> GetStatusAsync(string serviceId, CancellationToken ct);
-    /// <summary>获取最近检查结果。</summary>
+    /// <summary>Get recent check results.</summary>
     Task<IReadOnlyList<HealthCheckResult>> GetRecentResultsAsync(string serviceId, int limit, CancellationToken ct);
-    /// <summary>获取延迟百分位。</summary>
+    /// <summary>Get latency percentiles.</summary>
     Task<IReadOnlyDictionary<double, TimeSpan>> GetLatencyPercentilesAsync(string serviceId, IReadOnlyList<double> percentiles, CancellationToken ct);
 }

@@ -8,15 +8,15 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// Linux 进程管理器。
+/// Linux process manager.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxProcessManager : IProcessManager
 {
     private readonly CommandExecutor _executor;
 
-    /// <summary>初始化 Linux 进程管理器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the Linux process manager.</summary>
+    /// <param name="logger">Logger.</param>
     public LinuxProcessManager(ILogger<LinuxProcessManager> logger)
     {
         _executor = new CommandExecutor(logger);
@@ -40,7 +40,7 @@ public sealed partial class LinuxProcessManager : IProcessManager
             }
         }
 
-        var process = Process.Start(info) ?? throw new PlatformException($"无法启动进程: {config.ExecutablePath}");
+        var process = Process.Start(info) ?? throw new PlatformException($"Failed to start process: {config.ExecutablePath}");
         return Task.FromResult(ToInfo(process));
     }
 
@@ -122,7 +122,7 @@ public sealed partial class LinuxProcessManager : IProcessManager
     {
         if (!ServiceNameRegex().IsMatch(serviceName))
         {
-            throw new ArgumentException("服务名称不安全。", nameof(serviceName));
+            throw new ArgumentException("Unsafe service name.", nameof(serviceName));
         }
     }
 

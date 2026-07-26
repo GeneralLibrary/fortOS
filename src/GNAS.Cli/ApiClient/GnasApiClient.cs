@@ -6,17 +6,17 @@ using System.Text.Json;
 
 namespace GNAS.Cli.ApiClient;
 
-/// <summary>表示 REST API 调用失败。</summary>
+/// <summary>Represents a REST API call failure.</summary>
 public sealed class GnasApiException : Exception
 {
-    /// <summary>HTTP 状态码；连接失败时为空。</summary>
+    /// <summary>HTTP status code; null on connection failure.</summary>
     public HttpStatusCode? StatusCode { get; }
 
-    /// <summary>建立 API 例外。</summary>
+    /// <summary>Creates an API exception.</summary>
     public GnasApiException(string message, HttpStatusCode? statusCode = null, Exception? inner = null) : base(message, inner) => StatusCode = statusCode;
 }
 
-/// <summary>封装 GNAS REST API 与认证重试逻辑。</summary>
+/// <summary>Encapsulates GNAS REST API with authentication retry logic.</summary>
 public sealed class GnasApiClient : IDisposable
 {
     private readonly HttpClient _http;
@@ -24,7 +24,7 @@ public sealed class GnasApiClient : IDisposable
     private readonly AuthStore _store;
     private string? _currentToken;
 
-    /// <summary>建立 GNAS REST 客户端。</summary>
+    /// <summary>Creates a GNAS REST client.</summary>
     public GnasApiClient(string? server = null, string? token = null, HttpClient? httpClient = null)
     {
         _store = AuthStore.Load();
@@ -37,22 +37,22 @@ public sealed class GnasApiClient : IDisposable
         _http.Timeout = TimeSpan.FromSeconds(30);
     }
 
-    /// <summary>当前服务器根地址。</summary>
+    /// <summary>Current server root URL.</summary>
     public string Server => _http.BaseAddress!.ToString().TrimEnd('/');
 
-    /// <summary>执行 GET 请求并返回 JSON。</summary>
+    /// <summary>Execute GET request and return JSON.</summary>
     public Task<JsonDocument> GetAsync(string path, CancellationToken cancellationToken = default) => SendJsonAsync(HttpMethod.Get, path, null, cancellationToken);
 
-    /// <summary>执行 POST 请求并返回 JSON。</summary>
+    /// <summary>Execute POST request and return JSON.</summary>
     public Task<JsonDocument> PostAsync(string path, object? body = null, CancellationToken cancellationToken = default) => SendJsonAsync(HttpMethod.Post, path, body, cancellationToken);
 
-    /// <summary>执行 PUT 请求并返回 JSON。</summary>
+    /// <summary>Execute PUT request and return JSON.</summary>
     public Task<JsonDocument> PutAsync(string path, object? body = null, CancellationToken cancellationToken = default) => SendJsonAsync(HttpMethod.Put, path, body, cancellationToken);
 
-    /// <summary>执行 DELETE 请求并返回 JSON。</summary>
+    /// <summary>Execute DELETE request and return JSON.</summary>
     public Task<JsonDocument> DeleteAsync(string path, CancellationToken cancellationToken = default) => SendJsonAsync(HttpMethod.Delete, path, null, cancellationToken);
 
-    /// <summary>读取 SSE 资料流的 data 行。</summary>
+    /// <summary>Read data lines from SSE stream.</summary>
     public async IAsyncEnumerable<string> GetSseStreamAsync(string path, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using var request = CreateRequest(HttpMethod.Get, path, null);
@@ -63,7 +63,7 @@ public sealed class GnasApiClient : IDisposable
         }
         catch (HttpRequestException ex) when (IsConnectionFailure(ex))
         {
-            throw new GnasApiException($"无法连接到 GNAS 服务器 {Server}，请确认服务已启动。", null, ex);
+            throw new GnasApiException($"Cannot connect to GNAS server {Server}, please verify the service is running.", null, ex);
         }
 
         using var _ = response;
@@ -105,11 +105,11 @@ public sealed class GnasApiClient : IDisposable
         }
         catch (HttpRequestException ex) when (IsConnectionFailure(ex))
         {
-            throw new GnasApiException($"无法连接到 GNAS 服务器 {Server}，请确认服务已启动。", null, ex);
+            throw new GnasApiException($"Cannot connect to GNAS server {Server}, please verify the service is running.", null, ex);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new GnasApiException($"连接 GNAS 服务器 {Server} 超时。", null, ex);
+            throw new GnasApiException($"Connection to GNAS server {Server} timed out.", null, ex);
         }
     }
 
@@ -158,7 +158,7 @@ public sealed class GnasApiClient : IDisposable
     private static async Task<GnasApiException> BuildErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        var message = $"GNAS API 请求失败：{(int)response.StatusCode} {response.ReasonPhrase}";
+        var message = $"GNAS API request failed: {(int)response.StatusCode} {response.ReasonPhrase}";
         try
         {
             using var doc = JsonDocument.Parse(text);
@@ -198,6 +198,6 @@ public sealed class GnasApiClient : IDisposable
 
     private static bool IsConnectionFailure(HttpRequestException ex) => ex.StatusCode is null;
 
-    /// <summary>释放 HTTP 资源。</summary>
+    /// <summary>Release HTTP resources.</summary>
     public void Dispose() => _http.Dispose();
 }

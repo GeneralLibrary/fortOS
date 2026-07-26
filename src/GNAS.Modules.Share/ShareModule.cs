@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Modules.Share;
 
-/// <summary>共享协议模块，管理 SMB、NFS 与 FTP 配置。</summary>
+/// <summary>Share protocol module, manages SMB, NFS, and FTP configurations.</summary>
 public sealed class ShareModule : NasModuleBase
 {
     private readonly SemaphoreSlim sync = new(1, 1);
@@ -17,7 +17,7 @@ public sealed class ShareModule : NasModuleBase
     public override string ModuleId => "share";
 
     /// <inheritdoc />
-    public override string DisplayName => "共享服务";
+    public override string DisplayName => "Share Services";
 
     /// <inheritdoc />
     public override IReadOnlyList<string> Dependencies => ["storage"];
@@ -26,8 +26,8 @@ public sealed class ShareModule : NasModuleBase
     public override IReadOnlyList<string> RequiredCapabilities => ["share:read", "share:write", "storage:filesystem:read"];
 
     /// <summary>
-    /// 初始化：注册内置共享守护进程服务定义，并重放持久化的共享配置到系统路径，
-    /// 保证 NAS 重启后客户端仍能访问既有共享。
+    /// Initialize: register built-in share daemon service definitions and replay persisted share configurations
+    /// to system paths, ensuring clients can still access existing shares after a NAS restart.
     /// </summary>
     protected override async Task OnInitializeAsync(CancellationToken ct)
     {
@@ -54,7 +54,7 @@ public sealed class ShareModule : NasModuleBase
         await coordinator.ApplyAsync(rendered, ct).ConfigureAwait(false);
     }
 
-    /// <summary>创建共享并刷新服务配置。</summary>
+    /// <summary>Create share and refresh service configuration.</summary>
     public async Task<ShareDefinition> CreateShareAsync(ShareDefinition share, CancellationToken ct)
     {
         ShareValidation.ValidateShare(share);
@@ -65,7 +65,7 @@ public sealed class ShareModule : NasModuleBase
             var shares = await ReadSharesAsync(ct).ConfigureAwait(false);
             if (shares.Any(s => string.Equals(s.ShareId, share.ShareId, StringComparison.OrdinalIgnoreCase) || string.Equals(s.Name, share.Name, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new InvalidOperationException($"共享 {share.Name} 已存在。");
+                throw new InvalidOperationException($"Share {share.Name} already exists.");
             }
 
             shares.Add(share);
@@ -82,7 +82,7 @@ public sealed class ShareModule : NasModuleBase
         return share;
     }
 
-    /// <summary>删除共享并刷新服务配置。</summary>
+    /// <summary>Delete share and refresh service configuration.</summary>
     public async Task DeleteShareAsync(string shareId, CancellationToken ct)
     {
         await sync.WaitAsync(ct).ConfigureAwait(false);
@@ -114,7 +114,7 @@ public sealed class ShareModule : NasModuleBase
         await PublishAsync("share.deleted", "share.deleted", removed, ct).ConfigureAwait(false);
     }
 
-    /// <summary>列出共享。</summary>
+    /// <summary>List shares.</summary>
     public async Task<IReadOnlyList<ShareDefinition>> ListSharesAsync(CancellationToken ct)
     {
         await sync.WaitAsync(ct).ConfigureAwait(false);
@@ -147,7 +147,8 @@ public sealed class ShareModule : NasModuleBase
     }
 
     /// <summary>
-    /// 渲染各协议配置并写入模块数据目录副本（供审计与排障），返回渲染结果供协调器应用到系统路径。
+    /// Render configurations for each protocol and write a copy to the module data directory (for auditing and troubleshooting),
+    /// returning the rendered result for the coordinator to apply to system paths.
     /// </summary>
     private async Task<RenderedShareConfigs> WriteRenderedConfigsAsync(List<ShareDefinition> shares, CancellationToken ct)
     {
@@ -163,7 +164,7 @@ public sealed class ShareModule : NasModuleBase
         return rendered;
     }
 
-    /// <summary>通过协调器将渲染结果应用到系统守护进程配置。</summary>
+    /// <summary>Apply rendered configurations to system daemon configuration through the coordinator.</summary>
     private Task ApplyRenderedConfigsAsync(RenderedShareConfigs rendered, CancellationToken ct)
         => coordinator?.ApplyAsync(rendered, ct) ?? Task.CompletedTask;
 }

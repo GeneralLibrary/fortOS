@@ -3,7 +3,7 @@ using YamlDotNet.RepresentationModel;
 namespace GNAS.Core;
 
 /// <summary>
-/// 基于 YAML 文件的 GNAS 配置读取器。
+/// YAML file-based GNAS configuration reader.
 /// </summary>
 public sealed class GnasConfiguration : IGnasConfiguration
 {
@@ -14,9 +14,9 @@ public sealed class GnasConfiguration : IGnasConfiguration
     private Dictionary<string, string[]> _arrays = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 初始化配置读取器。
+    /// Initialize the configuration reader.
     /// </summary>
-    /// <param name="configPath">配置文件路径，为空时读取 GNAS_CONFIG_PATH 或使用默认路径。</param>
+    /// <param name="configPath">Configuration file path; if empty, reads GNAS_CONFIG_PATH or uses the default path.</param>
     public GnasConfiguration(string? configPath = null)
     {
         var path = string.IsNullOrWhiteSpace(configPath)

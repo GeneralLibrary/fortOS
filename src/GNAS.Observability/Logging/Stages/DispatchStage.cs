@@ -2,13 +2,13 @@ using GNAS.Core;
 
 namespace GNAS.Observability.Logging.Stages;
 
-/// <summary>日志分发阶段。</summary>
+/// <summary>Log dispatch stage.</summary>
 public sealed class DispatchStage : ILogStage
 {
     private readonly IReadOnlyList<ILogStore> _stores;
     private readonly IAuditChain? _auditChain;
 
-    /// <summary>初始化日志分发阶段。</summary>
+    /// <summary>Initialize log dispatch stage.</summary>
     public DispatchStage(IEnumerable<ILogStore> stores, IAuditChain? auditChain = null)
     {
         _stores = stores.ToArray();

@@ -3,13 +3,13 @@ using Microsoft.Extensions.Hosting;
 
 namespace GNAS.Observability.Audit;
 
-/// <summary>每日审计链完整性验证后台服务。</summary>
+/// <summary>Daily audit chain integrity verification background service.</summary>
 public sealed class VerificationBackgroundService : BackgroundService
 {
     private readonly IAuditChain _auditChain;
     private readonly IEventBus _eventBus;
 
-    /// <summary>初始化审计链验证后台服务。</summary>
+    /// <summary>Initialize audit chain verification background service.</summary>
     public VerificationBackgroundService(IAuditChain auditChain, IEventBus eventBus)
     {
         _auditChain = auditChain;

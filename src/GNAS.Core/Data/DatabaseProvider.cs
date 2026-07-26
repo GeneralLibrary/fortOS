@@ -79,7 +79,7 @@ public sealed class DatabaseProvider : IDatabaseProvider
         var rootWithSeparator = _dataRoot.EndsWith(Path.DirectorySeparatorChar) ? _dataRoot : _dataRoot + Path.DirectorySeparatorChar;
         if (!_databaseDirectory.StartsWith(rootWithSeparator, StringComparison.Ordinal)
             && !string.Equals(_databaseDirectory, _dataRoot, StringComparison.Ordinal))
-            throw new ConfigurationException("数据库目录必须位于数据根目录内。");
+            throw new ConfigurationException("The database directory must be located within the data root directory.");
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken ct)

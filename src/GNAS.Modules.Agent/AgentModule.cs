@@ -5,14 +5,14 @@ using System.Text.RegularExpressions;
 
 namespace GNAS.Modules.Agent;
 
-/// <summary>Agent 编排模块，衔接令牌、模板、Compose 与服务监管。</summary>
+/// <summary>Agent orchestration module, bridging tokens, templates, Compose, and service supervision.</summary>
 public sealed class AgentModule : NasModuleBase
 {
     /// <inheritdoc />
     public override string ModuleId => "agent";
 
     /// <inheritdoc />
-    public override string DisplayName => "Agent 编排";
+    public override string DisplayName => "Agent Orchestration";
 
     /// <inheritdoc />
     public override IReadOnlyList<string> Dependencies => ["storage"];
@@ -20,12 +20,12 @@ public sealed class AgentModule : NasModuleBase
     /// <inheritdoc />
     public override IReadOnlyList<string> RequiredCapabilities => ["agent:deploy", "agent:control", "service:write"];
 
-    /// <summary>部署 Agent。</summary>
+    /// <summary>Deploy an agent.</summary>
     public async Task<ServiceDefinition> DeployAgentAsync(string templateId, AgentConfig config, string ownerToken, CancellationToken ct)
     {
         var catalog = RequiredService<IAgentCatalog>();
         var template = await catalog.GetTemplateAsync(templateId, ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Agent 模板不存在: {templateId}");
+            ?? throw new InvalidOperationException($"Agent template does not exist: {templateId}");
         var normalizedConfig = NormalizeConfig(config, Services.GetService(typeof(IGnasConfiguration)) as IGnasConfiguration);
         await RunPreflightChecksAsync(templateId, normalizedConfig, ct).ConfigureAwait(false);
         var compose = await RequiredService<IComposeGenerator>().GenerateAsync(template, normalizedConfig, ownerToken, ct).ConfigureAwait(false);
@@ -52,13 +52,13 @@ public sealed class AgentModule : NasModuleBase
         return service;
     }
 
-    /// <summary>启动 Agent。</summary>
+    /// <summary>Start an agent.</summary>
     public Task StartAgentAsync(string agentId, CancellationToken ct) => RequiredService<IServiceSupervisor>().StartAsync(ServiceId(agentId), ct);
 
-    /// <summary>停止 Agent。</summary>
+    /// <summary>Stop an agent.</summary>
     public Task StopAgentAsync(string agentId, CancellationToken ct) => RequiredService<IServiceSupervisor>().StopAsync(ServiceId(agentId), ct);
 
-    /// <summary>移除 Agent。</summary>
+    /// <summary>Remove an agent.</summary>
     public async Task RemoveAgentAsync(string agentId, CancellationToken ct)
     {
         var serviceId = ServiceId(agentId);
@@ -70,7 +70,7 @@ public sealed class AgentModule : NasModuleBase
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "停止 Agent {AgentId} 时发生错误，继续注销。", agentId);
+            Logger.LogWarning(ex, "Error stopping agent {AgentId}, proceeding with deregistration.", agentId);
         }
 
         await registry.UnregisterAsync(serviceId, ct).ConfigureAwait(false);
@@ -84,7 +84,7 @@ public sealed class AgentModule : NasModuleBase
         await PublishAsync($"agent.{agentId}.removed", "agent.removed", new { agentId }, ct).ConfigureAwait(false);
     }
 
-    /// <summary>列出 Agent 服务。</summary>
+    /// <summary>List agent services.</summary>
     public async Task<IReadOnlyList<ServiceDefinition>> ListAgentsAsync(CancellationToken ct)
     {
         var services = await RequiredService<IServiceRegistry>().ListAsync(ct).ConfigureAwait(false);
@@ -98,19 +98,19 @@ public sealed class AgentModule : NasModuleBase
     }
 
     /// <summary>
-    /// 归一化 Agent 配置并补齐默认数据卷。
+    /// Normalize agent configuration and fill in default data volumes.
     /// </summary>
     private static AgentConfig NormalizeConfig(AgentConfig config, IGnasConfiguration? configuration)
     {
         ArgumentNullException.ThrowIfNull(config);
         if (string.IsNullOrWhiteSpace(config.AgentId))
         {
-            throw new ArgumentException("AgentId 不能为空。", nameof(config));
+            throw new ArgumentException("AgentId cannot be empty.", nameof(config));
         }
 
         if (string.IsNullOrWhiteSpace(config.ImageName))
         {
-            throw new ArgumentException("ImageName 不能为空。", nameof(config));
+            throw new ArgumentException("ImageName cannot be empty.", nameof(config));
         }
 
         ValidateImage(config.ImageName, configuration);
@@ -148,7 +148,7 @@ public sealed class AgentModule : NasModuleBase
         }, ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new InvalidOperationException("Docker 不可用，无法部署 Agent。请确认 docker engine 与 socket 可访问。");
+            throw new InvalidOperationException("Docker is unavailable, cannot deploy agent. Please verify docker engine and socket are accessible.");
         }
     }
 
@@ -162,7 +162,7 @@ public sealed class AgentModule : NasModuleBase
         }, ct).ConfigureAwait(false);
         if (pull.ExitCode != 0)
         {
-            throw new InvalidOperationException($"无法拉取 Agent 镜像 {imageName}：{pull.Stderr}");
+            throw new InvalidOperationException($"Failed to pull agent image {imageName}: {pull.Stderr}");
         }
     }
 
@@ -182,34 +182,34 @@ public sealed class AgentModule : NasModuleBase
         ArgumentNullException.ThrowIfNull(mapping);
         if (string.IsNullOrWhiteSpace(mapping.HostPath))
         {
-            throw new ArgumentException("卷映射宿主机路径不能为空。", nameof(mapping));
+            throw new ArgumentException("Volume mapping host path cannot be empty.", nameof(mapping));
         }
 
         if (string.IsNullOrWhiteSpace(mapping.ContainerPath))
         {
-            throw new ArgumentException("卷映射容器路径不能为空。", nameof(mapping));
+            throw new ArgumentException("Volume mapping container path cannot be empty.", nameof(mapping));
         }
 
         if (mapping.HostPath.Contains('\n') || mapping.HostPath.Contains('\r')
             || mapping.ContainerPath.Contains('\n') || mapping.ContainerPath.Contains('\r'))
         {
-            throw new ArgumentException("卷映射路径不能包含换行。", nameof(mapping));
+            throw new ArgumentException("Volume mapping path cannot contain newlines.", nameof(mapping));
         }
 
         if (!IsAbsolutePath(mapping.HostPath))
         {
-            throw new ArgumentException("卷映射宿主机路径必须是绝对路径。", nameof(mapping));
+            throw new ArgumentException("Volume mapping host path must be an absolute path.", nameof(mapping));
         }
 
         if (!mapping.ContainerPath.StartsWith("/", StringComparison.Ordinal))
         {
-            throw new ArgumentException("卷映射容器路径必须是 Unix 绝对路径。", nameof(mapping));
+            throw new ArgumentException("Volume mapping container path must be a Unix absolute path.", nameof(mapping));
         }
 
         var normalizedHostPath = NormalizePath(mapping.HostPath);
         if (!allowedRoots.Any(root => IsPathUnderRoot(normalizedHostPath, root)))
         {
-            throw new ArgumentException($"卷映射路径 {mapping.HostPath} 不在允许目录内。", nameof(mapping));
+            throw new ArgumentException($"Volume mapping path {mapping.HostPath} is not within an allowed directory.", nameof(mapping));
         }
 
         return mapping with { HostPath = mapping.HostPath };
@@ -255,7 +255,7 @@ public sealed class AgentModule : NasModuleBase
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("路径不能为空。", nameof(path));
+            throw new ArgumentException("Path cannot be empty.", nameof(path));
         }
 
         var unix = path.Replace('\\', '/');

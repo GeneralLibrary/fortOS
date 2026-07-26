@@ -1,14 +1,14 @@
 namespace GNAS.Core;
 
-/// <summary>服务宿主接口。</summary>
+/// <summary>Service host interface.</summary>
 public interface IServiceHost
 {
-    /// <summary>服务标识。</summary>
+    /// <summary>Service ID.</summary>
     string ServiceId { get; }
-    /// <summary>启动服务。</summary>
+    /// <summary>Start the service.</summary>
     Task StartAsync(ServiceDefinition definition, CancellationToken ct);
-    /// <summary>停止服务。</summary>
+    /// <summary>Stop the service.</summary>
     Task StopAsync(CancellationToken ct);
-    /// <summary>获取服务状态。</summary>
+    /// <summary>Get service status.</summary>
     Task<ServiceStatusInfo> GetStatusAsync(CancellationToken ct);
 }

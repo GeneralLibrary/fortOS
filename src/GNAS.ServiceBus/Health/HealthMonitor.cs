@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.ServiceBus.Health;
 
 /// <summary>
-/// 周期性服务健康监控器。
+/// Periodic service health monitor.
 /// </summary>
 public sealed class HealthMonitor : BackgroundService, IHealthMonitor
 {
@@ -20,11 +20,11 @@ public sealed class HealthMonitor : BackgroundService, IHealthMonitor
     private readonly ILogger<HealthMonitor> _logger;
 
     /// <summary>
-    /// 初始化健康监控器。
+    /// Initialize the health monitor.
     /// </summary>
-    /// <param name="processManager">进程管理器。</param>
-    /// <param name="eventBus">事件总线。</param>
-    /// <param name="logger">日志记录器。</param>
+    /// <param name="processManager">Process manager.</param>
+    /// <param name="eventBus">Event bus.</param>
+    /// <param name="logger">Logger.</param>
     public HealthMonitor(IProcessManager processManager, IEventBus eventBus, ILogger<HealthMonitor> logger)
     {
         _processManager = processManager;
@@ -183,7 +183,7 @@ public sealed class HealthMonitor : BackgroundService, IHealthMonitor
             ServiceId = serviceId,
             Status = healthy ? HealthStatus.Healthy : state.Status,
             ResponseTime = stopwatch.Elapsed,
-            ErrorMessage = healthy ? null : error ?? "健康检查失败。",
+            ErrorMessage = healthy ? null : error ?? "Health check failed.",
             ConsecutiveFailures = state.ConsecutiveFailures,
             ConsecutiveSuccesses = state.ConsecutiveSuccesses,
         };
@@ -217,7 +217,7 @@ public sealed class HealthMonitor : BackgroundService, IHealthMonitor
 
     private async Task<bool> CheckGrpcAsync(string endpoint, CancellationToken ct)
     {
-        _logger.LogDebug("gRPC 健康检查使用 TCP 可达性简化实现: {Endpoint}", endpoint);
+        _logger.LogDebug("gRPC health check uses TCP reachability as a simplified implementation: {Endpoint}", endpoint);
         return await CheckTcpAsync(endpoint, ct).ConfigureAwait(false);
     }
 
@@ -264,7 +264,7 @@ public sealed class HealthMonitor : BackgroundService, IHealthMonitor
         var parts = endpoint.Split(':', 2);
         if (parts.Length != 2 || !int.TryParse(parts[1], out var port))
         {
-            throw new FormatException($"TCP 端点格式无效: {endpoint}");
+            throw new FormatException($"Invalid TCP endpoint format: {endpoint}");
         }
 
         return (parts[0], port);

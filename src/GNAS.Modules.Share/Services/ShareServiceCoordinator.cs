@@ -3,26 +3,26 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Modules.Share.Services;
 
-/// <summary>渲染完成的共享协议配置内容。</summary>
-/// <param name="Smb">smb.conf 内容。</param>
-/// <param name="NfsExports">exports 内容。</param>
-/// <param name="Ftp">vsftpd.conf 内容。</param>
+/// <summary>Rendered share protocol configuration content.</summary>
+/// <param name="Smb">smb.conf content.</param>
+/// <param name="NfsExports">exports content.</param>
+/// <param name="Ftp">vsftpd.conf content.</param>
 public sealed record RenderedShareConfigs(string Smb, string NfsExports, string Ftp);
 
 /// <summary>
-/// 共享服务协调器。
-/// 负责把渲染好的协议配置真正应用到系统（写入 /etc 下的守护进程配置路径）、
-/// 注册发行版提供的 systemd 服务，并在配置变更后刷新对应服务，
-/// 打通"生成配置 → 守护进程读取 → 客户端可连接"的完整链路。
-/// GNAS 不另起共享守护进程，避免与发行版 systemd 单元争用端口和状态文件。
+/// Share service coordinator.
+/// Responsible for applying rendered protocol configurations to the system (writing to daemon config paths under /etc),
+/// registering distribution-provided systemd services, and refreshing corresponding services after configuration changes.
+/// This bridges the complete chain of "generate configuration -> daemon reads -> client can connect".
+/// GNAS does not start its own share daemons to avoid port and state file conflicts with distribution systemd units.
 /// </summary>
 public sealed class ShareServiceCoordinator
 {
-    /// <summary>SMB 服务标识。</summary>
+    /// <summary>SMB service identifier.</summary>
     public const string SmbServiceId = "smb";
-    /// <summary>NFS 服务标识。</summary>
+    /// <summary>NFS service identifier.</summary>
     public const string NfsServiceId = "nfs";
-    /// <summary>FTP 服务标识。</summary>
+    /// <summary>FTP service identifier.</summary>
     public const string FtpServiceId = "ftp";
     private const string ExportfsPath = "/usr/sbin/exportfs";
     private const string SmbdPath = "/usr/sbin/smbd";
@@ -41,12 +41,12 @@ public sealed class ShareServiceCoordinator
     private readonly IGnasConfiguration? _configuration;
     private readonly ILogger _logger;
 
-    /// <summary>初始化共享服务协调器。</summary>
-    /// <param name="registry">可选服务注册表。</param>
-    /// <param name="supervisor">可选服务监管器，用于无 systemd 的容器环境。</param>
-    /// <param name="processManager">可选进程管理器。</param>
-    /// <param name="configuration">可选配置，用于覆盖系统配置文件路径。</param>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initialize the share service coordinator.</summary>
+    /// <param name="registry">Optional service registry.</param>
+    /// <param name="supervisor">Optional service supervisor for container environments without systemd.</param>
+    /// <param name="processManager">Optional process manager.</param>
+    /// <param name="configuration">Optional configuration for overriding system configuration file paths.</param>
+    /// <param name="logger">Logger.</param>
     public ShareServiceCoordinator(IServiceRegistry? registry, IServiceSupervisor? supervisor, IProcessManager? processManager, IGnasConfiguration? configuration, ILogger logger)
     {
         _registry = registry;
@@ -61,8 +61,9 @@ public sealed class ShareServiceCoordinator
     private string VsftpdConfPath => _configuration?.GetValue("share:vsftpd_conf_path") ?? DefaultVsftpdConfPath;
 
     /// <summary>
-    /// 注册发行版提供的共享 systemd 单元，由 Service Bus 暴露统一的状态和控制接口。
-    /// 仅注册本机实际安装的单元，开发环境缺少对应软件包时不会产生无效服务。
+    /// Register distribution-provided share systemd units, with unified status and control exposed through the Service Bus.
+    /// Only registers units that are actually installed on the host; development environments missing the
+    /// corresponding packages will not produce invalid services.
     /// </summary>
     public async Task RegisterBuiltInServicesAsync(CancellationToken ct)
     {
@@ -75,9 +76,9 @@ public sealed class ShareServiceCoordinator
         {
             var definitions = new[]
             {
-                (SmbServiceId, "Samba 文件共享", SmbUnit),
-                (NfsServiceId, "NFS 文件共享", NfsUnit),
-                (FtpServiceId, "FTP 文件共享", FtpUnit),
+                (SmbServiceId, "Samba File Share", SmbUnit),
+                (NfsServiceId, "NFS File Share", NfsUnit),
+                (FtpServiceId, "FTP File Share", FtpUnit),
             };
             foreach (var (serviceId, displayName, unit) in definitions)
             {
@@ -104,8 +105,8 @@ public sealed class ShareServiceCoordinator
         // so NativeServiceHost can own their lifecycle without competing units.
         var nativeDefinitions = new[]
         {
-            (SmbServiceId, "Samba 文件共享", SmbdPath, "--foreground --no-process-group", RestartPolicy.OnFailure),
-            (FtpServiceId, "FTP 文件共享", VsftpdPath, (string?)null, RestartPolicy.OnFailure),
+            (SmbServiceId, "Samba File Share", SmbdPath, "--foreground --no-process-group", RestartPolicy.OnFailure),
+            (FtpServiceId, "FTP File Share", VsftpdPath, (string?)null, RestartPolicy.OnFailure),
         };
         foreach (var (serviceId, displayName, executable, arguments, restartPolicy) in nativeDefinitions)
         {
@@ -128,14 +129,15 @@ public sealed class ShareServiceCoordinator
     }
 
     /// <summary>
-    /// 将渲染后的配置写入系统路径并刷新对应守护进程，使共享变更对客户端立即生效。
+    /// Write rendered configurations to system paths and refresh the corresponding daemons,
+    /// making share changes immediately effective for clients.
     /// </summary>
     public async Task ApplyAsync(RenderedShareConfigs configs, CancellationToken ct)
     {
         if (!SystemdAvailable() && !string.IsNullOrWhiteSpace(configs.NfsExports))
         {
             throw new PlatformNotSupportedException(
-                "NFS 共享需要由 systemd 管理内核 NFS 服务，仅支持 Debian 裸机安装。");
+                "NFS sharing requires systemd to manage the kernel NFS service, and is only supported on Debian bare-metal installations.");
         }
 
         var changes = new[]
@@ -178,8 +180,8 @@ public sealed class ShareServiceCoordinator
             var rollbackErrors = Rollback(prepared);
             throw new ShareConfigurationException(
                 rollbackErrors.Count == 0
-                    ? "共享协议配置应用失败，已恢复原配置。"
-                    : $"共享协议配置应用失败，且有 {rollbackErrors.Count} 个配置无法恢复。",
+                    ? "Share protocol configuration application failed; original configuration has been restored."
+                    : $"Share protocol configuration application failed, and {rollbackErrors.Count} configurations could not be restored.",
                 ex,
                 rollbackErrors);
         }
@@ -194,18 +196,18 @@ public sealed class ShareServiceCoordinator
         try
         {
             await _registry!.RegisterAsync(definition, ct).ConfigureAwait(false);
-            _logger.LogInformation("已注册内置共享服务 {ServiceId}（{Executable}）。", definition.ServiceId, definition.Executable);
+            _logger.LogInformation("Registered built-in share service {ServiceId} ({Executable}).", definition.ServiceId, definition.Executable);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "注册内置共享服务 {ServiceId} 失败。", definition.ServiceId);
+            _logger.LogWarning(ex, "Failed to register built-in share service {ServiceId}.", definition.ServiceId);
         }
     }
 
     private async Task<PreparedConfig> PrepareAsync(ConfigChange change, CancellationToken ct)
     {
         var directory = Path.GetDirectoryName(change.Path)
-            ?? throw new ConfigurationException($"共享配置路径无父目录：{change.Path}");
+            ?? throw new ConfigurationException($"Share configuration path has no parent directory: {change.Path}");
         Directory.CreateDirectory(directory);
         var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(change.Path)}.{Guid.CreateVersion7():N}.tmp");
         var backupPath = Path.Combine(directory, $".{Path.GetFileName(change.Path)}.{Guid.CreateVersion7():N}.bak");
@@ -251,7 +253,7 @@ public sealed class ShareServiceCoordinator
 
         if (_processManager is null)
         {
-            throw new ConfigurationException($"已配置 {prepared.Change.Protocol} 校验器，但进程管理器不可用。");
+            throw new ConfigurationException($"Validator configured for {prepared.Change.Protocol}, but the process manager is not available.");
         }
 
         var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
@@ -262,11 +264,11 @@ public sealed class ShareServiceCoordinator
         }, ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new ConfigurationException($"{prepared.Change.Protocol} 配置校验失败：{result.Stderr}");
+            throw new ConfigurationException($"{prepared.Change.Protocol} configuration validation failed: {result.Stderr}");
         }
     }
 
-    /// <summary>执行 exportfs -ra 让内核重新加载 NFS 导出表。</summary>
+    /// <summary>Execute exportfs -ra to make the kernel reload the NFS export table.</summary>
     private async Task RefreshNfsExportsAsync(CancellationToken ct)
     {
         if (_processManager is null || !File.Exists(ExportfsPath))
@@ -281,9 +283,9 @@ public sealed class ShareServiceCoordinator
         }, ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new ConfigurationException($"刷新 NFS 导出表失败：{result.Stderr}");
+            throw new ConfigurationException($"Failed to refresh NFS export table: {result.Stderr}");
         }
-        _logger.LogInformation("NFS 导出表已刷新。");
+        _logger.LogInformation("NFS export table has been refreshed.");
     }
 
     private async Task ReloadSystemdUnitAsync(string unit, CancellationToken ct)
@@ -301,10 +303,10 @@ public sealed class ShareServiceCoordinator
         }, ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new ConfigurationException($"刷新 systemd 单元 {unit} 失败：{result.Stderr}");
+            throw new ConfigurationException($"Failed to refresh systemd unit {unit}: {result.Stderr}");
         }
 
-        _logger.LogInformation("systemd 单元 {Unit} 已刷新共享配置。", unit);
+        _logger.LogInformation("systemd unit {Unit} has reloaded the share configuration.", unit);
     }
 
     private async Task RestartIfRegisteredAsync(string serviceId, CancellationToken ct)
@@ -316,7 +318,7 @@ public sealed class ShareServiceCoordinator
         }
 
         await _supervisor.RestartAsync(serviceId, ct).ConfigureAwait(false);
-        _logger.LogInformation("容器共享服务 {ServiceId} 已重启以加载配置。", serviceId);
+        _logger.LogInformation("Container share service {ServiceId} has been restarted to load configuration.", serviceId);
     }
 
     private static bool SystemdAvailable()
@@ -375,7 +377,7 @@ public sealed class ShareServiceCoordinator
     }
 }
 
-/// <summary>共享配置事务失败；RollbackErrors 指示需要人工介入的文件。</summary>
+/// <summary>Share configuration transaction failed; RollbackErrors indicates files requiring manual intervention.</summary>
 public sealed class ShareConfigurationException(
     string message,
     Exception innerException,

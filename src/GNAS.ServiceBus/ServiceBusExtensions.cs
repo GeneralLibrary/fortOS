@@ -8,15 +8,15 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GNAS.ServiceBus;
 
 /// <summary>
-/// 服务总线依赖注入扩展。
+/// Service bus dependency injection extensions.
 /// </summary>
 public static class ServiceBusExtensions
 {
     /// <summary>
-    /// 注册服务总线组件。
+    /// Registers service bus components.
     /// </summary>
-    /// <param name="services">服务集合。</param>
-    /// <returns>服务集合。</returns>
+    /// <param name="services">Service collection.</param>
+    /// <returns>Service collection.</returns>
     public static IServiceCollection AddServiceBus(this IServiceCollection services)
     {
         services.AddSingleton<IEventBus, EventBus>();

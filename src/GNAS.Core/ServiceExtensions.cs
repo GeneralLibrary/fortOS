@@ -3,17 +3,17 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GNAS.Core;
 
 /// <summary>
-/// GNAS Core 依赖注入扩展。
+/// GNAS Core dependency injection extensions.
 /// </summary>
 public static class ServiceExtensions
 {
     /// <summary>
-    /// 注册 GNAS Core 基础服务。
+    /// Register GNAS Core base services.
     /// </summary>
-    /// <param name="services">服务集合。</param>
-    /// <param name="dataRoot">数据根目录。</param>
-    /// <param name="configPath">配置文件路径。</param>
-    /// <returns>服务集合。</returns>
+    /// <param name="services">Service collection.</param>
+    /// <param name="dataRoot">Data root directory.</param>
+    /// <param name="configPath">Configuration file path.</param>
+    /// <returns>Service collection.</returns>
     public static IServiceCollection AddGnasCore(this IServiceCollection services, string? dataRoot = null, string? configPath = null)
     {
         services.AddSingleton<IDatabaseProvider>(_ => new DatabaseProvider(dataRoot));

@@ -1,9 +1,9 @@
-# GNAS API 网关容器镜像
+# GNAS API Gateway Container Image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 
-# 安装 NAS 工具链：共享守护进程（samba/nfs/vsftpd）、磁盘管理（smartmontools/mdadm/parted）、
-# 文件系统工具（ext4/xfs/btrfs）与基础系统工具，保证平台层命令在容器内可用。
+# Install NAS toolchain: share daemons (samba/nfs/vsftpd), disk management (smartmontools/mdadm/parted),
+# filesystem tools (ext4/xfs/btrfs) and basic system tools, ensuring platform-level commands are available inside the container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         samba \
         vsftpd \
@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         rclone \
     && rm -rf /var/lib/apt/lists/*
 
-# API 端口与容器模式共享协议端口（SMB 445/139、FTP 21）。
+# API port and container mode shared protocol ports (SMB 445/139, FTP 21).
 EXPOSE 5000 5001 445 139 21
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

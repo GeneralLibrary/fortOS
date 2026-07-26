@@ -13,7 +13,7 @@ public sealed class DeployAndRunAgentE2ETests
     {
         if (!await DockerAvailableAsync())
         {
-            Console.WriteLine("Docker 不可用，跳过容器 E2E。 ");
+            Console.WriteLine("Docker unavailable, skipping container E2E.");
             return;
         }
 
@@ -79,12 +79,12 @@ public sealed class DeployAndRunAgentE2ETests
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            return new ProcessResult(127, string.Empty, "docker 不可用");
+            return new ProcessResult(127, string.Empty, "docker unavailable");
         }
 
         if (process is null)
         {
-            return new ProcessResult(127, string.Empty, "无法启动 docker 进程。");
+            return new ProcessResult(127, string.Empty, "Failed to start docker process.");
         }
 
         using (process)

@@ -6,13 +6,13 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Tui.Pages;
 
-/// <summary>显示并操作服务页面。</summary>
+/// <summary>Displays and operates the service page.</summary>
 public sealed class ServicePage : ITuiPage
 {
     private int _selected;
     private JsonElement[] _items = [];
     /// <inheritdoc />
-    public string Title => "服务（↑↓ 选择，s 启动，x 停止）";
+    public string Title => "Services (↑↓ select, s start, x stop)";
     /// <inheritdoc />
     public TimeSpan RefreshInterval => TimeSpan.FromSeconds(5);
     /// <inheritdoc />
@@ -22,7 +22,7 @@ public sealed class ServicePage : ITuiPage
         {
             using var doc = await client.GetAsync("api/services", cancellationToken);
             _items = PageHelpers.TryArray(doc.RootElement, out var arr) ? arr.EnumerateArray().Select(e => e.Clone()).ToArray() : [];
-            var table = new Table().Title("服务").AddColumn(" ").AddColumn("id").AddColumn("name").AddColumn("status");
+            var table = new Table().Title("Services").AddColumn(" ").AddColumn("id").AddColumn("name").AddColumn("status");
             for (var i = 0; i < _items.Length; i++) table.AddRow(i == _selected ? "▶" : "", Markup.Escape(PageHelpers.Get(_items[i], "id")), Markup.Escape(PageHelpers.Get(_items[i], "name")), Markup.Escape(PageHelpers.Get(_items[i], "status")));
             return table;
         }

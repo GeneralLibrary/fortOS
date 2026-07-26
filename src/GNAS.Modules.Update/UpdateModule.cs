@@ -4,19 +4,19 @@ using GNAS.Modules.Update.Services;
 
 namespace GNAS.Modules.Update;
 
-/// <summary>更新模块，提供版本检查、OTA 与模块热替换。</summary>
+/// <summary>Update module, providing version checking, OTA, and module hot-replacement.</summary>
 public sealed class UpdateModule : NasModuleBase
 {
     /// <inheritdoc />
     public override string ModuleId => "update";
 
     /// <inheritdoc />
-    public override string DisplayName => "系统更新";
+    public override string DisplayName => "System Update";
 
     /// <inheritdoc />
     public override IReadOnlyList<string> RequiredCapabilities => ["system:update:read", "system:update:write", "module:reload"];
 
-    /// <summary>热替换模块。</summary>
+    /// <summary>Hot-replace a module.</summary>
     public async Task<INasModule> ReplaceModuleAsync(string moduleId, string modulePath, CancellationToken ct)
     {
         var host = RequiredService<IModuleHost>();

@@ -1,14 +1,14 @@
 namespace GNAS.Core;
 
-/// <summary>用户账户抽象。</summary>
+/// <summary>User account abstraction.</summary>
 public interface IUserAccount
 {
-    /// <summary>创建用户。</summary>
+    /// <summary>Create a user.</summary>
     Task CreateUserAsync(string username, string password, CancellationToken ct);
-    /// <summary>删除用户。</summary>
+    /// <summary>Delete a user.</summary>
     Task DeleteUserAsync(string username, CancellationToken ct);
-    /// <summary>添加用户到组。</summary>
+    /// <summary>Add a user to a group.</summary>
     Task AddUserToGroupAsync(string username, string group, CancellationToken ct);
-    /// <summary>设置文件权限。</summary>
+    /// <summary>Set file permissions.</summary>
     Task SetFilePermissionsAsync(string path, FilePermission permission, CancellationToken ct);
 }

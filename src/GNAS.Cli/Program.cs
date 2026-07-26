@@ -3,15 +3,15 @@ using GNAS.Cli.ApiClient;
 using GNAS.Cli.Commands;
 using GNAS.Cli.Tui;
 
-/// <summary>GNAS CLI 程序入口。</summary>
+/// <summary>GNAS CLI program entry point.</summary>
 internal static class Program
 {
-    /// <summary>启动 CLI 或互动 TUI。</summary>
+    /// <summary>Starts CLI or interactive TUI.</summary>
     private static async Task<int> Main(string[] args)
     {
         if (!OperatingSystem.IsLinux())
         {
-            await Console.Error.WriteLineAsync("GNAS CLI 仅支持 Linux。");
+            await Console.Error.WriteLineAsync("GNAS CLI only supports Linux.");
             return 1;
         }
 
@@ -33,7 +33,7 @@ internal static class Program
 
     private static RootCommand BuildRoot(CliOptions options)
     {
-        var root = new RootCommand("GNAS NAS 桌面命令列工具");
+        var root = new RootCommand("GNAS NAS command-line tool");
         options.Server.Recursive = true;
         options.Token.Recursive = true;
         options.Output.Recursive = true;

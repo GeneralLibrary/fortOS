@@ -6,35 +6,35 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Commands;
 
-/// <summary>保存全局命令选项。</summary>
+/// <summary>Stores global command options.</summary>
 public sealed class CliOptions
 {
-    /// <summary>服务器 URL 选项。</summary>
-    public Option<string?> Server { get; } = new("--server") { Description = "GNAS 服务器 URL" };
-    /// <summary>访问令牌选项。</summary>
+    /// <summary>Server URL option.</summary>
+    public Option<string?> Server { get; } = new("--server") { Description = "GNAS server URL" };
+    /// <summary>Access token option.</summary>
     public Option<string?> Token { get; } = new("--token") { Description = "******" };
-    /// <summary>输出格式选项。</summary>
-    public Option<string> Output { get; } = new("--output") { Description = "输出格式：table 或 json", DefaultValueFactory = _ => "table" };
-    /// <summary>关闭颜色选项。</summary>
-    public Option<bool> NoColor { get; } = new("--no-color") { Description = "禁用彩色输出" };
+    /// <summary>Output format option.</summary>
+    public Option<string> Output { get; } = new("--output") { Description = "Output format: table or json", DefaultValueFactory = _ => "table" };
+    /// <summary>Disable color option.</summary>
+    public Option<bool> NoColor { get; } = new("--no-color") { Description = "Disable colored output" };
 }
 
-/// <summary>提供命令处理共用工具。</summary>
+/// <summary>Provides common command processing utilities.</summary>
 public static class CommandRuntime
 {
-    /// <summary>建立 API 客户端。</summary>
+    /// <summary>Create API client.</summary>
     public static GnasApiClient Client(ParseResult result, CliOptions options) => new(result.GetValue(options.Server), result.GetValue(options.Token));
 
-    /// <summary>判断是否 JSON 输出。</summary>
+    /// <summary>Determine if JSON output.</summary>
     public static bool IsJson(ParseResult result, CliOptions options) => string.Equals(result.GetValue(options.Output), "json", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>套用颜色设置。</summary>
+    /// <summary>Apply color settings.</summary>
     public static void ApplyConsole(ParseResult result, CliOptions options)
     {
         if (result.GetValue(options.NoColor) || IsJson(result, options)) AnsiConsole.Profile.Capabilities.ColorSystem = ColorSystem.NoColors;
     }
 
-    /// <summary>执行 API 操作并统一错误输出。</summary>
+    /// <summary>Execute API operation with unified error output.</summary>
     public static async Task<int> RunAsync(ParseResult result, CliOptions options, Func<GnasApiClient, CancellationToken, Task<JsonDocument>> action, Action<JsonDocument>? render = null, CancellationToken cancellationToken = default)
     {
         ApplyConsole(result, options);
@@ -64,7 +64,7 @@ public static class CommandRuntime
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"执行失败：{ex.Message}");
+            Console.Error.WriteLine($"Execution failed: {ex.Message}");
             return 1;
         }
     }
@@ -92,8 +92,8 @@ public static class CommandRuntime
 
     private static async Task<bool> TryInteractiveLoginAsync(ParseResult result, CliOptions options, CancellationToken cancellationToken)
     {
-        var username = AnsiConsole.Ask<string>("用户名：");
-        var password = AnsiConsole.Prompt(new TextPrompt<string>("密码：").Secret());
+        var username = AnsiConsole.Ask<string>("Username:");
+        var password = AnsiConsole.Prompt(new TextPrompt<string>("Password:").Secret());
 
         try
         {
@@ -105,34 +105,34 @@ public static class CommandRuntime
                 ?? FindString(doc.RootElement, "jwt");
             if (string.IsNullOrWhiteSpace(token))
             {
-                Console.Error.WriteLine("登入失败：服务器未返回可用令牌。");
+                Console.Error.WriteLine("Login failed: server did not return a usable token.");
                 return false;
             }
 
             AuthStore.Save(client.Server, token);
-            AnsiConsole.MarkupLine("[green]登入成功，后续命令将默认使用本次令牌。[/]");
+            AnsiConsole.MarkupLine("[green]Login successful, subsequent commands will use this token by default.[/]");
             return true;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"登入失败：{ex.Message}");
+            Console.Error.WriteLine($"Login failed: {ex.Message}");
             return false;
         }
     }
 
-    /// <summary>执行无需 JSON 响应的 API 操作。</summary>
+    /// <summary>Execute API operation without JSON response.</summary>
     public static async Task<int> RunMessageAsync(ParseResult result, CliOptions options, Func<GnasApiClient, CancellationToken, Task<JsonDocument>> action, string success, CancellationToken cancellationToken = default)
         => await RunAsync(result, options, action, doc => AnsiConsole.MarkupLine($"[green]{Markup.Escape(success)}[/]"), cancellationToken);
 
-    /// <summary>确认破坏性操作。</summary>
+    /// <summary>Confirm destructive operation.</summary>
     public static bool RequireConfirm(bool confirm)
     {
         if (confirm) return true;
-        Console.Error.WriteLine("此操作具有破坏性，请追加 --confirm 确认。");
+        Console.Error.WriteLine("This operation is destructive, please append --confirm to proceed.");
         return false;
     }
 
-    /// <summary>输出缩排 JSON。</summary>
+    /// <summary>Print indented JSON.</summary>
     public static void PrintJson(JsonDocument doc)
     {
         using var stream = new MemoryStream();
@@ -140,7 +140,7 @@ public static class CommandRuntime
         Console.Out.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
     }
 
-    /// <summary>以通用表格或 JSON 预览渲染不确定形状。</summary>
+    /// <summary>Render unknown shapes as generic table or JSON preview.</summary>
     public static void RenderGeneric(JsonDocument doc)
     {
         if (doc.RootElement.ValueKind == JsonValueKind.Array)
@@ -157,13 +157,13 @@ public static class CommandRuntime
         AnsiConsole.Write(panel);
     }
 
-    /// <summary>渲染 JSON 数组为表格。</summary>
+    /// <summary>Render JSON array as table.</summary>
     public static void RenderArrayTable(JsonElement array)
     {
         var items = array.ValueKind == JsonValueKind.Array ? array.EnumerateArray().ToArray() : [];
         if (items.Length == 0)
         {
-            AnsiConsole.MarkupLine("[grey]无资料[/]");
+            AnsiConsole.MarkupLine("[grey]No data[/]");
             return;
         }
         var names = items.Where(i => i.ValueKind == JsonValueKind.Object).SelectMany(i => i.EnumerateObject().Select(p => p.Name)).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToArray();
@@ -181,15 +181,15 @@ public static class CommandRuntime
         AnsiConsole.Write(table);
     }
 
-    /// <summary>渲染简单键值表。</summary>
+    /// <summary>Render simple key-value table.</summary>
     public static void RenderKeyValues(string title, params (string Key, string Value)[] values)
     {
-        var table = new Table().Title(title).RoundedBorder().AddColumn("项目").AddColumn("值");
+        var table = new Table().Title(title).RoundedBorder().AddColumn("Item").AddColumn("Value");
         foreach (var (key, value) in values) table.AddRow(Markup.Escape(key), Markup.Escape(value));
         AnsiConsole.Write(table);
     }
 
-    /// <summary>从对象中读取属性文本。</summary>
+    /// <summary>Read property text from object.</summary>
     public static string GetPropertyText(JsonElement item, string name)
     {
         if (item.ValueKind != JsonValueKind.Object) return item.ToString();
@@ -206,7 +206,7 @@ public static class CommandRuntime
         return string.Empty;
     }
 
-    /// <summary>尝试在 JSON 中找到第一层资料数组。</summary>
+    /// <summary>Try to find the first-level data array in JSON.</summary>
     public static bool TryFindArray(JsonElement element, out JsonElement array)
     {
         if (element.ValueKind == JsonValueKind.Array) { array = element; return true; }
@@ -221,7 +221,7 @@ public static class CommandRuntime
         return false;
     }
 
-    /// <summary>解析 k=v 参数。</summary>
+    /// <summary>Parse k=v parameters.</summary>
     public static Dictionary<string, string> ParsePairs(IEnumerable<string>? values)
     {
         var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

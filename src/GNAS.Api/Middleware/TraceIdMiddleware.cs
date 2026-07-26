@@ -2,21 +2,21 @@ using System.Diagnostics;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>链路标识中间件。</summary>
+/// <summary>Trace identifier middleware.</summary>
 public sealed class TraceIdMiddleware
 {
     private const string HeaderName = "X-Trace-Id";
     private readonly RequestDelegate next;
     private readonly ILogger<TraceIdMiddleware> logger;
 
-    /// <summary>初始化链路标识中间件。</summary>
+    /// <summary>Initializes the trace identifier middleware.</summary>
     public TraceIdMiddleware(RequestDelegate next, ILogger<TraceIdMiddleware> logger)
     {
         this.next = next;
         this.logger = logger;
     }
 
-    /// <summary>处理请求。</summary>
+    /// <summary>Process request.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         var traceId = context.Request.Headers.TryGetValue(HeaderName, out var value) && !string.IsNullOrWhiteSpace(value)

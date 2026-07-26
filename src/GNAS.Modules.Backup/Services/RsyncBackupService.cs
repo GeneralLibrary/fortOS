@@ -2,18 +2,18 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Backup.Services;
 
-/// <summary>Rsync 增量备份服务。</summary>
+/// <summary>Rsync incremental backup service.</summary>
 public sealed class RsyncBackupService
 {
     private readonly IProcessManager processManager;
 
-    /// <summary>创建 Rsync 备份服务。</summary>
+    /// <summary>Creates an Rsync backup service.</summary>
     public RsyncBackupService(IProcessManager processManager)
     {
         this.processManager = processManager;
     }
 
-    /// <summary>执行增量同步。</summary>
+    /// <summary>Performs incremental sync.</summary>
     public async Task<CommandResult> SyncAsync(string source, string target, bool dryRun, CancellationToken ct)
     {
         Validate(source);
@@ -29,7 +29,7 @@ public sealed class RsyncBackupService
         }
         catch (Exception ex) when (ex is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException or PlatformException)
         {
-            return new CommandResult { ExitCode = 127, Stderr = "rsync 不可用，已优雅失败。" };
+            return new CommandResult { ExitCode = 127, Stderr = "rsync is not available, gracefully failed." };
         }
     }
 
@@ -40,7 +40,7 @@ public sealed class RsyncBackupService
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         if (value.Contains('\n') || value.Contains('\r'))
         {
-            throw new ArgumentException("路径不能包含换行。", nameof(value));
+            throw new ArgumentException("Path cannot contain newlines.", nameof(value));
         }
     }
 }

@@ -8,15 +8,15 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// Linux 磁盘管理器。
+/// Linux disk manager.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxDiskManager : IDiskManager
 {
     private readonly CommandExecutor _executor;
 
-    /// <summary>初始化 Linux 磁盘管理器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the Linux disk manager.</summary>
+    /// <param name="logger">Logger.</param>
     public LinuxDiskManager(ILogger<LinuxDiskManager> logger)
     {
         _executor = new CommandExecutor(logger);
@@ -61,7 +61,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
     {
         if (diskPaths.Length == 0)
         {
-            throw new ArgumentException("至少需要一个磁盘。", nameof(diskPaths));
+            throw new ArgumentException("At least one disk is required.", nameof(diskPaths));
         }
 
         foreach (var diskPath in diskPaths)
@@ -76,7 +76,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
             RaidLevel.Raid5 => "5",
             RaidLevel.Raid6 => "6",
             RaidLevel.Raid10 => "10",
-            _ => throw new ArgumentOutOfRangeException(nameof(level), level, "不支持的 RAID 等级。"),
+            _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Unsupported RAID level."),
         };
 
         var devices = string.Join(' ', diskPaths.Select(Quote));
@@ -163,13 +163,13 @@ public sealed partial class LinuxDiskManager : IDiskManager
         => double.TryParse(value?.TrimEnd('%'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var percent) ? percent : 0;
 
     private static string ValidateFs(string fsType)
-        => SafeTokenRegex().IsMatch(fsType) ? fsType : throw new ArgumentException("文件系统类型包含非法字符。", nameof(fsType));
+        => SafeTokenRegex().IsMatch(fsType) ? fsType : throw new ArgumentException("File system type contains illegal characters.", nameof(fsType));
 
     private static void ValidateDevicePath(string path)
     {
         if (!DevicePathRegex().IsMatch(path))
         {
-            throw new ArgumentException("设备路径不安全。", nameof(path));
+            throw new ArgumentException("Unsafe device path.", nameof(path));
         }
     }
 

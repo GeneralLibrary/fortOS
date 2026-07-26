@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// Linux 文件系统管理器。
+/// Linux file system manager.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxFileSystem : IFileSystem
@@ -19,8 +19,8 @@ public sealed partial class LinuxFileSystem : IFileSystem
     private readonly CommandExecutor _executor;
     private readonly ILogger _logger;
 
-    /// <summary>初始化 Linux 文件系统管理器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the Linux file system manager.</summary>
+    /// <param name="logger">Logger.</param>
     public LinuxFileSystem(ILogger<LinuxFileSystem> logger)
     {
         _executor = new CommandExecutor(logger);
@@ -90,8 +90,8 @@ public sealed partial class LinuxFileSystem : IFileSystem
     }
 
     /// <summary>
-    /// 将挂载变更持久化到 /etc/fstab，保证重启后仍然生效。
-    /// 持久化失败（如容器内 /etc 只读）仅记录警告，不影响本次挂载操作结果。
+    /// Persists mount changes to /etc/fstab, ensuring they survive reboot.
+    /// Persistence failure (e.g., read-only /etc inside a container) only logs a warning and does not affect the current mount operation.
     /// </summary>
     private async Task PersistFstabAsync(Func<string, string> transform, CancellationToken ct)
     {
@@ -103,7 +103,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(ex, "无法更新 {FstabPath}，挂载不会在重启后自动恢复。", FstabPath);
+            _logger.LogWarning(ex, "Unable to update {FstabPath}, mount will not be automatically restored after reboot.", FstabPath);
         }
         finally
         {
@@ -118,7 +118,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
     {
         if (!AllowedFileSystems.Contains(fsType))
         {
-            throw new ArgumentException("不支持或不安全的文件系统类型。", nameof(fsType));
+            throw new ArgumentException("Unsupported or unsafe file system type.", nameof(fsType));
         }
     }
 
@@ -126,7 +126,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
     {
         if (!SafePathRegex().IsMatch(path))
         {
-            throw new ArgumentException("路径包含非法字符。", parameterName);
+            throw new ArgumentException("Path contains illegal characters.", parameterName);
         }
     }
 

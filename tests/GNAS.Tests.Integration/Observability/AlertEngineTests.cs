@@ -14,8 +14,8 @@ public sealed class AlertEngineTests
         await engine.AddRuleAsync(new AlertRule
         {
             RuleId = "event-rule",
-            Name = "事件规则",
-            Description = "测试事件规则",
+            Name = "Event Rule",
+            Description = "Test event rule",
             Severity = "warning",
             Condition = new AlertCondition { Type = "event", Topic = "disk.failed" },
             CooldownSeconds = 60
@@ -39,8 +39,8 @@ public sealed class AlertEngineTests
         await engine.AddRuleAsync(new AlertRule
         {
             RuleId = "metric-rule",
-            Name = "指标规则",
-            Description = "测试指标规则",
+            Name = "Metric Rule",
+            Description = "Test metric rule",
             Severity = "critical",
             Condition = new AlertCondition { Type = "metric", Metric = "cpu.usage", Operator = "gte", Value = 90 },
             CooldownSeconds = 0
@@ -62,8 +62,8 @@ public sealed class AlertEngineTests
         await engine.AddRuleAsync(new AlertRule
         {
             RuleId = "availability-rule",
-            Name = "可用性规则",
-            Description = "测试告警恢复",
+            Name = "Availability Rule",
+            Description = "Test alert recovery",
             Severity = "critical",
             Condition = new AlertCondition { Type = "metric", Metric = "service.health", Operator = "lt", Value = 1 },
             CooldownSeconds = 0

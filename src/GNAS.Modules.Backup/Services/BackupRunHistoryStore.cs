@@ -3,7 +3,7 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Backup.Services;
 
-/// <summary>SQLite 持久化的备份任务与运行记录仓库，并在首次读取时迁移旧 JSON。</summary>
+/// <summary>SQLite-persisted backup task and run record store, migrates legacy JSON on first read.</summary>
 public sealed class BackupRunHistoryStore
 {
     private readonly IDatabaseProvider _database;
@@ -111,7 +111,7 @@ ORDER BY started_at DESC LIMIT $limit;
 
 public enum BackupRunState { Queued, Running, Succeeded, Failed, RolledBack }
 
-/// <summary>稳定、可审计的运行报告。</summary>
+/// <summary>Stable, auditable run report.</summary>
 public sealed record BackupRunReport
 {
     public int AttemptCount { get; init; }
@@ -122,7 +122,7 @@ public sealed record BackupRunReport
     public long? BytesProcessed { get; init; }
 }
 
-/// <summary>备份运行记录。</summary>
+/// <summary>Backup run record.</summary>
 public sealed record BackupRunRecord
 {
     public required string RunId { get; init; }

@@ -2,7 +2,7 @@ using GNAS.Core;
 
 namespace GNAS.Observability.Logging.Stages;
 
-/// <summary>日志分类阶段。</summary>
+/// <summary>Log classification stage.</summary>
 public sealed class ClassifyStage : ILogStage
 {
     /// <inheritdoc />

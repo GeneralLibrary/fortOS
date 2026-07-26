@@ -1,17 +1,17 @@
 namespace GNAS.Core;
 
-/// <summary>NAS 令牌管理器接口。</summary>
+/// <summary>NAS token manager interface.</summary>
 public interface ITokenManager
 {
-    /// <summary>签发令牌。</summary>
+    /// <summary>Issue a token.</summary>
     Task<string> IssueTokenAsync(string subject, TokenType tokenType, IEnumerable<string> capabilities, int trustLevel, TimeSpan lifetime, IEnumerable<string>? delegationChain, string? deviceBinding, CancellationToken ct);
-    /// <summary>验证令牌。</summary>
+    /// <summary>Validate a token.</summary>
     Task<TokenValidationResult> ValidateTokenAsync(string token, CancellationToken ct);
-    /// <summary>吊销令牌。</summary>
+    /// <summary>Revoke a token.</summary>
     Task RevokeTokenAsync(string jti, string reason, CancellationToken ct);
-    /// <summary>续期令牌。</summary>
+    /// <summary>Renew a token.</summary>
     Task<string> RenewTokenAsync(string token, CancellationToken ct);
-    /// <summary>检查令牌是否已吊销。</summary>
+    /// <summary>Check whether a token is revoked.</summary>
     Task<bool> IsTokenRevokedAsync(string jti, CancellationToken ct);
     /// <summary>Generate and activate a new signing key; prior keys remain valid for existing tokens.</summary>
     Task<string> RotateSigningKeyAsync(CancellationToken ct);

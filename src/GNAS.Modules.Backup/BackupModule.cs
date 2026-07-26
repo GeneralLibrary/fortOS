@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Modules.Backup;
 
-/// <summary>备份模块，提供快照、Rsync、云备份与调度。</summary>
+/// <summary>Backup module, provides snapshots, Rsync, cloud backup, and scheduling.</summary>
 public sealed class BackupModule : NasModuleBase
 {
     private BackupScheduler? scheduler;
@@ -15,7 +15,7 @@ public sealed class BackupModule : NasModuleBase
     public override string ModuleId => "backup";
 
     /// <inheritdoc />
-    public override string DisplayName => "数据备份";
+    public override string DisplayName => "Data Backup";
 
     /// <inheritdoc />
     public override IReadOnlyList<string> Dependencies => ["storage"];
@@ -23,17 +23,17 @@ public sealed class BackupModule : NasModuleBase
     /// <inheritdoc />
     public override IReadOnlyList<string> RequiredCapabilities => ["backup:read", "backup:write", "storage:snapshot:write"];
 
-    /// <summary>加载备份任务。</summary>
+    /// <summary>Loads backup tasks.</summary>
     public async Task<IReadOnlyList<BackupTask>> ListTasksAsync(CancellationToken ct)
     {
-        if (taskStore is null) throw new InvalidOperationException("备份模块尚未初始化。");
+        if (taskStore is null) throw new InvalidOperationException("Backup module has not been initialized.");
         return await taskStore.ListAsync(ct).ConfigureAwait(false);
     }
 
-    /// <summary>保存备份任务。</summary>
+    /// <summary>Saves backup tasks.</summary>
     public async Task SaveTasksAsync(IEnumerable<BackupTask> tasks, CancellationToken ct)
     {
-        if (taskStore is null) throw new InvalidOperationException("备份模块尚未初始化。");
+        if (taskStore is null) throw new InvalidOperationException("Backup module has not been initialized.");
         await taskStore.ReplaceAllAsync(tasks, ct).ConfigureAwait(false);
     }
 

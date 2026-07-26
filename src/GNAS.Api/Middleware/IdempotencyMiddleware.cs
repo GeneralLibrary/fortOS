@@ -5,7 +5,7 @@ using GNAS.Security.Models;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>持久 Idempotency-Key：同一主体和请求指纹可重放，pending 请求明确冲突。</summary>
+/// <summary>Persistent Idempotency-Key: same subject and request fingerprint can be replayed, pending requests return explicit conflict.</summary>
 public sealed class IdempotencyMiddleware(RequestDelegate next, IConfiguration configuration)
 {
     private const int DefaultMaximumBody = 1024 * 1024;

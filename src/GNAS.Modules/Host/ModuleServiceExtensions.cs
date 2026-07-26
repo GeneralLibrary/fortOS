@@ -3,10 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Modules.Host;
 
-/// <summary>模块宿主依赖注入扩展。</summary>
+/// <summary>Module host dependency injection extensions.</summary>
 public static class ModuleServiceExtensions
 {
-    /// <summary>注册模块宿主单例。</summary>
+    /// <summary>Register module host singleton.</summary>
     public static IServiceCollection AddModuleHost(this IServiceCollection services)
     {
         services.AddSingleton<ModuleHost>();

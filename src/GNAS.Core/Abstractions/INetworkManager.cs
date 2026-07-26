@@ -1,14 +1,14 @@
 namespace GNAS.Core;
 
-/// <summary>网络管理抽象。</summary>
+/// <summary>Network management abstraction.</summary>
 public interface INetworkManager
 {
-    /// <summary>列出网络接口。</summary>
+    /// <summary>List network interfaces.</summary>
     Task<IReadOnlyList<NetworkInterfaceInfo>> ListInterfacesAsync(CancellationToken ct);
-    /// <summary>配置网络接口。</summary>
+    /// <summary>Configure a network interface.</summary>
     Task ConfigureInterfaceAsync(string name, NetConfig config, CancellationToken ct);
-    /// <summary>添加防火墙规则。</summary>
+    /// <summary>Add a firewall rule.</summary>
     Task AddFirewallRuleAsync(FirewallRule rule, CancellationToken ct);
-    /// <summary>删除防火墙规则。</summary>
+    /// <summary>Remove a firewall rule.</summary>
     Task RemoveFirewallRuleAsync(string ruleId, CancellationToken ct);
 }

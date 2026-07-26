@@ -4,7 +4,7 @@ using System.Diagnostics.Metrics;
 
 namespace GNAS.Observability;
 
-/// <summary>进程内指标与 Prometheus 文本快照。Meter 供 OpenTelemetry 订阅，快照供轻量抓取。</summary>
+/// <summary>In-process metrics and Prometheus text snapshot. Meter for OpenTelemetry subscription, snapshot for lightweight scraping.</summary>
 public sealed class GnasMetrics : IDisposable
 {
     private readonly Meter _meter = new("GNAS");

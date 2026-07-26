@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Modules.Storage.Services;
 
-/// <summary>SMART 监控服务，每 30 分钟检查磁盘健康并发布指标。</summary>
+/// <summary>SMART monitoring service, checks disk health every 30 minutes and publishes metrics.</summary>
 public sealed class SmartMonitorService
 {
     private readonly IDiskManager diskManager;
@@ -15,7 +15,7 @@ public sealed class SmartMonitorService
     private CancellationTokenSource? cts;
     private Task? loopTask;
 
-    /// <summary>创建 SMART 监控服务。</summary>
+    /// <summary>Create the SMART monitoring service.</summary>
     public SmartMonitorService(IDiskManager diskManager, IEventBus eventBus, IServiceProvider services, ILogger logger)
     {
         this.diskManager = diskManager;
@@ -24,14 +24,14 @@ public sealed class SmartMonitorService
         this.logger = logger;
     }
 
-    /// <summary>启动监控循环。</summary>
+    /// <summary>Start the monitoring loop.</summary>
     public void Start(CancellationToken ct)
     {
         cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         loopTask = Task.Run(() => RunAsync(cts.Token), CancellationToken.None);
     }
 
-    /// <summary>停止监控循环。</summary>
+    /// <summary>Stop the monitoring loop.</summary>
     public async Task StopAsync(CancellationToken ct)
     {
         if (cts is null || loopTask is null)
@@ -68,7 +68,7 @@ public sealed class SmartMonitorService
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "列出磁盘以执行 SMART 检查失败。");
+            logger.LogWarning(ex, "Failed to list disks for SMART check.");
             return;
         }
 
@@ -90,7 +90,7 @@ public sealed class SmartMonitorService
                         Category = LogCategory.Metric,
                         Level = LogLevel.Information,
                         SourceComponent = "storage.smart",
-                        Message = $"磁盘 {disk.Path} 温度 {temp}℃",
+                        Message = $"Disk {disk.Path} temperature {temp}°C",
                         Metric = new MetricData
                         {
                             MetricName = "storage.disk.temperature",
@@ -103,7 +103,7 @@ public sealed class SmartMonitorService
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "读取磁盘 {DiskPath} SMART 数据失败。", disk.Path);
+                logger.LogWarning(ex, "Failed to read SMART data for disk {DiskPath}.", disk.Path);
             }
         }
     }

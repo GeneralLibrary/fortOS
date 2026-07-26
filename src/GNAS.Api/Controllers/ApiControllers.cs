@@ -17,53 +17,53 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Api.Controllers;
 
-/// <summary>API 控制器基类。</summary>
+/// <summary>API controller base class.</summary>
 [ApiController]
 public abstract class GnasControllerBase : ControllerBase
 {
-    /// <summary>当前链路标识。</summary>
+    /// <summary>Current trace identifier.</summary>
     protected string? TraceId => HttpContext.Items["X-Trace-Id"]?.ToString();
 
-    /// <summary>当前请求令牌。</summary>
+    /// <summary>Current request token.</summary>
     protected string OwnerToken => Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
         ? Request.Headers.Authorization.ToString()[7..].Trim()
         : Request.Headers["X-Nas-Token"].ToString();
 }
 
-/// <summary>健康检查控制器。</summary>
+/// <summary>Health check controller.</summary>
 [Route("api/health")]
 public sealed class HealthController : GnasControllerBase
 {
     private static readonly DateTimeOffset StartedAt = DateTimeOffset.UtcNow;
 
-    /// <summary>返回 API 健康状态。</summary>
+    /// <summary>Returns API health status.</summary>
     [AllowAnonymous]
     [HttpGet]
     public object Get() => new { status = "ok", version = typeof(Program).Assembly.GetName().Version?.ToString(), uptime = DateTimeOffset.UtcNow - StartedAt, traceId = TraceId };
 }
 
-/// <summary>磁盘控制器。</summary>
+/// <summary>Disk controller.</summary>
 [Route("api/disks")]
 public sealed class DisksController : GnasControllerBase
 {
     private readonly StorageModule storage;
 
-    /// <summary>初始化磁盘控制器。</summary>
+    /// <summary>Initializes the disk controller.</summary>
     public DisksController(StorageModule storage) => this.storage = storage;
 
-    /// <summary>列出磁盘。</summary>
+    /// <summary>List disks.</summary>
     [HttpGet]
     public Task<IReadOnlyList<DiskInfo>> List(CancellationToken ct) => storage.ListDisksAsync(ct);
 
-    /// <summary>按查询参数获取磁盘。</summary>
+    /// <summary>Get disk by query parameters.</summary>
     [HttpGet("detail")]
     public Task<DiskInfo> GetByQuery([FromQuery] string path, CancellationToken ct) => storage.GetDiskDetailAsync(path, ct);
 
-    /// <summary>按编码路径获取磁盘。</summary>
+    /// <summary>Get disk by encoded path.</summary>
     [HttpGet("{encodedPath}")]
     public Task<DiskInfo> Get(string encodedPath, CancellationToken ct) => storage.GetDiskDetailAsync(DecodePath(encodedPath), ct);
 
-    /// <summary>执行 SMART 检查。</summary>
+    /// <summary>Execute SMART check.</summary>
     [HttpPost("smart-check")]
     public async Task<SmartData> Smart([FromBody] PathRequest request, [FromServices] IDiskManager disks, CancellationToken ct) => await disks.GetSmartDataAsync(request.Path, ct).ConfigureAwait(false);
 
@@ -83,24 +83,24 @@ public sealed class DisksController : GnasControllerBase
     }
 }
 
-/// <summary>共享控制器。</summary>
+/// <summary>Share controller.</summary>
 [Route("api/shares")]
 public sealed class SharesController : GnasControllerBase
 {
     private readonly ShareModule shares;
 
-    /// <summary>初始化共享控制器。</summary>
+    /// <summary>Initializes the share controller.</summary>
     public SharesController(ShareModule shares) => this.shares = shares;
 
-    /// <summary>列出共享。</summary>
+    /// <summary>List shares.</summary>
     [HttpGet]
     public Task<IReadOnlyList<ShareDefinition>> List(CancellationToken ct) => shares.ListSharesAsync(ct);
 
-    /// <summary>创建共享。</summary>
+    /// <summary>Create share.</summary>
     [HttpPost]
     public Task<ShareDefinition> Create([FromBody] ShareDefinition share, CancellationToken ct) => shares.CreateShareAsync(share, ct);
 
-    /// <summary>删除共享。</summary>
+    /// <summary>Delete share.</summary>
     [HttpDelete("{id}")]
     public async Task<object> Delete(string id, CancellationToken ct)
     {
@@ -109,49 +109,49 @@ public sealed class SharesController : GnasControllerBase
     }
 }
 
-/// <summary>快照控制器。</summary>
+/// <summary>Snapshot controller.</summary>
 [Route("api/snapshots")]
 public sealed class SnapshotsController : GnasControllerBase
 {
-    /// <summary>创建快照。</summary>
+    /// <summary>Create snapshot.</summary>
     [HttpPost]
     public Task<CommandResult> Create([FromBody] SnapshotRequest request, [FromServices] IProcessManager process, [FromServices] IFileSystem fs, CancellationToken ct)
         => new SnapshotService(process, fs).CreateSnapshotAsync(request.Target, request.Name ?? Guid.CreateVersion7().ToString(), ct);
 
-    /// <summary>列出快照。</summary>
+    /// <summary>List snapshots.</summary>
     [HttpGet]
     public Task<CommandResult> List([FromQuery] string target, [FromServices] IProcessManager process, [FromServices] IFileSystem fs, CancellationToken ct)
         => new SnapshotService(process, fs).ListSnapshotsAsync(target, ct);
 
-    /// <summary>恢复快照。</summary>
+    /// <summary>Restore snapshot.</summary>
     [HttpPost("{id}/restore")]
     public Task<CommandResult> Restore(string id, [FromBody] RestoreSnapshotRequest request, [FromServices] IProcessManager process, [FromServices] IFileSystem fs, CancellationToken ct)
         => new SnapshotService(process, fs).RestoreSnapshotAsync(id, request.Target, ct);
 }
 
-/// <summary>回收站控制器。</summary>
+/// <summary>Recycle bin controller.</summary>
 [Route("api/recycle")]
 public sealed class RecycleController : GnasControllerBase
 {
-    /// <summary>列出回收站内容。</summary>
+    /// <summary>List recycle bin contents.</summary>
     [HttpGet("{share}")]
     public object List(string share) => Directory.Exists(Path.Combine(share, ".recycle"))
         ? Directory.EnumerateFiles(Path.Combine(share, ".recycle"), "*", SearchOption.AllDirectories).Select(f => new { id = Convert.ToBase64String(Encoding.UTF8.GetBytes(f)), path = f, size = new FileInfo(f).Length })
         : Array.Empty<object>();
 
-    /// <summary>恢复回收站文件（兼容旧路由）。</summary>
+    /// <summary>Restore recycle bin file (compatible with old routes).</summary>
     [HttpPost("restore/{id}")]
     public object RestoreLegacy(string id, [FromBody] RestoreRecycleRequest? request)
         => RestoreCore(id, request?.TargetPath);
 
-    /// <summary>恢复回收站文件。</summary>
+    /// <summary>Restore recycle bin file.</summary>
     [HttpPost("{share}/restore/{id}")]
     public object Restore(string share, string id, [FromBody] RestoreRecycleRequest? request)
     {
         var source = Encoding.UTF8.GetString(Convert.FromBase64String(id));
         if (!source.StartsWith(Path.GetFullPath(share), StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException("回收站项目不属于指定共享路径。", nameof(id));
+            throw new ArgumentException("Recycle bin item does not belong to the specified share path.", nameof(id));
         }
 
         return RestoreCore(id, request?.TargetPath);
@@ -166,12 +166,12 @@ public sealed class RecycleController : GnasControllerBase
         return new { success = true };
     }
 
-    /// <summary>清空回收站。</summary>
+    /// <summary>Empty recycle bin.</summary>
     [HttpDelete("empty")]
     public object EmptyRecycle([FromQuery] string share, [FromQuery] int retentionDays = 0)
         => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
 
-    /// <summary>按共享路径清空回收站。</summary>
+    /// <summary>Empty recycle bin by share path.</summary>
     [HttpDelete("{share}/empty")]
     public object EmptyRecycleByRoute(string share, [FromQuery] int retentionDays = 0)
         => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
@@ -182,7 +182,7 @@ public sealed class RecycleController : GnasControllerBase
         var index = recyclePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (index <= 0)
         {
-            throw new ArgumentException("回收站路径格式无效，无法推导原始路径。", nameof(recyclePath));
+            throw new ArgumentException("Invalid recycle bin path format, cannot infer original path.", nameof(recyclePath));
         }
 
         var root = recyclePath[..index];
@@ -190,67 +190,67 @@ public sealed class RecycleController : GnasControllerBase
         var slashIndex = rest.IndexOf(Path.DirectorySeparatorChar);
         if (slashIndex < 0 || slashIndex + 1 >= rest.Length)
         {
-            throw new ArgumentException("回收站路径格式无效，缺少原始相对路径。", nameof(recyclePath));
+            throw new ArgumentException("Invalid recycle bin path format, missing original relative path.", nameof(recyclePath));
         }
 
         return Path.Combine(root, rest[(slashIndex + 1)..]);
     }
 }
 
-/// <summary>Agent 控制器。</summary>
+/// <summary>Agent controller.</summary>
 [Route("api/agents")]
 public sealed class AgentsController : GnasControllerBase
 {
     private readonly AgentModule agents;
 
-    /// <summary>初始化 Agent 控制器。</summary>
+    /// <summary>Initializes the Agent controller.</summary>
     public AgentsController(AgentModule agents) => this.agents = agents;
 
-    /// <summary>兼容旧协议的 Agent 部署入口。</summary>
+    /// <summary>Agent deployment entry compatible with legacy protocol.</summary>
     [HttpPost]
     public Task<ServiceDefinition> DeployLegacy([FromBody] LegacyDeployAgentRequest request, CancellationToken ct)
         => agents.DeployAgentAsync(request.Template, BuildLegacyConfig(request), OwnerToken, ct);
 
-    /// <summary>部署 Agent。</summary>
+    /// <summary>Deploy agent.</summary>
     [HttpPost("deploy")]
     public Task<ServiceDefinition> Deploy([FromBody] DeployAgentRequest request, CancellationToken ct) => agents.DeployAgentAsync(request.TemplateId, request.Config, OwnerToken, ct);
 
-    /// <summary>列出 Agent。</summary>
+    /// <summary>List agents.</summary>
     [HttpGet]
     public Task<IReadOnlyList<ServiceDefinition>> List(CancellationToken ct) => agents.ListAgentsAsync(ct);
 
-    /// <summary>启动 Agent。</summary>
+    /// <summary>Start agent.</summary>
     [HttpPost("{id}/start")]
     public async Task<object> Start(string id, CancellationToken ct) { await agents.StartAgentAsync(id, ct).ConfigureAwait(false); return new { success = true, agentId = id }; }
 
-    /// <summary>停止 Agent。</summary>
+    /// <summary>Stop agent.</summary>
     [HttpPost("{id}/stop")]
     public async Task<object> Stop(string id, CancellationToken ct) { await agents.StopAgentAsync(id, ct).ConfigureAwait(false); return new { success = true, agentId = id }; }
 
-    /// <summary>删除 Agent。</summary>
+    /// <summary>Delete agent.</summary>
     [HttpDelete("{id}")]
     public async Task<object> Delete(string id, CancellationToken ct) { await agents.RemoveAgentAsync(id, ct).ConfigureAwait(false); return new { success = true, agentId = id }; }
 
-    /// <summary>查询 Agent 日志。</summary>
+    /// <summary>Query agent logs.</summary>
     [HttpGet("{id}/logs")]
     public Task<IReadOnlyList<LogEntry>> Logs(string id, [FromServices] MemoryLogStore logs, CancellationToken ct, [FromQuery] int tail = 100)
         => logs.QueryAsync(new LogQuery { AgentId = id, Limit = tail }, ct);
 
-    /// <summary>列出 Agent 模板目录。</summary>
+    /// <summary>List agent template catalog.</summary>
     [HttpGet("catalog")]
     public Task<IReadOnlyList<AgentTemplate>> Catalog([FromServices] IAgentCatalog catalog, CancellationToken ct) => catalog.ListTemplatesAsync(ct);
 
-    /// <summary>搜索 Agent 模板。</summary>
+    /// <summary>Search agent templates.</summary>
     [HttpGet("catalog/search")]
     public Task<IReadOnlyList<AgentTemplate>> SearchCatalog([FromServices] IAgentCatalog catalog, [FromQuery] string query, CancellationToken ct)
         => catalog.SearchTemplatesAsync(query, ct);
 
-    /// <summary>安装 Agent 模板。</summary>
+    /// <summary>Install agent template.</summary>
     [HttpPost("catalog/install")]
     public Task<AgentTemplate> InstallCatalog([FromServices] IAgentCatalog catalog, [FromBody] InstallAgentTemplateRequest request, CancellationToken ct)
         => catalog.InstallTemplateAsync(request.Source, ct);
 
-    /// <summary>更新 Agent 模板。</summary>
+    /// <summary>Update agent template.</summary>
     [HttpPost("catalog/{templateId}/update")]
     public Task<AgentTemplate> UpdateCatalog([FromServices] IAgentCatalog catalog, string templateId, CancellationToken ct)
         => catalog.UpdateTemplateAsync(templateId, ct);
@@ -262,7 +262,7 @@ public sealed class AgentsController : GnasControllerBase
         var agentId = Read(parameters, "agentId", "agent-id", "id") ?? $"agent-{Guid.CreateVersion7():N}"[..14];
         var displayName = Read(parameters, "displayName", "display-name", "name") ?? agentId;
         var imageName = Read(parameters, "image", "imageName", "image-name")
-            ?? throw new ArgumentException("旧版部署请求必须提供 image 参数。", nameof(request));
+            ?? throw new ArgumentException("Legacy deploy request must provide the image parameter.", nameof(request));
         var capabilities = SplitCsv(Read(parameters, "capabilities", "caps"));
         var volumes = SplitCsv(Read(parameters, "volumes", "volume"))
             .Select(ParseVolume)
@@ -304,7 +304,7 @@ public sealed class AgentsController : GnasControllerBase
         var parts = value.Split(':', StringSplitOptions.TrimEntries);
         if (parts.Length < 2 || parts.Length > 3)
         {
-            throw new ArgumentException("卷映射格式应为 host:container[:ro|rw]。", nameof(value));
+            throw new ArgumentException("Volume mapping format should be host:container[:ro|rw].", nameof(value));
         }
 
         return new VolumeMapping
@@ -331,18 +331,18 @@ public sealed class AgentsController : GnasControllerBase
             || !int.TryParse(numbers[0], out var host)
             || !int.TryParse(numbers[1], out var container))
         {
-            throw new ArgumentException("端口映射格式应为 host:container[/tcp|udp]。", nameof(value));
+            throw new ArgumentException("Port mapping format should be host:container[/tcp|udp].", nameof(value));
         }
 
         return new PortMapping { HostPort = host, ContainerPort = container, Protocol = protocol };
     }
 }
 
-/// <summary>Agent 推送日志控制器。</summary>
+/// <summary>Agent push log controller.</summary>
 [Route("api/agent/logs")]
 public sealed class AgentLogsController : GnasControllerBase
 {
-    /// <summary>接收 Agent 推送日志。</summary>
+    /// <summary>Receive agent push logs.</summary>
     [HttpPost]
     public async Task<object> Push([FromBody] LogEntry[] entries, [FromServices] AgentLogCollector collector, CancellationToken ct)
     {
@@ -351,32 +351,32 @@ public sealed class AgentLogsController : GnasControllerBase
     }
 }
 
-/// <summary>服务控制器。</summary>
+/// <summary>Service controller.</summary>
 [Route("api/services")]
 public sealed class ServicesController : GnasControllerBase
 {
-    /// <summary>列出服务状态。</summary>
+    /// <summary>List service statuses.</summary>
     [HttpGet]
     public Task<IReadOnlyList<ServiceStatusInfo>> List([FromServices] IServiceSupervisor supervisor, CancellationToken ct) => supervisor.ListStatusesAsync(ct);
 
-    /// <summary>启动服务。</summary>
+    /// <summary>Start service.</summary>
     [HttpPost("{id}/start")]
     public async Task<object> Start(string id, [FromServices] IServiceSupervisor supervisor, CancellationToken ct) { await supervisor.StartAsync(id, ct).ConfigureAwait(false); return new { success = true, serviceId = id }; }
 
-    /// <summary>停止服务。</summary>
+    /// <summary>Stop service.</summary>
     [HttpPost("{id}/stop")]
     public async Task<object> Stop(string id, [FromServices] IServiceSupervisor supervisor, CancellationToken ct) { await supervisor.StopAsync(id, ct).ConfigureAwait(false); return new { success = true, serviceId = id }; }
 }
 
-/// <summary>日志控制器。</summary>
+/// <summary>Log controller.</summary>
 [Route("api/logs")]
 public sealed class LogsController : GnasControllerBase
 {
-    /// <summary>查询日志。</summary>
+    /// <summary>Query logs.</summary>
     [HttpGet]
     public Task<IReadOnlyList<LogEntry>> Query([FromServices] MemoryLogStore logs, [FromQuery] LogQuery query, CancellationToken ct) => logs.QueryAsync(query, ct);
 
-    /// <summary>以 SSE 流式输出日志。</summary>
+    /// <summary>Stream logs via SSE.</summary>
     [HttpGet("stream")]
     public async Task Stream([FromServices] MemoryLogStore logs, CancellationToken ct)
     {
@@ -396,21 +396,21 @@ public sealed class LogsController : GnasControllerBase
     }
 }
 
-/// <summary>审计控制器。</summary>
+/// <summary>Audit controller.</summary>
 [Route("api/audit")]
 public sealed class AuditController : GnasControllerBase
 {
-    /// <summary>验证审计链。</summary>
+    /// <summary>Verify audit chain.</summary>
     [HttpGet("verify")]
     public Task<ChainVerificationResult> Verify([FromServices] IAuditChain chain, [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to, CancellationToken ct)
         => chain.VerifyIntegrityAsync(from, to, ct);
 }
 
-/// <summary>指标控制器。</summary>
+/// <summary>Metrics controller.</summary>
 [Route("api/metrics")]
 public sealed class MetricsController : GnasControllerBase
 {
-    /// <summary>返回当前指标。</summary>
+    /// <summary>Return current metrics.</summary>
     [HttpGet("current")]
     public async Task<object> Current([FromServices] IDiskManager disks, CancellationToken ct)
     {
@@ -418,7 +418,7 @@ public sealed class MetricsController : GnasControllerBase
         return new { gc = new { totalMemory = GC.GetTotalMemory(false), gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2) }, disks = diskList };
     }
 
-    /// <summary>返回历史指标。</summary>
+    /// <summary>Return historical metrics.</summary>
     [HttpGet("history")]
     public async Task<IReadOnlyList<object>> History([FromServices] IDatabaseProvider database, [FromQuery] string? metric, [FromQuery] int limit = 100, CancellationToken ct = default)
     {
@@ -435,41 +435,41 @@ public sealed class MetricsController : GnasControllerBase
     }
 }
 
-/// <summary>告警控制器。</summary>
+/// <summary>Alert controller.</summary>
 [Route("api/alerts")]
 public sealed class AlertsController : GnasControllerBase
 {
-    /// <summary>列出活跃告警。</summary>
+    /// <summary>List active alerts.</summary>
     [HttpGet]
     public Task<IReadOnlyList<ActiveAlert>> List([FromServices] IAlertEngine engine, CancellationToken ct) => engine.ListActiveAlertsAsync(ct);
 
-    /// <summary>列出告警规则。</summary>
+    /// <summary>List alert rules.</summary>
     [HttpGet("rules")]
     public Task<IReadOnlyList<AlertRule>> Rules([FromServices] IAlertEngine engine, CancellationToken ct) => engine.ListRulesAsync(ct);
 
-    /// <summary>添加告警规则。</summary>
+    /// <summary>Add alert rule.</summary>
     [HttpPost("rules")]
     public async Task<object> AddRule([FromBody] AlertRule rule, [FromServices] IAlertEngine engine, CancellationToken ct) { await engine.AddRuleAsync(rule, ct).ConfigureAwait(false); return new { success = true, ruleId = rule.RuleId }; }
 }
 
-/// <summary>UPS 控制器。</summary>
+/// <summary>UPS controller.</summary>
 [Route("api/ups")]
 public sealed class UpsController : GnasControllerBase
 {
-    /// <summary>获取 UPS 状态。</summary>
+    /// <summary>Get UPS status.</summary>
     [HttpGet("status")]
     public async Task<object> Status([FromServices] IProcessManager process, CancellationToken ct)
     {
         var result = await process.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "upsc", Arguments = "ups", TimeoutSeconds = 5 }, ct).ConfigureAwait(false);
-        return result.ExitCode == 0 ? new { configured = true, raw = result.Stdout } : new { configured = false, message = "未配置 UPS 或 upsc 不可用。", error = result.Stderr };
+        return result.ExitCode == 0 ? new { configured = true, raw = result.Stdout } : new { configured = false, message = "UPS not configured or upsc unavailable.", error = result.Stderr };
     }
 }
 
-/// <summary>恢复控制器。</summary>
+/// <summary>Recovery controller.</summary>
 [Route("api/recovery")]
 public sealed class RecoveryController : GnasControllerBase
 {
-    /// <summary>启动恢复流程并立即执行。</summary>
+    /// <summary>Start recovery process and execute immediately.</summary>
     [HttpPost("start")]
     public async Task<object> Start([FromBody] RecoveryRequest request, [FromServices] IEventBus bus, [FromServices] IProcessManager process, [FromServices] IFileSystem fileSystem, CancellationToken ct)
     {
@@ -480,7 +480,7 @@ public sealed class RecoveryController : GnasControllerBase
         {
             "snapshot" => await RunSnapshotRecoveryAsync(request, process, fileSystem, ct).ConfigureAwait(false),
             "rsync" => await RunRsyncRecoveryAsync(request, process, ct).ConfigureAwait(false),
-            _ => throw new ArgumentException($"不支持的恢复模式：{mode}", nameof(request)),
+            _ => throw new ArgumentException($"Unsupported recovery mode: {mode}", nameof(request)),
         };
         var success = result.ExitCode == 0;
         await bus.PublishAsync(
@@ -513,7 +513,7 @@ public sealed class RecoveryController : GnasControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.SnapshotId))
         {
-            throw new ArgumentException("snapshot 模式必须提供 snapshotId。", nameof(request));
+            throw new ArgumentException("Snapshot mode must provide snapshotId.", nameof(request));
         }
 
         var snapshots = new SnapshotService(process, fileSystem);
@@ -524,7 +524,7 @@ public sealed class RecoveryController : GnasControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Source))
         {
-            throw new ArgumentException("rsync 模式必须提供 source。", nameof(request));
+            throw new ArgumentException("Rsync mode must provide source.", nameof(request));
         }
 
         var rsync = new RsyncBackupService(process);
@@ -532,11 +532,11 @@ public sealed class RecoveryController : GnasControllerBase
     }
 }
 
-/// <summary>认证控制器。</summary>
+/// <summary>Authentication controller.</summary>
 [Route("api/auth")]
 public sealed class AuthController : GnasControllerBase
 {
-    /// <summary>本地登录。</summary>
+    /// <summary>Local login.</summary>
     [AllowAnonymous]
     [HttpPost("login")]
     public async Task<object> Login([FromBody] LoginRequest request, [FromServices] IIdentityService identity, CancellationToken ct)
@@ -552,9 +552,9 @@ public sealed class AuthController : GnasControllerBase
     }
 
     /// <summary>
-    /// 注册本地用户。
-    /// 首次启动（尚无任何用户）时允许匿名调用以创建首个管理员账户；
-    /// 存在用户后，<see cref="Middleware.NasTokenMiddleware"/> 强制要求令牌，且此处校验用户管理能力。
+    /// Register local user.
+    /// On first startup (no users yet), anonymous calls are allowed to create the first admin account;
+    /// once users exist, <see cref="Middleware.NasTokenMiddleware"/> enforces token authentication, and user management capability is checked here.
     /// </summary>
     [BootstrapOnly]
     [HttpPost("register")]
@@ -562,7 +562,7 @@ public sealed class AuthController : GnasControllerBase
     {
         if (HttpContext.Items["NasTokenPayload"] is NasTokenPayload payload && !payload.Capabilities.Satisfies("admin:user:create"))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "需要用户管理权限。", code = "FORBIDDEN", traceId = TraceId });
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "User management permission required.", code = "FORBIDDEN", traceId = TraceId });
         }
 
         var result = await identity.CreateLocalUserAsync(request.Username, request.Password, request.DisplayName, request.Email, ct).ConfigureAwait(false);
@@ -574,7 +574,7 @@ public sealed class AuthController : GnasControllerBase
         return new { success = true, username = request.Username };
     }
 
-    /// <summary>刷新令牌。</summary>
+    /// <summary>Refresh token.</summary>
     [HttpPost("refresh")]
     public async Task<object> Refresh([FromServices] ITokenManager tokens, CancellationToken ct)
     {
@@ -583,21 +583,21 @@ public sealed class AuthController : GnasControllerBase
     }
 }
 
-/// <summary>配置控制器。</summary>
+/// <summary>Configuration controller.</summary>
 [Route("api/config")]
 public sealed class ConfigController : GnasControllerBase
 {
-    /// <summary>返回非敏感扁平配置。</summary>
+    /// <summary>Return non-sensitive flat configuration.</summary>
     [HttpGet]
     public object Get([FromServices] IConfiguration configuration) => configuration.AsEnumerable()
         .Where(p => p.Value is not null && !IsSensitive(p.Key))
         .ToDictionary(p => p.Key, p => p.Value);
 
-    /// <summary>写入运行时配置覆盖值。</summary>
+    /// <summary>Write runtime configuration override value.</summary>
     [HttpPut("{key}")]
     public async Task<object> Put(string key, [FromBody] ConfigValue value, [FromServices] IDatabaseProvider database, CancellationToken ct)
     {
-        if (IsSensitive(key)) throw new ArgumentException("禁止通过此端点写入敏感配置。", nameof(key));
+        if (IsSensitive(key)) throw new ArgumentException("Writing sensitive configuration through this endpoint is prohibited.", nameof(key));
         await database.InitializeAsync(ct).ConfigureAwait(false);
         await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
@@ -612,25 +612,25 @@ public sealed class ConfigController : GnasControllerBase
     private static bool IsSensitive(string key) => key.Contains("password", StringComparison.OrdinalIgnoreCase) || key.Contains("secret", StringComparison.OrdinalIgnoreCase) || key.Contains("token", StringComparison.OrdinalIgnoreCase) || key.Contains("key", StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>路径请求。</summary>
+/// <summary>Path request.</summary>
 public sealed record PathRequest(string Path);
-/// <summary>快照请求。</summary>
+/// <summary>Snapshot request.</summary>
 public sealed record SnapshotRequest(string Target, string? Name);
-/// <summary>恢复快照请求。</summary>
+/// <summary>Restore snapshot request.</summary>
 public sealed record RestoreSnapshotRequest(string Target);
-/// <summary>恢复回收站请求。</summary>
+/// <summary>Restore recycle bin request.</summary>
 public sealed record RestoreRecycleRequest(string TargetPath);
-/// <summary>部署 Agent 请求。</summary>
+/// <summary>Deploy agent request.</summary>
 public sealed record DeployAgentRequest(string TemplateId, AgentConfig Config);
-/// <summary>兼容旧版 CLI 的部署请求。</summary>
+/// <summary>Deploy request compatible with legacy CLI.</summary>
 public sealed record LegacyDeployAgentRequest(string Template, Dictionary<string, string>? Parameters);
-/// <summary>安装 Agent 模板请求。</summary>
+/// <summary>Install agent template request.</summary>
 public sealed record InstallAgentTemplateRequest(string Source);
-/// <summary>恢复请求。</summary>
+/// <summary>Recovery request.</summary>
 public sealed record RecoveryRequest(string Target, string? Mode, string? Source, string? SnapshotId, bool DryRun = false);
-/// <summary>登录请求。</summary>
+/// <summary>Login request.</summary>
 public sealed record LoginRequest(string Username, string Password, string? Totp);
-/// <summary>注册用户请求。</summary>
+/// <summary>Register user request.</summary>
 public sealed record RegisterRequest(string Username, string Password, string? DisplayName, string? Email);
-/// <summary>配置值。</summary>
+/// <summary>Config value.</summary>
 public sealed record ConfigValue(string? Value);

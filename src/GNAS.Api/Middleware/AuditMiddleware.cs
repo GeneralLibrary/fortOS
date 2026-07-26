@@ -3,15 +3,15 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>审计日志中间件。</summary>
+/// <summary>Audit log middleware.</summary>
 public sealed class AuditMiddleware
 {
     private readonly RequestDelegate next;
 
-    /// <summary>初始化审计中间件。</summary>
+    /// <summary>Initializes the audit middleware.</summary>
     public AuditMiddleware(RequestDelegate next) => this.next = next;
 
-    /// <summary>处理请求。</summary>
+    /// <summary>Process request.</summary>
     public async Task InvokeAsync(HttpContext context, ILogPipeline pipeline)
     {
         await next(context).ConfigureAwait(false);

@@ -1,91 +1,92 @@
-# GNAS — 新一代 Linux NAS 系统技术架构
+# GNAS — New Generation Linux NAS System Technical Architecture
 
-> **项目代号**: GNAS  
-> **版本**: Architecture v2.1  
-> **最新修订**: 2026-07-25  
-> **技术栈**: .NET 10 + Docker + OpenTelemetry
-
----
-
-## 目录
-
-1. [设计目标与核心原则](#1-设计目标与核心原则)
-2. [整体分层架构](#2-整体分层架构)
-3. [展示层 — Desktop CLI Tool](#3-展示层)
-4. [API 网关层](#4-api-网关层)
-   - 4.3 [gRPC 服务定义 (Proto Contracts)](#43-grpc-服务定义-proto-contracts)
-5. [应用层 — .NET Modules](#5-应用层)
-   - 5.3 [存储池管理详细设计](#53-存储池管理详细设计)
-   - 5.4 [共享协议详细设计](#54-共享协议详细设计)
-   - 5.5 [数据保护与备份策略](#55-数据保护与备份策略)
-6. [安全与身份认证层](#6-安全与身份认证层)
-7. [服务总线容器层](#7-服务总线容器层)
-8. [Docker/Agent 集成层](#8-dockeragent-集成层)
-9. [平台抽象层](#9-平台抽象层)
-10. [日志与可观测性层](#10-日志与可观测性层)
-11. [数据流图](#11-数据流图)
-12. [技术选型总览](#12-技术选型总览)
-13. [部署架构](#13-部署架构)
-14. [系统安装与初始化引导](#14-系统安装与初始化引导)
-15. [UPS 集成 (不间断电源)](#15-ups-集成-不间断电源)
-16. [安全增强设计](#16-安全增强设计)
-17. [与 OMV 原架构的对比](#与-omv-原架构的对比)
-18. [架构决策记录 (ADR)](#架构决策记录-adr--architecture-decision-records)
-19. [变更记录 (Changelog)](#变更记录-changelog)
+> **Project Codename**: GNAS  
+> **Version**: Architecture v2.1  
+> **Last Updated**: 2026-07-25  
+> **Tech Stack**: .NET 10 + Docker + OpenTelemetry
 
 ---
 
-## 1. 设计目标与核心原则
+## Table of Contents
 
-### 1.1 设计目标
+1. [Design Goals and Core Principles](#1-design-goals-and-core-principles)
+2. [Overall Layered Architecture](#2-overall-layered-architecture)
+3. [Presentation Layer — Desktop CLI Tool](#3-presentation-layer)
+4. [API Gateway Layer](#4-api-gateway-layer)
+   - 4.3 [gRPC Service Definitions (Proto Contracts)](#43-grpc-service-definitions-proto-contracts)
+5. [Application Layer — .NET Modules](#5-application-layer)
+   - 5.3 [Storage Pool Management Detailed Design](#53-storage-pool-management-detailed-design)
+   - 5.4 [Share Protocol Detailed Design](#54-share-protocol-detailed-design)
+   - 5.5 [Data Protection and Backup Strategy](#55-data-protection-and-backup-strategy)
+6. [Security and Identity Layer](#6-security-and-identity-layer)
+7. [Service Bus Container Layer](#7-service-bus-container-layer)
+8. [Docker/Agent Integration Layer](#8-dockeragent-integration-layer)
+9. [Platform Abstraction Layer](#9-platform-abstraction-layer)
+10. [Logging and Observability Layer](#10-logging-and-observability-layer)
+11. [Data Flow Diagrams](#11-data-flow-diagrams)
+12. [Technology Selection Overview](#12-technology-selection-overview)
+13. [Deployment Architecture](#13-deployment-architecture)
+14. [System Installation and Initialization Guide](#14-system-installation-and-initialization-guide)
+15. [UPS Integration (Uninterruptible Power Supply)](#15-ups-integration-uninterruptible-power-supply)
+16. [Security Enhancement Design](#16-security-enhancement-design)
+17. [Comparison with OMV Original Architecture](#comparison-with-omv-original-architecture)
+18. [Architecture Decision Records (ADR)](#architecture-decision-records-adr)
+19. [Changelog](#changelog)
 
-| 目标 | 说明 |
+---
+
+## 1. Design Goals and Core Principles
+
+### 1.1 Design Goals
+
+| Goal | Description |
 |------|------|
-| **Linux 平台** | 支持 Linux x64、Linux ARM64；官方发行版基于 Debian 12 |
-| **Docker 原生集成** | Agent/应用以容器方式部署，与 NAS 系统深度交互 |
-| **安全优先** | 借鉴鸿蒙分布式安全思想，适配 NAS 多用户场景 |
-| **统一服务管理** | 一个容器管理所有服务（原生进程 + Docker 容器） |
-| **.NET 全栈** | 全系统使用 .NET 技术栈，CLI 作为唯一交互界面 |
+| **Linux Platform** | Supports Linux x64, Linux ARM64; official distribution based on Debian 12 |
+| **Docker Native Integration** | Agents/applications deployed as containers, deeply interacting with the NAS system |
+| **Security First** | Draws inspiration from HarmonyOS distributed security concepts, adapted for NAS multi-user scenarios |
+| **Unified Service Management** | One container manages all services (native processes + Docker containers) |
+| **.NET Full Stack** | Full system uses .NET technology stack, CLI as the only interaction interface |
 
-### 1.2 核心原则
+### 1.2 Core Principles
 
 ```
-原则                              实现方式
-────                               ────────
+Principle                          Implementation
+───────                            ──────────────
 
-1. 多架构 Linux                   平台抽象层 + .NET RID 多目标编译
-      (Linux x64/ARM64)
+1. Multi-Architecture Linux       Platform Abstraction Layer + .NET RID multi-target build
+   (Linux x64/ARM64)
 
-2. Agent 深度集成                 Agent Catalog → Token Broker → Compose Generator
-   (Docker + NAS Token + Volume)   → Service Bus 统一管理生命周期
+2. Deep Agent Integration         Agent Catalog → Token Broker → Compose Generator
+   (Docker + NAS Token + Volume)   → Service Bus unified lifecycle management
 
-3. 安全 = 能力 + 身份 + 数据分级   NasToken + NAbility + NasDataLevel
-   (鸿蒙思想，NAS 场景化)          三者独立但联动
+3. Security = Capability +        NasToken + NAbility + NasDataLevel
+   Identity + Data Level          Three independent but interconnected
+   (HarmonyOS concept, NAS adapted)
 
-4. 统一服务管理                    Service Bus Container
-   (原生进程 + Docker 容器)        同时管理 smb-daemon 和 openclaw-agent
+4. Unified Service Management      Service Bus Container
+   (Native Process + Docker)       Manages both smb-daemon and openclaw-agent
 
-5. .NET 全栈                       ASP.NET Core (API) + CLI (交互)
-   (Linux + 高性能)                 + gRPC (IPC) + 内置 Web Dashboard
+5. .NET Full Stack                 ASP.NET Core (API) + CLI (Interaction)
+   (Linux + High Performance)       + gRPC (IPC) + Built-in Web Dashboard
 
-6. 全面可观测                      六类日志 + 不可篡改审计链 + 全链路追踪
+6. Comprehensive Observability     Six log categories + Immutable audit chain + Full trace
    (Observability)
 ```
 
-### 1.3 品牌 NAS 架构参考
+### 1.3 Brand NAS Architecture Reference
 
-本架构综合参考了四大品牌 NAS 的 Docker 设计思路：
+This architecture comprehensively references Docker design approaches from four major NAS brands:
 
-| 品牌 | 借鉴点 |
+| Brand | Reference Points |
 |------|--------|
-| **Unraid** | 官方 Docker（不魔改）、社区模板机制、CLI 完全友好 |
-| **TrueNAS SCALE** | ZFS Dataset 粒度的存储隔离、K8s→Compose 的架构教训 |
-| **Synology DSM** | ACL 深度集成、权限自动映射 |
-| **QNAP** | 多运行时架构思想（Docker + LXD + Kata） |
+| **Unraid** | Official Docker (no modifications), community template mechanism, fully CLI-friendly |
+| **TrueNAS SCALE** | ZFS Dataset-level storage isolation, K8s→Compose architecture lessons |
+| **Synology DSM** | Deep ACL integration, automatic permission mapping |
+| **QNAP** | Multi-runtime architecture concept (Docker + LXD + Kata) |
 
 ---
 
-## 2. 整体分层架构
+## 2. Overall Layered Architecture
 
 ```
 ┌═══════════════════════════════════════════════════════════════════════════┐
@@ -97,7 +98,7 @@
 ║  └────────────────────────────┬─────────────────────────────────────┘    ║
 ║                               │ HTTPS / REST API                          ║
 ║  ┌────────────────────────────┴─────────────────────────────────────┐    ║
-║  │  API GATEWAY       RESTful API │ gRPC (内部 IPC)               │    ║
+║  │  API GATEWAY       RESTful API │ gRPC (Internal IPC)           │    ║
 ║  └────────────────────────────┬─────────────────────────────────────┘    ║
 ║                               │                                          ║
 ║  ┌────────────────────────────┴─────────────────────────────────────┐    ║
@@ -129,10 +130,10 @@
 ║  └──────────────────────────────────────────────────────────────────┘    ║
 ║                                                                            ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
-║                    横切关注点 — 全层贯通                                    ║
+║                    CROSS-CUTTING CONCERNS — THROUGH ALL LAYERS           ║
 ║                                                                            ║
 ║  ╔══════════════════════════════════════════════════════════════════════╗ ║
-║  ║               OBSERVABILITY & LOGGING (可观测性)                     ║ ║
+║  ║               OBSERVABILITY & LOGGING                               ║ ║
 ║  ║                                                                      ║ ║
 ║  ║  Producers ─→ Pipeline ─→ Classifier ─→ Storage ─→ Query ─→ Alert   ║ ║
 ║  ║                                                                      ║ ║
@@ -140,57 +141,59 @@
 ║  ║  │ System   │  │ Audit    │  │ Access   │  │ Agent    │  │Metric │ ║ ║
 ║  ║  │ Log      │  │ Chain    │  │ Log      │  │ Log      │  │Log    │ ║ ║
 ║  ║  │ File +   │  │ Vault    │  │ SQLite   │  │ Loki     │  │TSDB   │ ║ ║
-║  ║  │ Loki     │  │ (防篡改) │  │          │  │          │  │       │ ║ ║
+║  ║  │ Loki     │  │ (Tamper  │  │          │  │          │  │       │ ║ ║
+║  ║  │          │  │  Proof)  │  │          │  │          │  │       │ ║ ║
 ║  ║  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └───────┘ ║ ║
 ║  ║                                                                      ║ ║
 ║  ║  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────────────┐ ║ ║
 ║  ║  │ Log      │  │ Alert    │  │ Retention│  │ Dashboard           │ ║ ║
-║  ║  │ Viewer   │  │ Engine   │  │ Manager  │  │ (Grafana 风格)      │ ║ ║
+║  ║  │ Viewer   │  │ Engine   │  │ Manager  │  │ (Grafana Style)     │ ║ ║
 ║  ║  └──────────┘  └──────────┘  └──────────┘  └─────────────────────┘ ║ ║
 ║  ╚══════════════════════════════════════════════════════════════════════╝ ║
 ║                                                                            ║
 ║  ╔══════════════════════════════════════════════════════════════════════╗ ║
-║  ║               TRACE PROPAGATION (链路追踪)                           ║ ║
+║  ║               TRACE PROPAGATION                                     ║ ║
 ║  ║  CLI/API → API GW → Module → Service Bus → Native/Container Service  ║ ║
-║  ║  (同一个 TraceId 全链路透传)                                          ║ ║
+║  ║  (Same TraceId propagated across the entire chain)                   ║ ║
 ║  ╚══════════════════════════════════════════════════════════════════════╝ ║
 ║                                                                            ║
 ║  ╔══════════════════════════════════════════════════════════════════════╗ ║
-║  ║               SECURITY AUDIT (安全审计切面)                           ║ ║
-║  ║  权限决策、数据访问、配置变更 → 强制写入 Audit Log → 不可篡改链        ║ ║
+║  ║               SECURITY AUDIT CROSS-CUTTING                           ║ ║
+║  ║  Permission decisions, data access, config changes → forced write to ║ ║
+║  ║  Audit Log → immutable chain                                         ║ ║
 ║  ╚══════════════════════════════════════════════════════════════════════╝ ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
 ---
 
-## 3. 展示层 — Desktop CLI Tool
+## 3. Presentation Layer — Desktop CLI Tool
 
-GNAS 的展示层包含 Linux 命令行工具 `gnas`，所有管理操作均通过 CLI 完成。
+GNAS's presentation layer includes the Linux command-line tool `gnas`; all management operations are performed through the CLI.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                   PRESENTATION LAYER  展示层                  │
+│                   PRESENTATION LAYER                         │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │               Desktop CLI Tool (gnas)                   │ │
 │  │                                                        │ │
 │  │  · Linux Console Application (.NET 10)                  │ │
-│  │  · 通过 REST API 与 NAS 后端通信                        │ │
-│  │  · 交互式 TUI 模式 (终端 UI) + 批处理模式                │ │
-│  │  · 管道友好 (JSON / Table 输出)                         │ │
-│  │  · 本地配置文件管理 (~/.gnas/config)                    │ │
+│  │  · Communicates with NAS backend via REST API          │ │
+│  │  · Interactive TUI mode (Terminal UI) + Batch mode     │ │
+│  │  · Pipeline-friendly (JSON / Table output)             │ │
+│  │  · Local config file management (~/.gnas/config)       │ │
 │  └────────────────────────┬───────────────────────────────┘ │
 │                           │                                  │
 │  ┌────────────────────────┴───────────────────────────────┐ │
-│  │  通信协议: HTTPS REST API (JSON)                        │ │
+│  │  Communication Protocol: HTTPS REST API (JSON)         │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 交互式 TUI 模式
+### 3.1 Interactive TUI Mode
 
-不带子命令直接运行 `gnas` 进入交互式终端 UI：
+Running `gnas` without subcommands enters the interactive terminal UI:
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
@@ -212,97 +215,98 @@ GNAS 的展示层包含 Linux 命令行工具 `gnas`，所有管理操作均通�
 │  └────────────────────────────────────────────────────┘  │
 │                                                          │
 │  ┌── Recent Alerts ───────────────────────────────────┐  │
-│  │  10:23  [WARN] 磁盘 sda 使用率 92%                  │  │
-│  │  09:15  [INFO]  Agent openclaw 已部署               │  │
+│  │  10:23  [WARN]  Disk sda usage 92%                  │  │
+│  │  09:15  [INFO]  Agent openclaw deployed             │  │
 │  └────────────────────────────────────────────────────┘  │
 │                                                          │
 │  Press F1-Help F2-Services F3-Logs F4-Agents F10-Quit   │
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 批处理模式
+### 3.2 Batch Mode
 
 ```bash
-# 查询
-gnas status                    # 系统状态概览
-gnas disk list                 # 磁盘列表
-gnas share list                # 共享文件夹列表
-gnas service list              # 服务列表
-gnas agent list                # Agent 列表
+# Query
+gnas status                    # System status overview
+gnas disk list                 # Disk list
+gnas share list                # Shared folder list
+gnas service list              # Service list
+gnas agent list                # Agent list
 
-# 操作
+# Operations
 gnas share create media /mnt/nas/data/media
 gnas service restart smb-daemon
 gnas agent deploy openclaw --capabilities "storage:share:media:read"
 gnas agent start openclaw
 
-# 日志与监控
+# Logs and monitoring
 gnas log view --follow --category agent --agent openclaw
 gnas log query --level error --last 1h
-gnas audit verify              # 验证审计链完整性
+gnas audit verify              # Verify audit chain integrity
 gnas alert list --severity warning
 
-# 输出格式
-gnas disk list --output json   # JSON 输出 (管道友好)
-gnas disk list --output table  # 表格输出 (默认)
-gnas disk list --no-color      # 禁用 ANSI 颜色
+# Output format
+gnas disk list --output json   # JSON output (pipeline-friendly)
+gnas disk list --output table  # Table output (default)
+gnas disk list --no-color      # Disable ANSI colors
 ```
 
-### 3.3 内置 Web Dashboard（可选辅助）
+### 3.3 Built-in Web Dashboard (Optional)
 
-CLI 是主要交互方式。对于需要图形化监控的场景，GNAS 可选择性启用一个轻量级内嵌 Web Dashboard：
+CLI is the primary interaction method. For scenarios requiring graphical monitoring, GNAS can optionally enable a lightweight embedded Web Dashboard:
 
-- 通过浏览器访问 `http://nas-host:5000/dashboard`
-- 纯静态 HTML + Vanilla JS，无框架依赖
-- 通过 REST API 获取数据，无 WebSocket
-- 提供基础的系统健康、磁盘、服务、Agent 状态面板
-- 不提供管理操作（所有操作通过 CLI 完成）
+- Access via browser at `http://nas-host:5000/dashboard`
+- Pure static HTML + Vanilla JS, no framework dependencies
+- Data fetched via REST API, no WebSocket
+- Provides basic system health, disk, service, and Agent status panels
+- Does not provide management operations (all operations via CLI)
 
-### 3.4 CLI 设计原则
+### 3.4 CLI Design Principles
 
-| 原则 | 说明 |
+| Principle | Description |
 |------|------|
-| **管道优先** | 所有查询命令支持 `--output json`，可接入 `jq` 等工具 |
-| **幂等操作** | 管理操作设计为幂等（如 `create` 已存在时跳过或报错） |
-| **确认保护** | 危险操作（删除、格式化）默认要求 `--confirm` 或交互确认 |
-| **离线友好** | CLI 仅调用 REST API，不依赖 WebSocket 长连接 |
-| **脚本化** | 支持 `--token` 参数直接传入 NasToken，无需交互登录
+| **Pipeline-First** | All query commands support `--output json`, compatible with `jq` and similar tools |
+| **Idempotent Operations** | Management operations designed to be idempotent (e.g., `create` skips or errors if already exists) |
+| **Confirmation Protection** | Dangerous operations (delete, format) require `--confirm` or interactive confirmation by default |
+| **Offline-Friendly** | CLI only calls REST API, does not rely on WebSocket persistent connections |
+| **Scriptable** | Supports `--token` parameter to pass NasToken directly, no interactive login required
 
 ---
 
-## 4. API 网关层
+## 4. API Gateway Layer
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     API GATEWAY LAYER  API网关层              │
+│                     API GATEWAY LAYER                        │
 │  ┌────────────────────────┐  ┌────────────────────────────┐  │
 │  │     RESTful API        │  │         gRPC               │  │
-│  │  (ASP.NET Core WebAPI) │  │   (内部服务间通信)          │  │
+│  │  (ASP.NET Core WebAPI) │  │   (Internal Service Comms) │  │
 │  │                        │  │                            │  │
-│  │  · CLI 客户端交互       │  │  · Module ↔ Service Bus   │  │
-│  │  · 第三方集成           │  │  · 高性能 IPC             │  │
+│  │  · CLI client          │  │  · Module ↔ Service Bus   │  │
+│  │  · Third-party         │  │  · High-performance IPC   │  │
+│  │    integration         │  │                            │  │
 │  └────────────────────────┘  └────────────────────────────┘  │
 │                                                              │
-│  职责:                                                       │
-│  · 请求认证 (JWT/NasToken 验证)                               │
-│  · 速率限制 (Rate Limiting)                                   │
-│  · 请求日志 (Access Log)                                      │
-│  · 可选: 内嵌 Dashboard 静态文件                              │
+│  Responsibilities:                                           │
+│  · Request authentication (JWT/NasToken verification)        │
+│  · Rate limiting                                             │
+│  · Request logging (Access Log)                              │
+│  · Optional: Embedded Dashboard static files                 │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 协议选择
+### 4.1 Protocol Selection
 
-| 协议 | 用途 | 传输 |
+| Protocol | Use Case | Transport |
 |------|------|------|
-| **RESTful API** | CLI 客户端、第三方集成、内嵌 Dashboard | HTTP/1.1, HTTP/2 |
-| **gRPC** | 内部服务间高性能通信、Module ↔ Service Bus | HTTP/2 (Protocol Buffers) |
+| **RESTful API** | CLI client, third-party integration, embedded Dashboard | HTTP/1.1, HTTP/2 |
+| **gRPC** | Internal high-performance inter-service communication, Module ↔ Service Bus | HTTP/2 (Protocol Buffers) |
 
-### 4.3 gRPC 服务定义 (Proto Contracts)
+### 4.3 gRPC Service Definitions (Proto Contracts)
 
-所有内部服务间通信基于以下 Protobuf 定义。每个 Module 必须暴露对应的 gRPC Service。
+All internal inter-service communication is based on the following Protobuf definitions. Each Module must expose the corresponding gRPC Service.
 
-#### 4.3.1 存储服务 (Storage)
+#### 4.3.1 Storage Service (Storage)
 
 ```protobuf
 // protos/storage.proto
@@ -311,23 +315,23 @@ package gnas.storage;
 option csharp_namespace = "GNAS.Proto.Storage";
 
 service StorageService {
-  // 磁盘管理
+  // Disk management
   rpc ListDisks (ListDisksRequest) returns (ListDisksResponse);
   rpc GetDiskDetail (GetDiskDetailRequest) returns (DiskDetail);
   rpc TriggerSmartCheck (SmartCheckRequest) returns (SmartCheckResponse);
 
-  // RAID 管理
+  // RAID management
   rpc CreateRaid (CreateRaidRequest) returns (RaidResult);
   rpc GetRaidStatus (GetRaidStatusRequest) returns (RaidStatus);
   rpc DeleteRaid (DeleteRaidRequest) returns (RaidResult);
 
-  // 文件系统管理
+  // Filesystem management
   rpc MountFilesystem (MountRequest) returns (MountResult);
   rpc UnmountFilesystem (UnmountRequest) returns (MountResult);
   rpc FormatFilesystem (FormatRequest) returns (FormatResult);
   rpc GetFilesystemInfo (FsInfoRequest) returns (FsInfo);
 
-  // 流式 (重建进度 / Scrub 进度)
+  // Streaming (Rebuild progress / Scrub progress)
   rpc WatchRaidRebuild (RebuildWatchRequest) returns (stream RebuildProgress);
   rpc WatchScrubProgress (ScrubWatchRequest) returns (stream ScrubProgress);
 }
@@ -361,7 +365,7 @@ message RaidResult {
   bool success = 1;
   string pool_id = 2;
   string message = 3;
-  string error_code = 4;         // 统一错误码
+  string error_code = 4;         // Unified error code
 }
 
 message RebuildProgress {
@@ -372,7 +376,7 @@ message RebuildProgress {
 }
 ```
 
-#### 4.3.2 共享服务 (Share)
+#### 4.3.2 Share Service (Share)
 
 ```protobuf
 // protos/share.proto
@@ -393,7 +397,7 @@ message ShareDefinition {
   string name = 2;
   string path = 3;
   string comment = 4;
-  repeated ShareProtocol protocols = 5;  // SMB, NFS, FTP；WebDAV 值保留供未来兼容
+  repeated ShareProtocol protocols = 5;  // SMB, NFS, FTP; WebDAV value reserved for future compatibility
   bool read_only = 6;
   bool guest_ok = 7;
   bool browseable = 8;
@@ -413,7 +417,7 @@ message ShareResult {
 message ListSharesResponse { repeated ShareDefinition shares = 1; }
 ```
 
-#### 4.3.3 Agent 服务 (Agent)
+#### 4.3.3 Agent Service (Agent)
 
 ```protobuf
 // protos/agent.proto
@@ -436,7 +440,7 @@ message AgentConfig {
   string agent_id = 1;
   string template_id = 2;
   string display_name = 3;
-  repeated string capabilities = 4;       // NAbility 字符串
+  repeated string capabilities = 4;       // NAbility string
   repeated VolumeMapping volumes = 5;
   repeated PortMapping ports = 6;
   ResourceQuota quota = 7;
@@ -479,7 +483,7 @@ message DeployAgentResponse {
 }
 ```
 
-#### 4.3.4 服务总线 (Service Bus)
+#### 4.3.4 Service Bus (Service Bus)
 
 ```protobuf
 // protos/servicebus.proto
@@ -500,7 +504,7 @@ message ServiceStatusInfo {
   string service_id = 1;
   string status = 2;               // stopped | starting | running | stopping | failed
   string type = 3;                  // Native | Container | Module
-  int32 pid = 4;                    // 原生进程 PID (容器为 0)
+  int32 pid = 4;                    // Native process PID (0 for containers)
   double cpu_percent = 5;
   int64 memory_bytes = 6;
   int64 uptime_seconds = 7;
@@ -515,7 +519,7 @@ message ServiceEvent {
 }
 ```
 
-#### 4.3.5 审计与日志 (Audit)
+#### 4.3.5 Audit and Logging (Audit)
 
 ```protobuf
 // protos/audit.proto
@@ -571,7 +575,7 @@ message VerifyChainResponse {
 }
 ```
 
-#### 4.3.6 统一错误码
+#### 4.3.6 Unified Error Codes
 
 ```protobuf
 // protos/common.proto
@@ -579,22 +583,22 @@ syntax = "proto3";
 package gnas.common;
 option csharp_namespace = "GNAS.Proto.Common";
 
-// gRPC 统一错误 — 通过 google.rpc.Status details 传递
-// 所有服务在出错时返回此结构
+// gRPC unified error — passed via google.rpc.Status details
+// All services return this structure on error
 
 message ErrorDetail {
   ErrorCode code = 1;
   string message = 2;
-  string details = 3;            // 人类可读的详细信息
-  string trace_id = 4;           // 关联链路追踪
+  string details = 3;            // Human-readable detailed information
+  string trace_id = 4;           // Associated trace ID
   map<string, string> metadata = 5;
 }
 
 enum ErrorCode {
-  // 0 保留为成功
+  // 0 reserved for success
   OK = 0;
 
-  // 通用错误 1xxx
+  // General errors 1xxx
   UNKNOWN = 1000;
   INVALID_ARGUMENT = 1001;
   NOT_FOUND = 1002;
@@ -605,7 +609,7 @@ enum ErrorCode {
   UNAVAILABLE = 1007;
   TIMEOUT = 1008;
 
-  // 存储错误 2xxx
+  // Storage errors 2xxx
   DISK_NOT_FOUND = 2001;
   DISK_IN_USE = 2002;
   DISK_IO_ERROR = 2003;
@@ -615,7 +619,7 @@ enum ErrorCode {
   FS_FORMAT_FAILED = 2007;
   POOL_FULL = 2008;
 
-  // 安全错误 3xxx
+  // Security errors 3xxx
   TOKEN_EXPIRED = 3001;
   TOKEN_INVALID = 3002;
   TOKEN_REVOKED = 3003;
@@ -624,7 +628,7 @@ enum ErrorCode {
   ACCOUNT_LOCKED = 3006;
   TPM_UNAVAILABLE = 3007;
 
-  // Agent 错误 4xxx
+  // Agent errors 4xxx
   AGENT_NOT_FOUND = 4001;
   AGENT_DEPLOY_FAILED = 4002;
   AGENT_START_FAILED = 4003;
@@ -632,7 +636,7 @@ enum ErrorCode {
   COMPOSE_GENERATE_FAILED = 4005;
   DOCKER_UNAVAILABLE = 4006;
 
-  // 服务总线错误 5xxx
+  // Service Bus errors 5xxx
   SERVICE_NOT_FOUND = 5001;
   SERVICE_DEPENDENCY_FAILED = 5002;
   SERVICE_ALREADY_RUNNING = 5003;
@@ -640,97 +644,103 @@ enum ErrorCode {
 }
 ```
 
-#### 4.3.7 Proto 文件目录规范
+#### 4.3.7 Proto File Directory Conventions
 
 ```
 protos/
-├── common.proto              # 共享类型 + 错误码
-├── storage.proto             # 存储服务
-├── share.proto               # 共享服务
-├── network.proto             # 网络服务
-├── agent.proto               # Agent 服务
-├── backup.proto              # 备份服务
-├── servicebus.proto          # 服务总线
-├── audit.proto               # 审计与日志
-├── auth.proto                # 认证服务
-└── update.proto              # 更新服务
+├── common.proto              # Shared types + error codes
+├── storage.proto             # Storage service
+├── share.proto               # Share service
+├── network.proto             # Network service
+├── agent.proto               # Agent service
+├── backup.proto              # Backup service
+├── servicebus.proto          # Service Bus
+├── audit.proto               # Audit and logging
+├── auth.proto                # Authentication service
+└── update.proto              # Update service
 ```
 
-所有 Proto 文件通过 `Grpc.Tools` MSBuild 集成编译，生成代码统一放在 `GNAS.Proto` 命名空间下。
+All Proto files are compiled through `Grpc.Tools` MSBuild integration, with generated code placed under the `GNAS.Proto` namespace.
 
 ---
 
-## 5. 应用层
+## 5. Application Layer
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│              APPLICATION LAYER — .NET 8/9  应用层                 │
+│              APPLICATION LAYER — .NET 8/9                        │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │                  Module Host (模块主机)                      │  │
-│  │  · 模块热加载/卸载 (AssemblyLoadContext)                    │  │
-│  │  · 依赖注入注册 (IServiceCollection)                        │  │
-│  │  · 能力声明与验证 (RequireCapability Attribute)             │  │
-│  │  · 模块生命周期管理                                         │  │
+│  │                  Module Host                                │  │
+│  │  · Hot-load/unload modules (AssemblyLoadContext)            │  │
+│  │  · Dependency injection registration (IServiceCollection)   │  │
+│  │  · Capability declaration and validation (RequireCapability │  │
+│  │    Attribute)                                               │  │
+│  │  · Module lifecycle management                              │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │
 │  │ Storage  │ │  Share   │ │ Network  │ │   Monitoring     │   │
 │  │ Module   │ │  Module  │ │  Module  │ │   Module         │   │
 │  ├──────────┤ ├──────────┤ ├──────────┤ ├──────────────────┤   │
-│  │· 磁盘管理│ │· SMB/CIFS│ │· 接口管理│ │· 资源监控        │   │
-│  │· RAID/LVM│ │· NFS     │ │· 防火墙  │ │· 日志聚合        │   │
-│  │· 文件系统│ │· FTP/SFTP│ │· DHCP/DNS│ │· 告警通知        │   │
-│  │· 加密卷  │ │· FTP     │ │· VLAN    │ │· 健康检查        │   │
+│  │· Disk    │ │· SMB/CIFS│ │· Interface│ │· Resource       │   │
+│  │ mgmt     │ │· NFS     │ │  mgmt    │ │  monitoring     │   │
+│  │· RAID/LVM│ │· FTP/SFTP│ │· Firewall│ │· Log aggregation│   │
+│  │· File    │ │· FTP     │ │· DHCP/DNS│ │· Alert          │   │
+│  │  system  │ │          │ │· VLAN    │ │  notifications  │   │
+│  │· Encrypt │ │          │ │          │ │· Health checks   │   │
+│  │  volume  │ │          │ │          │ │                  │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
 │                                                                  │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │
 │  │  Agent   │ │  Backup  │ │  Update  │ │   Plugin         │   │
 │  │  Module  │ │  Module  │ │  Module  │ │   Manager        │   │
 │  ├──────────┤ ├──────────┤ ├──────────┤ ├──────────────────┤   │
-│  │· Agent   │ │· Rsync   │ │· OTA升级 │ │· 热加载/卸载     │   │
-│  │  生命周期│ │· 快照    │ │· 回滚    │ │· 依赖解析       │   │
-│  │· 令牌管理│ │· 云备份  │ │· 版本检查│ │· 沙箱隔离       │   │
-│  │· 能力授权│ │· 定时任务│ │          │ │                  │   │
+│  │· Agent   │ │· Rsync   │ │· OTA     │ │· Hot-load/unload │   │
+│  │  lifecycle│ │· Snapshot│ │  upgrade │ │· Dependency      │   │
+│  │· Token   │ │· Cloud   │ │· Rollback│ │  resolution      │   │
+│  │  mgmt    │ │  backup  │ │· Version │ │· Sandbox         │   │
+│  │· Cap.    │ │· Scheduled│ │  check   │ │  isolation       │   │
+│  │  auth.   │ │  tasks   │ │          │ │                  │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.1 模块定义（接口契约）
+### 5.1 Module Definition (Interface Contract)
 
 ```csharp
 /// <summary>
-/// NAS 模块基接口。所有业务模块必须实现此接口。
+/// NAS module base interface. All business modules must implement this interface.
 /// </summary>
 public interface INasModule
 {
-    /// <summary>模块唯一标识</summary>
+    /// <summary>Module unique identifier</summary>
     string ModuleId { get; }
 
-    /// <summary>模块显示名称</summary>
+    /// <summary>Module display name</summary>
     string DisplayName { get; }
 
-    /// <summary>模块版本</summary>
+    /// <summary>Module version</summary>
     Version Version { get; }
 
-    /// <summary>模块声明需要的系统能力</summary>
+    /// <summary>System capabilities required by the module</summary>
     IReadOnlyList<NAbility> RequiredCapabilities { get; }
 
-    /// <summary>模块声明依赖的其他模块</summary>
+    /// <summary>Other modules this module depends on</summary>
     IReadOnlyList<string> Dependencies { get; }
 
-    /// <summary>模块初始化（注册 DI、启动后台服务等）</summary>
+    /// <summary>Module initialization (register DI, start background services, etc.)</summary>
     Task InitializeAsync(ModuleContext context, CancellationToken ct);
 
-    /// <summary>模块优雅关闭</summary>
+    /// <summary>Module graceful shutdown</summary>
     Task ShutdownAsync(CancellationToken ct);
 
-    /// <summary>模块健康检查</summary>
+    /// <summary>Module health check</summary>
     Task<HealthStatus> CheckHealthAsync(CancellationToken ct);
 }
 
 /// <summary>
-/// 模块上下文，模块通过此对象访问系统服务
+/// Module context, through which modules access system services
 /// </summary>
 public record ModuleContext
 {
@@ -741,210 +751,235 @@ public record ModuleContext
 }
 ```
 
-### 5.2 模块清单
+### 5.2 Module Inventory
 
-| 模块 | ModuleId | 依赖 | 说明 |
+| Module | ModuleId | Dependencies | Description |
 |------|----------|------|------|
-| **Storage** | `storage` | — | 磁盘枚举、RAID 管理、LVM、文件系统格式化、SMART 监控、加密卷管理 |
-| **Share** | `share` | `storage` | SMB/CIFS、NFS v3/v4、FTP 共享服务管理 |
-| **Network** | `network` | — | 网络接口管理、防火墙规则、DHCP/DNS、VLAN 配置 |
-| **Agent** | `agent` | `storage`, `security` | Agent 生命周期管理、Token 签发与续期、Compose 生成、容器监控 |
-| **Backup** | `backup` | `storage` | Rsync 任务、快照计划、云备份、定时任务 |
-| **Update** | `update` | — | OTA 固件升级、模块更新、灰度发布、回滚 |
-| **Monitoring** | `monitoring` | — | 资源监控、日志聚合查看、Dashboard 数据提供 |
-| **Plugin** | `plugin` | — | 第三方插件加载、依赖解析、沙箱隔离、版本兼容检查 |
+| **Storage** | `storage` | — | Disk enumeration, RAID management, LVM, filesystem formatting, SMART monitoring, encrypted volume management |
+| **Share** | `share` | `storage` | SMB/CIFS, NFS v3/v4, FTP share service management |
+| **Network** | `network` | — | Network interface management, firewall rules, DHCP/DNS, VLAN configuration |
+| **Agent** | `agent` | `storage`, `security` | Agent lifecycle management, token issuance and renewal, Compose generation, container monitoring |
+| **Backup** | `backup` | `storage` | Rsync tasks, snapshot scheduling, cloud backup, scheduled tasks |
+| **Update** | `update` | — | OTA firmware upgrades, module updates, canary releases, rollback |
+| **Monitoring** | `monitoring` | — | Resource monitoring, log aggregation viewer, Dashboard data provider |
+| **Plugin** | `plugin` | — | Third-party plugin loading, dependency resolution, sandbox isolation, version compatibility checking
 
-### 5.3 存储池管理详细设计
+### 5.3 Storage Pool Management Detailed Design
 
-存储池是 NAS 系统的核心数据容器。一个完整的存储池生命周期如下：
-
-```
-创建 → 格式化 → 挂载 → 数据集/子卷创建 → 共享 → 监控 → 扩容/替换 → 退役
-```
-
-#### 5.3.1 存储池创建流程
+The storage pool is the core data container of the NAS system. A complete storage pool lifecycle is as follows:
 
 ```
-用户选择磁盘
+Create → Format → Mount → Dataset/Subvolume Create → Share → Monitor → Expand/Replace → Retire
+```
+
+#### 5.3.1 Storage Pool Creation Process
+
+```
+User selects disks
       │
       ▼
 ┌─────────────────────────────────────────────────────────┐
-│  1. 磁盘发现与验证                                      │
-│     · 枚举所有未使用的物理磁盘 (IDiskManager.ListDisks) │
-│     · 检查磁盘是否为空 (无分区表/无文件系统签名)        │
-│     · SMART 快速检测 → 排除故障盘                       │
-│     · 按接口类型分组 (SATA / NVMe / USB)                │
-│     · 标记 SSD vs HDD，用于后续分层存储建议             │
+│  1. Disk Discovery and Verification                     │
+│     · Enumerate all unused physical disks               │
+│       (IDiskManager.ListDisks)                          │
+│     · Check if disk is empty (no partition table /      │
+│       no filesystem signature)                          │
+│     · SMART quick check → exclude faulty disks          │
+│     · Group by interface type (SATA / NVMe / USB)       │
+│     · Mark SSD vs HDD for later tiered storage          │
+│       recommendations                                   │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│  2. RAID 级别选择                                       │
+│  2. RAID Level Selection                                │
 │                                                         │
-│  磁盘数  │ RAID 0  │ RAID 1  │ RAID 5  │ RAID 6  │ RAID10│
-│  ────────┼─────────┼─────────┼─────────┼─────────┼───────│
-│    1     │   ✓     │   —     │   —     │   —     │   —   │
-│    2     │   ✓     │   ✓     │   —     │   —     │   —   │
-│    3     │   ✓     │   —     │   ✓     │   —     │   —   │
-│    4+    │   ✓     │   ✓     │   ✓     │   ✓     │   ✓   │
+│  Disks   │ RAID 0 │ RAID 1 │ RAID 5 │ RAID 6 │ RAID10  │
+│  ────────┼────────┼────────┼────────┼────────┼─────────│
+│    1     │   ✓    │   —    │   —    │   —    │   —     │
+│    2     │   ✓    │   ✓    │   —    │   —    │   —     │
+│    3     │   ✓    │   —    │   ✓    │   —    │   —     │
+│    4+    │   ✓    │   ✓    │   ✓    │   ✓    │   ✓     │
 │                                                         │
-│  推荐策略:                                              │
-│  · 1-2 盘 → RAID 1 (镜像, 数据安全优先)                │
-│  · 3-5 盘 → RAID 5 (容量与安全平衡)                    │
-│  · 6+ 盘 → RAID 6 或 RAID 10 (性能+高可靠性)           │
-│  · SSD 阵列 → 可选 RAID 5，但需注意写入放大            │
-│  · 混合 SSD+HDD → 建议分层存储 (SSD 缓存池 + HDD 数据) │
+│  Recommended Strategy:                                  │
+│  · 1-2 disks → RAID 1 (mirror, data safety priority)   │
+│  · 3-5 disks → RAID 5 (capacity and safety balance)    │
+│  · 6+ disks → RAID 6 or RAID 10 (performance + high    │
+│    reliability)                                         │
+│  · SSD array → optional RAID 5, but watch write         │
+│    amplification                                        │
+│  · Mixed SSD+HDD → tiered storage recommended           │
+│    (SSD cache pool + HDD data)                          │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│  3. 文件系统选择                                        │
+│  3. Filesystem Selection                                │
 │                                                         │
-│  文件系统 │ 最大卷 │ CoW  │ 压缩 │ 快照 │ 校验和 │ 自愈 │
-│  ────────┼────────┼──────┼──────┼──────┼───────┼──────│
-│  ext4    │  1EB  │  ✗   │  ✗   │  ✗   │   ✗   │  ✗   │
-│  XFS     │  8EB  │  ✗   │  ✗   │  ✗   │   ✗   │  ✗   │
-│  Btrfs   │ 16EB  │  ✓   │  ✓   │  ✓   │   ✓   │  ✓   │
-│  ZFS     │ 256ZB │  ✓   │  ✓   │  ✓   │   ✓   │  ✓   │
-│  NTFS    │  8PB  │  ✗   │  ✓   │  ✓*  │   ✗   │  ✗   │
-│  ReFS    │ 35PB  │  ✓   │  ✗   │  ✗   │   ✓   │  ✓   │
+│  Filesystem │ Max Vol │ CoW │ Compress │ Snap │Chksum│ │
+│             │         │     │          │      │Heal  │ │
+│  ───────────┼─────────┼─────┼──────────┼──────┼──────│ │
+│  ext4       │  1EB    │  ✗  │   ✗     │  ✗   │  ✗   │ │
+│  XFS        │  8EB    │  ✗  │   ✗     │  ✗   │  ✗   │ │
+│  Btrfs      │ 16EB    │  ✓  │   ✓     │  ✓   │  ✓   │ │
+│  ZFS        │ 256ZB   │  ✓  │   ✓     │  ✓   │  ✓   │ │
+│  NTFS       │  8PB    │  ✗  │   ✓     │  ✓*  │  ✗   │ │
+│  ReFS       │ 35PB    │  ✓  │   ✗     │  ✗   │  ✓   │ │
 │                                                         │
-│  推荐:                                                  │
-│  · Linux 主力 → Btrfs (轻量 CoW, 内建快照压缩)        │
-│  · 高级需求 → ZFS (最高数据完整性, 自愈能力)           │
-│  · 简单需求 → ext4/XFS (稳定, 低开销)                  │
-│  · 通用共享盘 → ext4 (兼容性最好)                     │
+│  Recommendations:                                       │
+│  · Linux primary → Btrfs (lightweight CoW, built-in    │
+│    snapshots/compression)                               │
+│  · Advanced needs → ZFS (highest data integrity,        │
+│    self-healing)                                        │
+│  · Simple needs → ext4/XFS (stable, low overhead)      │
+│  · Generic shared disk → ext4 (best compatibility)     │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│  4. 数据集/子卷规划                                      │
+│  4. Dataset/Subvolume Planning                          │
 │                                                         │
-│  推荐结构 (Btrfs/ZFS):                                  │
+│  Recommended Structure (Btrfs/ZFS):                     │
 │  pool-main/                                             │
-│  ├── data/              # 通用数据                      │
-│  │   ├── media/         # 媒体库 (无压缩, 大文件)       │
-│  │   ├── documents/     # 文档 (压缩, 去重)            │
-│  │   ├── photos/        # 照片 (轻度压缩)              │
-│  │   └── downloads/     # 下载 (无快照, 不保留历史)    │
-│  ├── backup/            # 备份目标 (压缩, 去重)        │
-│  ├── appdata/           # Agent/Docker 持久化数据       │
-│  ├── home/              # 用户主目录 (按用户分子卷)    │
-│  └── timemachine/       # Time Machine 备份 (配额限制)  │
+│  ├── data/              # General data                  │
+│  │   ├── media/         # Media library (no compress,   │
+│  │   │                    large files)                  │
+│  │   ├── documents/     # Documents (compress, dedup)   │
+│  │   ├── photos/        # Photos (light compression)    │
+│  │   └── downloads/     # Downloads (no snapshots,     │
+│  │                        no history)                   │
+│  ├── backup/            # Backup target (compress,      │
+│  │                        dedup)                        │
+│  ├── appdata/           # Agent/Docker persistent data  │
+│  ├── home/              # User home directories         │
+│  │                        (subvolumes per user)         │
+│  └── timemachine/       # Time Machine backup           │
+│                          (quota limited)                │
 │                                                         │
-│  每个数据集独立配置:                                    │
-│  · 压缩算法 (zstd/lz4/gzip)                             │
-│  · 快照策略 (保留数量/频率)                              │
-│  · 配额 (容量硬限制/软限制)                             │
-│  · 数据分级标签 (NasDataLevel L0-L4)                    │
-│  · 记录大小 (recordsize, 适配文件类型)                  │
+│  Each dataset independently configurable:               │
+│  · Compression algorithm (zstd/lz4/gzip)                │
+│  · Snapshot policy (retention count/frequency)          │
+│  · Quota (hard limit / soft limit)                      │
+│  · Data classification label (NasDataLevel L0-L4)       │
+│  · Record size (recordsize, adapted to file type)       │
 └─────────────────────────────────────────────────────────┘
 ```
 
-#### 5.3.2 磁盘替换与重建流程
+#### 5.3.2 Disk Replacement and Rebuild Process
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  磁盘故障检测                                          │
-│  · SMART 自检 (每30分钟)                               │
-│  · 内核 I/O 错误监控 (/sys/block/*/stat)               │
-│  · RAID 事件监听 (mdadm --monitor / zed)               │
-│  · 触发: storage.disk.failed 事件                      │
+│  Disk Failure Detection                                 │
+│  · SMART self-test (every 30 minutes)                   │
+│  · Kernel I/O error monitoring (/sys/block/*/stat)      │
+│  · RAID event monitoring (mdadm --monitor / zed)        │
+│  · Trigger: storage.disk.failed event                   │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│  自动处理流程                                          │
+│  Automatic Handling Process                             │
 │                                                         │
-│  1. 标记磁盘为 FAULTY                                   │
-│     · mdadm: mdadm --manage /dev/mdX --fail /dev/sdY    │
-│     · ZFS: zpool offline pool disk-id                  │
+│  1. Mark disk as FAULTY                                 │
+│     · mdadm: mdadm --manage /dev/mdX --fail /dev/sdY   │
+│     · ZFS: zpool offline pool disk-id                   │
 │                                                         │
-│  2. 通知管理员                                          │
-│     · Critical 告警 → 邮件/Webhook/终端通知             │
-│     · CLI 提示: gnas status 显示红色磁盘状态            │
+│  2. Notify administrator                                │
+│     · Critical alert → Email/Webhook/Terminal           │
+│       notification                                      │
+│     · CLI prompt: gnas status shows red disk status     │
 │                                                         │
-│  3. 插入新磁盘后                                        │
-│     · 自动检测: udev 事件 → storage.disk.added          │
-│     · 检查磁盘容量 ≥ 故障盘容量                          │
-│     · 自动分区 (如需要, 参照原分区表)                   │
+│  3. After inserting new disk                            │
+│     · Auto-detect: udev event → storage.disk.added      │
+│     · Check disk capacity ≥ faulty disk capacity        │
+│     · Auto-partition (if needed, refer to original      │
+│       partition table)                                   │
 │                                                         │
-│  4. 开始重建                                            │
+│  4. Start rebuild                                       │
 │     · mdadm: mdadm --manage /dev/mdX --add /dev/sdZ    │
 │     · ZFS: zpool replace pool old-disk new-disk        │
-│     · 监控重建进度: /proc/mdstat 或 zpool status       │
-│     · 进度事件: storage.pool.rebuilding {percent}       │
+│     · Monitor rebuild progress: /proc/mdstat or         │
+│       zpool status                                      │
+│     · Progress event: storage.pool.rebuilding {percent} │
 │                                                         │
-│  5. 重建完成                                            │
-│     · 发布 storage.pool.healthy 事件                   │
-│     · 恢复定时 Scrub 计划                               │
+│  5. Rebuild complete                                    │
+│     · Publish storage.pool.healthy event                │
+│     · Resume scheduled Scrub schedule                   │
 │                                                         │
-│  热备盘 (Hot Spare):                                    │
-│  · 预先配置 1-2 个热备盘                                │
-│  · 故障时自动触发重建，无需人工介入                     │
-│  · 重建完成后原有热备盘变为普通盘，自动补充新热备盘     │
+│  Hot Spare:                                             │
+│  · Pre-configure 1-2 hot spare disks                    │
+│  · Automatically trigger rebuild on failure,            │
+│    no manual intervention required                      │
+│  · After rebuild, original hot spare becomes normal     │
+│    disk, automatically replenish new hot spare          │
 └─────────────────────────────────────────────────────────┘
 ```
 
-#### 5.3.3 数据清洗 (Scrub) 调度
+#### 5.3.3 Data Scrub Scheduling
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Scrub 策略配置                                        │
+│  Scrub Policy Configuration                             │
 │                                                         │
-│  类型          │ 频率   │ 优先级  │ 说明                │
-│  ─────────────┼────────┼────────┼─────────────────────│
-│  快速 Scrub   │ 每周   │  低    │ 仅检查元数据校验和   │
-│  完整 Scrub   │ 每月   │  中    │ 检查全部数据校验和   │
-│  深度 Scrub   │ 每季度 │  低    │ 全盘读取 (检测静默错误)│
+│  Type           │ Frequency │ Priority │ Description    │
+│  ───────────────┼──────────┼─────────┼────────────────│
+│  Quick Scrub    │ Weekly    │  Low    │ Metadata        │
+│                 │           │         │ checksums only  │
+│  Full Scrub     │ Monthly   │  Medium │ All data        │
+│                 │           │         │ checksums       │
+│  Deep Scrub     │ Quarterly │  Low    │ Full disk read  │
+│                 │           │         │ (detect silent  │
+│                 │           │         │ errors)         │
 │                                                         │
-│  调度窗口: 默认 02:00-06:00 (备份窗口同期)             │
-│  限速: 默认 100MB/s 读取, 可配置 (避免影响正常IO)     │
+│  Schedule window: default 02:00-06:00 (same as backup   │
+│                    window)                               │
+│  Rate limit: default 100MB/s read, configurable (avoid  │
+│    affecting normal I/O)                                │
 │                                                         │
-│  ZFS Scrub 命令:                                        │
-│  zpool scrub pool-main                                 │
+│  ZFS Scrub command:                                     │
+│  zpool scrub pool-main                                  │
 │                                                         │
-│  Btrfs Scrub 命令:                                      │
-│  btrfs scrub start /mnt/nas/data                       │
+│  Btrfs Scrub command:                                   │
+│  btrfs scrub start /mnt/nas/data                        │
 │                                                         │
 │  mdadm RAID Check:                                      │
-│  echo check > /sys/block/mdX/md/sync_action            │
+│  echo check > /sys/block/mdX/md/sync_action             │
 │                                                         │
-│  Scrub 结果:                                            │
-│  · 发现错误 → storage.pool.scrub.error 事件            │
-│  · 已修复   → storage.pool.scrub.repaired 事件 (CoW)   │
-│  · 完成     → storage.pool.scrub.completed 事件         │
-│  · 错误数超过阈值 → Critical 告警                      │
+│  Scrub results:                                         │
+│  · Errors found → storage.pool.scrub.error event        │
+│  · Repaired   → storage.pool.scrub.repaired event (CoW) │
+│  · Complete   → storage.pool.scrub.completed event      │
+│  · Error count exceeds threshold → Critical alert       │
 └─────────────────────────────────────────────────────────┘
 ```
 
-#### 5.3.4 存储池扩容
+#### 5.3.4 Storage Pool Expansion
 
 ```
-扩容方式:
+Expansion methods:
 ─────────────────────────────────────────────
-1. 添加磁盘到现有 RAID (仅部分RAID级别支持)
+1. Add disk to existing RAID (only some RAID levels support)
    · mdadm RAID 5/6: mdadm --grow --raid-devices=N /dev/mdX --add /dev/sdY
-   · ZFS: zpool add pool /dev/sdY (成为新 VDEV，注意数据平衡)
+   · ZFS: zpool add pool /dev/sdY (becomes new VDEV, watch data balance)
    · Btrfs: btrfs device add /dev/sdY /mnt/nas/data
 
-2. 替换更大容量磁盘 (逐个替换)
-   · 替换 → 重建 → 下一块 → ... → 全部替换后自动扩容
-   · ZFS 支持 autoexpand 属性
+2. Replace with larger capacity disks (one by one)
+   · Replace → Rebuild → Next → ... → auto-expand after all replaced
+   · ZFS supports autoexpand property
 
-3. 添加 JBOD/单盘池 (灵活性最高)
-   · 适合非关键数据 (downloads, 临时文件)
+3. Add JBOD/single-disk pool (highest flexibility)
+   · Suitable for non-critical data (downloads, temporary files)
 
-扩容限制:
-· RAID 级别降级期间禁止扩容
-· 扩容过程中暂停 Scrub
-· 扩容进度实时可查
-· 禁止拔出正在重建的磁盘 (Critical 告警)
+Expansion limitations:
+· Expansion prohibited during RAID level degradation
+· Pause Scrub during expansion
+· Expansion progress visible in real-time
+· Do not remove a disk that is being rebuilt (Critical alert)
 ```
 
-### 5.4 共享协议详细设计
+### 5.4 Share Protocol Detailed Design
 
-#### 5.4.1 SMB/CIFS 配置细节
+#### 5.4.1 SMB/CIFS Configuration Details
 
 ```yaml
 # /srv/nas/config/services/smb.yaml
@@ -953,17 +988,17 @@ smb:
   server_string: "GNAS File Server"
   netbios_name: gnas-nas
   
-  # 全局安全设置
-  security: user                      # user | share (已废弃) | ads (AD域)
+  # Global security settings
+  security: user                      # user | share (deprecated) | ads (AD domain)
   encrypt_passwords: true
   server_signing: mandatory           # disabled | auto | mandatory
-  smb_encrypt: desired                # 传输加密 (SMB 3.1.1)
+  smb_encrypt: desired                # Transport encryption (SMB 3.1.1)
   
-  # 协议版本
-  server_min_protocol: SMB2_10        # 最低 SMB 2.1 (Win7+)
-  server_max_protocol: SMB3_11        # 最高 SMB 3.1.1
+  # Protocol versions
+  server_min_protocol: SMB2_10        # Minimum SMB 2.1 (Win7+)
+  server_max_protocol: SMB3_11        # Maximum SMB 3.1.1
   
-  # 性能优化
+  # Performance optimization
   socket_options: "TCP_NODELAY IPTOS_LOWDELAY SO_RCVBUF=131072 SO_SNDBUF=131072"
   read_raw: yes
   write_raw: yes
@@ -971,14 +1006,14 @@ smb:
   aio_read_size: 1
   aio_write_size: 1
   
-  # macOS 兼容
+  # macOS compatibility
   vfs_objects:
-    - catia                          # macOS 特殊字符映射
-    - fruit                          # macOS SMB 扩展
+    - catia                          # macOS special character mapping
+    - fruit                          # macOS SMB extensions
   fruit:aapl: true
-  fruit:nfs_aces: false              # 不传输 NFS ACE
+  fruit:nfs_aces: false              # Do not transfer NFS ACEs
   
-  # 共享定义
+  # Share definitions
   shares:
     - name: media
       path: /mnt/nas/data/media
@@ -987,12 +1022,12 @@ smb:
       guest_ok: false
       browseable: true
       vfs_objects:
-        - recycle                    # 回收站
+        - recycle                    # Recycle bin
       recycle:
-        repository: .recycle/%U      # 每用户回收站
+        repository: .recycle/%U      # Per-user recycle bin
         keeptree: yes
         versions: yes
-        maxsize: 0                   # 不限制文件大小
+        maxsize: 0                   # No file size limit
         exclude: ["*.tmp", "*.temp", ".DS_Store"]
       
     - name: documents
@@ -1007,56 +1042,56 @@ smb:
       force_group: nasusers
 ```
 
-#### 5.4.2 NAS 权限模型映射
+#### 5.4.2 NAS Permission Model Mapping
 
 ```
-GNAS 权限层              SMB/NFS               POSIX/Linux
+GNAS Permission Layer     SMB/NFS               POSIX/Linux
 ─────────────────────────────────────────────────────────────
-NasDataLevel (L0-L4)  → 文件目录标签         → xattr (user.nas_level)
-NAbility (能力)       → Token Capability     → N/A (API 侧校验)
-RBAC (角色)           → SMB Group Mapping    → Linux Group
-ACL (文件级)          → SMB ACL / NFSv4 ACL  → POSIX ACL (getfacl/setfacl)
-用户配额              → SMB quota            → Linux Quota (xfs_quota / btrfs qgroup)
+NasDataLevel (L0-L4)  →  File/dir label        → xattr (user.nas_level)
+NAbility (Capability) →  Token Capability      → N/A (API-side verification)
+RBAC (Roles)          →  SMB Group Mapping     → Linux Group
+ACL (File-level)      →  SMB ACL / NFSv4 ACL   → POSIX ACL (getfacl/setfacl)
+User Quota            →  SMB quota             → Linux Quota (xfs_quota / btrfs qgroup)
 
-权限决策流程:
-  SMB 请求 → Samba 验证用户 → 查询文件 POSIX ACL → 执行 I/O
+Permission decision flow:
+  SMB request → Samba authenticates user → query file POSIX ACL → execute I/O
                     │
                     ▼
-           若配置了 NasToken 集成:
-           Samba VFS Module → 检查 NasDataLevel → 发布 Audit Log
+           If NasToken integration is configured:
+           Samba VFS Module → check NasDataLevel → publish Audit Log
 ```
 
-#### 5.4.3 用户配额管理
+#### 5.4.3 User Quota Management
 
 ```csharp
 /// <summary>
-/// 存储配额定义。支持每用户和每共享粒度的配额控制。
+/// Storage quota definition. Supports per-user and per-share granularity quota control.
 /// </summary>
 public record StorageQuota
 {
-    /// <summary>配额目标: user:{username} | share:{shareName} | group:{groupName}</summary>
+    /// <summary>Quota target: user:{username} | share:{shareName} | group:{groupName}</summary>
     public string TargetId { get; init; }
 
-    /// <summary>配额类型</summary>
+    /// <summary>Quota type</summary>
     public QuotaType Type { get; init; }  // User | Share | Group
 
-    /// <summary>硬限制 (字节), null = 不限制</summary>
+    /// <summary>Hard limit (bytes), null = unlimited</summary>
     public long? HardLimitBytes { get; init; }
 
-    /// <summary>软限制 (字节), 超过后宽限期开始计时</summary>
+    /// <summary>Soft limit (bytes), grace period starts counting after exceeding</summary>
     public long? SoftLimitBytes { get; init; }
 
-    /// <summary>软限制宽限期 (秒), 默认 7 天</summary>
+    /// <summary>Soft limit grace period (seconds), default 7 days</summary>
     public long GracePeriodSeconds { get; init; } = 604800;
 
-    /// <summary>文件数硬限制, null = 不限制</summary>
+    /// <summary>File count hard limit, null = unlimited</summary>
     public long? HardLimitInodes { get; init; }
 
-    /// <summary>当前使用量 (查询时填充)</summary>
+    /// <summary>Current usage (populated on query)</summary>
     public long? UsedBytes { get; init; }
     public long? UsedInodes { get; init; }
 
-    /// <summary>使用率百分比 (0-100)</summary>
+    /// <summary>Usage percentage (0-100)</summary>
     public double UsedPercent => HardLimitBytes.HasValue && HardLimitBytes.Value > 0
         ? (double)(UsedBytes ?? 0) / HardLimitBytes.Value * 100
         : 0;
@@ -1065,65 +1100,65 @@ public record StorageQuota
 public enum QuotaType { User, Share, Group }
 ```
 
-**配额实现方式：**
+**Quota implementation methods:**
 
-| 文件系统 | 配额机制 | 命令 |
+| Filesystem | Quota Mechanism | Command |
 |----------|----------|------|
 | **ext4/XFS** | Linux Quota | `xfs_quota -x -c 'limit bsoft=900G bhard=1T user1' /mnt` |
 | **Btrfs** | qgroup | `btrfs qgroup limit 1T /mnt/nas/data/home/user1` |
 | **ZFS** | ZFS Quota | `zfs set quota=1T pool-main/home/user1` |
 
-**配额告警阈值：**
-- 80% → Info 级通知用户
-- 90% → Warning 级通知用户 + 管理员
-- 95% → Warning 级，开始拒绝新写入（软限制到达）
-- 100% → Error 级，强制拒绝写入（硬限制到达）
+**Quota alert thresholds:**
+- 80% → Info level, notify user
+- 90% → Warning level, notify user + administrator
+- 95% → Warning level, begin rejecting new writes (soft limit reached)
+- 100% → Error level, forcibly reject writes (hard limit reached)
 
-#### 5.4.4 回收站机制
+#### 5.4.4 Recycle Bin Mechanism
 
 ```
-回收站配置 (类似 Synology #recycle):
+Recycle bin configuration (similar to Synology #recycle):
 ─────────────────────────────────────
-· 每共享独立启用/禁用
-· 删除文件移动到 .recycle/{username}/ 而非直接删除
-· 保留策略:
-  - 按天数: 保留 30 天 → 自动清理
-  - 按容量: 回收站 > 共享容量的 5% → 清理最旧文件
-  - 按文件数: 超过 10000 个 → 清理最旧文件
-· 排除规则: *.tmp, *.temp, ~$*, .DS_Store, Thumbs.db
-· 通过 CLI 管理:
-  gnas recycle list <share>         # 查看回收站内容
-  gnas recycle restore <id>         # 恢复指定文件
-  gnas recycle empty <share>        # 清空回收站
-  gnas recycle config <share>       # 配置回收站策略
+· Independently enabled/disabled per share
+· Deleted files moved to .recycle/{username}/ instead of direct deletion
+· Retention policy:
+  - By days: retain 30 days → auto-clean
+  - By capacity: recycle bin > 5% of share capacity → clean oldest files
+  - By file count: exceed 10000 files → clean oldest files
+· Exclusion rules: *.tmp, *.temp, ~$*, .DS_Store, Thumbs.db
+· Managed via CLI:
+  gnas recycle list <share>         # View recycle bin contents
+  gnas recycle restore <id>         # Restore specified file
+  gnas recycle empty <share>        # Empty recycle bin
+  gnas recycle config <share>       # Configure recycle bin policy
 ```
 
-#### 5.4.5 NFS 配置细节
+#### 5.4.5 NFS Configuration Details
 
 ```yaml
 # /srv/nas/config/services/nfs.yaml
 nfs:
-  # NFS 版本支持
+  # NFS version support
   versions:
-    - 3       # 兼容旧客户端
-    - 4.0     # 状态协议
-    - 4.1     # pNFS 并行访问
-    - 4.2     # 服务端 Copy, Sparse Files
+    - 3       # Compatible with older clients
+    - 4.0     # Stateful protocol
+    - 4.1     # pNFS parallel access
+    - 4.2     # Server-side Copy, Sparse Files
   
-  # 并发设置
-  nfsd_threads: 16                    # NFS 服务线程数
-  nfsd_grace_period: 90               # 锁恢复宽限期(秒)
+  # Concurrency settings
+  nfsd_threads: 16                    # NFS service thread count
+  nfsd_grace_period: 90               # Lock recovery grace period (seconds)
   
-  # 导出定义
+  # Export definitions
   exports:
     - path: /mnt/nas/data/media
       clients:
         - network: 192.168.1.0/24
           options:
-            - ro                        # 只读
-            - sync                      # 同步写入
-            - no_subtree_check          # 不检查子树
-            - all_squash                # 所有客户端映射为匿名用户
+            - ro                        # Read-only
+            - sync                      # Synchronous writes
+            - no_subtree_check          # Don't check sub-tree
+            - all_squash                # Map all clients to anonymous user
             - anonuid=1000
             - anongid=1000
         - network: 10.0.0.0/8
@@ -1133,267 +1168,293 @@ nfs:
       clients:
         - network: 192.168.1.0/24
           options:
-            - rw                        # 读写
-            - async                     # 异步写入 (性能优先)
+            - rw                        # Read-write
+            - async                     # Asynchronous writes (performance priority)
             - no_subtree_check
-            - sec=krb5p                 # Kerberos 加密+完整性
+            - sec=krb5p                 # Kerberos encryption + integrity
 ```
 
-### 5.5 数据保护与备份策略
+### 5.5 Data Protection and Backup Strategy
 
-#### 5.5.1 快照体系
+#### 5.5.1 Snapshot System
 
 ```
-快照层次:
+Snapshot hierarchy:
 ─────────────────────────────────────────────
 ┌─────────────────────────────────────────────────────────┐
-│  文件级快照 (Btrfs / ZFS / ReFS)                       │
-│  · 即时创建, COW 机制, 仅存储差异数据                   │
-│  · 用户可通过 SMB 快照入口自助恢复                      │
+│  File-level snapshots (Btrfs / ZFS / ReFS)              │
+│  · Instant creation, COW mechanism, only stores delta   │
+│  · Users can self-restore via SMB snapshot entry        │
 │  · gnas snapshot create <dataset>                       │
 │  · gnas snapshot list <dataset>                         │
 │  · gnas snapshot restore <dataset> <snapshot-id>        │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│  快照调度策略 (每数据集独立配置)                        │
+│  Snapshot scheduling policy (independently configured   │
+│  per dataset)                                            │
 │                                                         │
-│  数据集       │ 频率         │ 保留           │ 说明    │
+│  Dataset      │ Frequency    │ Retention      │ Notes   │
 │  ────────────┼──────────────┼────────────────┼─────────│
-│  documents   │ 每15分钟     │ 24h:48, 30d:30 │ 高频    │
-│  media       │ 每天         │ 7d:7, 4w:4     │ 低频    │
-│  photos      │ 每小时       │ 24h:24, 30d:30 │ 中频    │
-│  appdata     │ 每6小时      │ 7d:28, 4w:4    │ 中低频  │
-│  home/*      │ 每小时       │ 24h:24, 7d:7   │ 中频    │
-│  downloads   │ 无快照       │ —              │ 不保留  │
+│  documents   │ Every 15min  │ 24h:48, 30d:30 │ High    │
+│              │              │                │ freq.  │
+│  media       │ Daily        │ 7d:7, 4w:4     │ Low     │
+│              │              │                │ freq.  │
+│  photos      │ Hourly       │ 24h:24, 30d:30 │ Medium  │
+│              │              │                │ freq.  │
+│  appdata     │ Every 6h     │ 7d:28, 4w:4    │ Low-med │
+│  home/*      │ Hourly       │ 24h:24, 7d:7   │ Medium  │
+│              │              │                │ freq.  │
+│  downloads   │ No snapshots │ —              │ No      │
+│              │              │                │ retent. │
 │                                                         │
-│  快照命名: gnas-{dataset}-{yyyyMMdd-HHmmss}             │
-│  自动清理: 超过保留策略的旧快照自动删除                 │
+│  Snapshot naming: gnas-{dataset}-{yyyyMMdd-HHmmss}      │
+│  Auto-cleanup: old snapshots exceeding retention policy │
+│    are automatically deleted                             │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│  SMB Previous Versions 集成                             │
+│  SMB Previous Versions Integration                      │
 │                                                         │
-│  Samba vfs_shadow_copy2 模块暴露快照为卷影副本:          │
+│  Samba vfs_shadow_copy2 module exposes snapshots as     │
+│  shadow copies:                                         │
 │  vfs_objects = shadow_copy2                             │
 │  shadow:snapdir = /mnt/nas/.snapshots/{dataset}         │
 │  shadow:sort = desc                                     │
 │  shadow:format = gnas-{dataset}-%Y%m%d-%H%M%S           │
 │                                                         │
-│  → 支持该协议的 SMB 客户端可浏览并恢复历史版本          │
-│  → macOS Time Machine 可通过 SMB 共享作为备份目标       │
+│  → SMB clients supporting this protocol can browse and  │
+│    restore previous versions                             │
+│  → macOS Time Machine can use SMB share as backup       │
+│    target                                                │
 └─────────────────────────────────────────────────────────┘
 ```
 
-#### 5.5.2 备份体系
+#### 5.5.2 Backup System
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              备份三层架构                               │
+│              Three-layer Backup Architecture            │
 │                                                         │
-│  第一层: 本地快照 (即时恢复)                             │
-│  ├── 优势: 秒级创建/恢复, 零额外存储                    │
-│  └── 不足: 无法防御硬件故障/灾难                        │
+│  Layer 1: Local snapshots (instant recovery)            │
+│  ├── Advantage: second-level create/restore, zero       │
+│  │   additional storage                                 │
+│  └── Disadvantage: cannot protect against hardware      │
+│      failure/disaster                                   │
 │                                                         │
-│  第二层: 本地备份 (快速恢复)                             │
-│  ├── 目标: 外置 USB 硬盘 / 第二存储池 / 独立备份盘     │
-│  ├── 工具: rsync / btrfs send / zfs send               │
-│  ├── 频率: 每天 (增量备份) + 每周 (完整备份)            │
-│  └── 保留: 14 天增量 + 4 周完整 + 12 月完整            │
+│  Layer 2: Local backup (fast recovery)                  │
+│  ├── Target: external USB drive / second storage pool   │
+│  │   / dedicated backup disk                            │
+│  ├── Tools: rsync / btrfs send / zfs send              │
+│  ├── Frequency: daily (incremental) + weekly (full)     │
+│  └── Retention: 14 day incremental + 4 week full +     │
+│      12 month full                                       │
 │                                                         │
-│  第三层: 异地/云备份 (灾难恢复)                         │
-│  ├── 目标: S3 / Backblaze B2 / 远程 GNAS 节点           │
-│  ├── 工具: rclone / restic / borgbackup                 │
-│  ├── 加密: AES-256-GCM, 客户端加密后上传               │
-│  ├── 频率: 每天 (加密增量)                             │
-│  └── 保留: 7 天增量 + 4 周完整 + 12 月完整            │
+│  Layer 3: Offsite/cloud backup (disaster recovery)      │
+│  ├── Target: S3 / Backblaze B2 / remote GNAS node       │
+│  ├── Tools: rclone / restic / borgbackup                 │
+│  ├── Encryption: AES-256-GCM, client-side encrypted     │
+│      before upload                                       │
+│  ├── Frequency: daily (encrypted incremental)           │
+│  └── Retention: 7 day incremental + 4 week full +      │
+│      12 month full                                       │
 └─────────────────────────────────────────────────────────┘
 
-备份任务定义:
+Backup task definition:
 ```csharp
 public record BackupTask
 {
     public string TaskId { get; init; }
     public string Name { get; init; }
 
-    // 源与目标
+    // Source and target
     public string SourcePath { get; init; }        // /mnt/nas/data/documents
     public BackupTarget Target { get; init; }
 
-    // 调度
-    public string CronExpression { get; init; }    // "0 2 * * *" = 每天 02:00
+    // Schedule
+    public string CronExpression { get; init; }    // "0 2 * * *" = daily at 02:00
     public bool Enabled { get; init; } = true;
 
-    // 策略
+    // Policy
     public BackupMethod Method { get; init; }      // Incremental | Full | Mirror
     public int RetentionDays { get; init; } = 30;
     public int RetentionCount { get; init; } = 10;
     public bool Compression { get; init; } = true;
-    public bool Encryption { get; init; } = true;  // 异地备份强制加密
+    public bool Encryption { get; init; } = true;  // Offsite backup requires encryption
 
-    // 排除
+    // Exclusions
     public string[] ExcludePatterns { get; init; } // ["*.tmp", "Thumbs.db", "@eaDir"]
 }
 
 public record BackupTarget
 {
     public BackupTargetType Type { get; init; }    // Local | RemoteNas | S3 | B2 | WebDAV
-    public string ConnectionString { get; init; }  // 连接串或远程路径
-    public string BucketOrPath { get; init; }      // 目标路径
-    public string? AccessKey { get; init; }        // 加密存储, 不落盘明文
-    public string? SecretKey { get; init; }        // 加密存储, 不落盘明文
+    public string ConnectionString { get; init; }  // Connection string or remote path
+    public string BucketOrPath { get; init; }      // Target path
+    public string? AccessKey { get; init; }        // Encrypted storage, not stored in plaintext
+    public string? SecretKey { get; init; }        // Encrypted storage, not stored in plaintext
 }
 
 public enum BackupTargetType { Local, RemoteNas, S3, B2, WebDAV, SFTP }
 public enum BackupMethod { Incremental, Full, Mirror }
 ```
 
-备份验证:
+Backup verification:
 ```
-· 每次备份任务完成后 → 校验 checksum
-· 每周 → 自动恢复测试 (恢复到临时目录 → 验证文件完整性)
-· 验证失败 → Warning 告警
-· 连续 3 次验证失败 → Critical 告警
+· After each backup task completes → verify checksum
+· Weekly → automatic restore test (restore to temp directory → verify file integrity)
+· Verification failure → Warning alert
+· 3 consecutive verification failures → Critical alert
 ```
 
-#### 5.5.3 灾难恢复流程
+#### 5.5.3 Disaster Recovery Process
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  全新系统恢复流程                                      │
+│  New System Recovery Process                            │
 │                                                         │
-│  1. 安装 GNAS 系统 (ISO / 脚本)                         │
-│  2. 运行恢复向导: gnas recovery start                   │
-│  3. 选择恢复源:                                         │
-│     · 本地备份盘 → 自动挂载 → 扫描备份目录              │
-│     · 云存储 → 输入凭证 → 列出可用备份                  │
-│     · 远程 GNAS → 输入地址 + 凭证                       │
-│  4. 恢复系统配置: /srv/nas/config/ → 恢复 YAML + SQLite │
-│  5. 恢复存储池配置: ZFS/btrfs 池定义 → 重新导入池       │
-│     (ZFS: zpool import, Btrfs: 直接挂载)               │
-│  6. 恢复数据: rsync / restic restore → 目标路径         │
-│  7. 恢复 Agent: 重新生成 compose.yml + 启动容器         │
-│  8. 验证恢复: 自动 checksum 校验 + 服务健康检查         │
-│  9. 完成通知: "系统已在 {timestamp} 恢复到 {source}"   │
+│  1. Install GNAS system (ISO / script)                  │
+│  2. Run recovery wizard: gnas recovery start            │
+│  3. Select recovery source:                             │
+│     · Local backup disk → auto-mount → scan backup      │
+│       directory                                         │
+│     · Cloud storage → enter credentials → list          │
+│       available backups                                 │
+│     · Remote GNAS → enter address + credentials         │
+│  4. Restore system config: /srv/nas/config/ → restore   │
+│     YAML + SQLite                                       │
+│  5. Restore storage pool config: ZFS/btrfs pool         │
+│     definition → re-import pool                         │
+│     (ZFS: zpool import, Btrfs: direct mount)           │
+│  6. Restore data: rsync / restic restore → target path  │
+│  7. Restore Agents: regenerate compose.yml + start      │
+│     containers                                          │
+│  8. Verify restoration: auto checksum verification +    │
+│     service health check                                │
+│  9. Completion notice: "System restored to {source}     │
+│     at {timestamp}"                                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 6. 安全与身份认证层
+## 6. Security and Identity Layer
 
-本层借鉴鸿蒙系统（HarmonyOS）的分布式安全设计思想，不照搬原模型，而是针对 NAS 多用户、多设备、多 Agent 的场景做了深度适配。
+This layer draws inspiration from the distributed security design concepts of HarmonyOS, not copying the original model but deeply adapting it for NAS multi-user, multi-device, and multi-Agent scenarios.
 
-### 6.1 鸿蒙概念 → NAS 适配映射
+### 6.1 HarmonyOS Concepts → NAS Adaptation Mapping
 
 ```
-鸿蒙概念              →    GNAS 适配
+HarmonyOS Concept        →    GNAS Adaptation
 
-Access Token          →    NasToken (JWT with embedded capabilities)
-ATM (令牌管理器)       →    NasTokenManager (签发/验证/吊销/轮换)
-Capability            →    NAbility (细粒度能力原子)
-HUKS (密钥管理)        →    NasKeyStore (TPM + 软件回退)
-Data Level (S0-S4)    →    NasDataLevel (文件/目录级数据分级)
-Device Certification  →    DeviceTrust (设备信任链)
+Access Token             →    NasToken (JWT with embedded capabilities)
+ATM (Token Manager)      →    NasTokenManager (issue/verify/revoke/rotate)
+Capability               →    NAbility (fine-grained capability atoms)
+HUKS (Key Management)    →    NasKeyStore (TPM + software fallback)
+Data Level (S0-S4)       →    NasDataLevel (file/directory level data classification)
+Device Certification     →    DeviceTrust (device trust chain)
 ```
 
-### 6.2 架构图
+### 6.2 Architecture Diagram
 
 ```
 ┌═══════════════════════════════════════════════════════════════┐
-║           SECURITY & IDENTITY LAYER  安全与身份层              ║
+║           SECURITY & IDENTITY LAYER                          ║
 ║                                                                ║
 ║  ┌───────────────────────────────────────────────────────────┐ ║
 ║  │                  ┌──────────────────────┐                  │ ║
-║  │                  │   Identity Service   │  身份服务         │ ║
-║  │                  │   (身份即服务)        │                  │ ║
+║  │                  │   Identity Service   │                  │ ║
 ║  │                  └──────────┬───────────┘                  │ ║
 ║  │                             │                               │ ║
 ║  │    ┌────────────────────────┼────────────────────────┐     │ ║
 ║  │    │                        │                        │     │ ║
 ║  │    ▼                        ▼                        ▼     │ ║
 ║  │ ┌──────────┐    ┌──────────────────┐    ┌──────────────────┐│ ║
-║  │ │ 本地身份  │    │   联合身份        │    │   设备/Agent身份  ││ ║
+║  │ │ Local    │    │ Federated        │    │ Device/Agent     ││ ║
+║  │ │ Identity │    │ Identity         │    │ Identity         ││ ║
 ║  │ │          │    │                  │    │                  ││ ║
-║  │ │· 用户名  │    │· LDAP/AD 域用户  │    │· Agent Token     ││ ║
-║  │ │· 密码    │    │· OAuth2/OIDC     │    │· Device Cert     ││ ║
-║  │ │· 生物特征│    │· 第三方登录      │    │· Service Account ││ ║
-║  │ │· 二次验证│    │· SAML 企业SSO    │    │· API Key         ││ ║
+║  │ │· Username│    │· LDAP/AD domain │    │· Agent Token     ││ ║
+║  │ │· Password│    │· OAuth2/OIDC    │    │· Device Cert     ││ ║
+║  │ │· Biometric│   │· Third-party    │    │· Service Account ││ ║
+║  │ │· 2FA     │    │  login          │    │· API Key         ││ ║
+║  │ │          │    │· SAML enterprise│    │                  ││ ║
+║  │ │          │    │  SSO            │    │                  ││ ║
 ║  │ └─────┬────┘    └────────┬─────────┘    └────────┬─────────┘│ ║
 ║  │       │                  │                       │          │ ║
 ║  │       └──────────────────┼───────────────────────┘          │ ║
 ║  │                          │                                   │ ║
 ║  │                          ▼                                   │ ║
 ║  │  ┌─────────────────────────────────────────────────────────┐│ ║
-║  │  │            Access Token Manager (ATM)                    ││ ║
-║  │  │             访问令牌管理器                                ││ ║
+║  │  │            Access Token Manager (ATM)                   ││ ║
 ║  │  │                                                         ││ ║
-║  │  │  · JWT 令牌签发/验证/吊销                                ││ ║
-║  │  │  · 令牌内嵌能力 (Capability-Embedded Token)              ││ ║
-║  │  │  · 令牌层级: 用户令牌 > 会话令牌 > 操作令牌              ││ ║
-║  │  │  · Agent 令牌自动轮换                                    ││ ║
-║  │  │  · 跨设备令牌同步 (多NAS集群场景)                        ││ ║
+║  │  │  · JWT token issue/verify/revoke                       ││ ║
+║  │  │  · Capability-Embedded Token                           ││ ║
+║  │  │  · Token hierarchy: user token > session token >       ││ ║
+║  │  │    operation token                                     ││ ║
+║  │  │  · Automatic Agent token rotation                      ││ ║
+║  │  │  · Cross-device token sync (multi-NAS cluster)         ││ ║
 ║  │  └──────────────────────────┬──────────────────────────────┘│ ║
 ║  │                             │                                │ ║
 ║  │                             ▼                                │ ║
 ║  │  ┌─────────────────────────────────────────────────────────┐│ ║
-║  │  │            Permission Engine (权限引擎)                  ││ ║
+║  │  │            Permission Engine                            ││ ║
 ║  │  │                                                         ││ ║
 ║  │  │   ┌─────────────┐  ┌─────────────┐  ┌──────────────┐   ││ ║
 ║  │  │   │ Capability  │  │   RBAC     │  │  ACL Engine  │   ││ ║
-║  │  │   │  Engine     │  │  Engine    │  │  (文件级)    │   ││ ║
-║  │  │   │ (能力模型)  │  │ (角色模型) │  │              │   ││ ║
+║  │  │   │  Engine     │  │  Engine    │  │  (File-level) │   ││ ║
 ║  │  │   └──────┬──────┘  └─────┬───────┘  └──────┬───────┘   ││ ║
 ║  │  │          └───────────────┼─────────────────┘            ││ ║
 ║  │  │                          │                              ││ ║
 ║  │  │                          ▼                              ││ ║
-║  │  │              统一权限决策 (Policy Decision Point)       ││ ║
+║  │  │              Unified Policy Decision Point              ││ ║
 ║  │  └─────────────────────────────────────────────────────────┘│ ║
 ║  │                                                                ║
 ║  │  ┌─────────────────────────────────────────────────────────┐  │ ║
-║  │  │              NasKeyStore (密钥存储)                       │  │ ║
-║  │  │  · TPM/Secure Enclave 集成    · 共享加密密钥管理         │  │ ║
-║  │  │  · Agent Secret 安全注入      · TLS 证书管理             │  │ ║
+║  │  │              NasKeyStore (Key Storage)                   │  │ ║
+║  │  │  · TPM/Secure Enclave integration    · Shared encryption │  │ ║
+║  │  │    key management                                        │  │ ║
+║  │  │  · Agent Secret secure injection    · TLS certificate    │  │ ║
+║  │  │    management                                           │  │ ║
 ║  │  └─────────────────────────────────────────────────────────┘  │ ║
 ║  └──────────────────────────────────────────────────────────────────┘ ║
 ╚═════════════════════════════════════════════════════════════════════════╝
 ```
 
-### 6.3 NAbility 能力模型
+### 6.3 NAbility Capability Model
 
 ```
-能力命名规范: <domain>:<resource>:<action>[:<scope>]
+Capability naming convention: <domain>:<resource>:<action>[:<scope>]
 
-示例层级:
-  storage:*:*                    ← 存储完全控制 (Admin)
-  storage:pool:main:*            ← 主存储池完全控制
-  storage:pool:main:read         ← 主存储池只读
-  storage:share:media:*          ← media共享完全控制
-  storage:share:media:read       ← media共享只读
-  storage:snapshot:*             ← 快照管理
+Example hierarchy:
+  storage:*:*                    ← Full storage control (Admin)
+  storage:pool:main:*            ← Main storage pool full control
+  storage:pool:main:read         ← Main storage pool read-only
+  storage:share:media:*          ← media share full control
+  storage:share:media:read       ← media share read-only
+  storage:snapshot:*             ← Snapshot management
 
-  share:smb:*:*                  ← SMB服务完全控制
-  share:smb:config:write         ← SMB配置修改
-  share:nfs:export:read          ← NFS导出查看
+  share:smb:*:*                  ← SMB service full control
+  share:smb:config:write         ← SMB config modification
+  share:nfs:export:read          ← NFS export view
 
-  agent:*:*                      ← Agent完全控制 (Admin)
-  agent:lifecycle:deploy          ← Agent部署权限
-  agent:lifecycle:start_stop      ← Agent启停权限
-  agent:token:issue               ← 签发Agent令牌
-  agent:config:write              ← 修改Agent配置
+  agent:*:*                      ← Agent full control (Admin)
+  agent:lifecycle:deploy          ← Agent deploy permission
+  agent:lifecycle:start_stop      ← Agent start/stop permission
+  agent:token:issue               ← Issue Agent token
+  agent:config:write              ← Modify Agent config
 
-  admin:user:*                    ← 用户管理
-  admin:network:*                 ← 网络管理
-  admin:audit:read                ← 审计日志查看
+  admin:user:*                    ← User management
+  admin:network:*                 ← Network management
+  admin:audit:read                ← Audit log view
 
-  data:level:public               ← 访问L0公开数据
-  data:level:internal             ← 访问L1内部数据
-  data:level:personal             ← 访问L2个人数据
-  data:level:sensitive            ← 访问L3敏感数据
-  data:level:system               ← 访问L4系统数据
+  data:level:public               ← Access L0 public data
+  data:level:internal             ← Access L1 internal data
+  data:level:personal             ← Access L2 personal data
+  data:level:sensitive            ← Access L3 sensitive data
+  data:level:system               ← Access L4 system data
 ```
 
-### 6.4 NasToken 结构
+### 6.4 NasToken Structure
 
 ```json
 {
@@ -1415,92 +1476,96 @@ Device Certification  →    DeviceTrust (设备信任链)
 }
 ```
 
-### 6.5 NasDataLevel 数据分级
+### 6.5 NasDataLevel Data Classification
 
 ```
-Level │ 名称       │ 标签色  │  权限规则
+Level │ Name        │ Label Color │ Permission Rules
 ──────┼────────────┼────────┼────────────────────────────────
-  L0  │ 公开数据    │ 绿色    │  匿名可读, 无需认证
-  L1  │ 内部数据    │ 蓝色    │  任何已认证用户可读
-  L2  │ 个人数据    │ 黄色    │  仅Owner + 显式授权者可访问
-  L3  │ 敏感数据    │ 橙色    │  显式授权 + 操作审计 + 加密存储
-  L4  │ 系统数据    │ 红色    │  仅Admin + 强制审计 + 硬件加密
+  L0  │ Public      │ Green       │ Anonymous readable, no auth required
+  L1  │ Internal    │ Blue        │ Any authenticated user can read
+  L2  │ Personal    │ Yellow      │ Owner + explicitly authorized only
+  L3  │ Sensitive   │ Orange      │ Explicit authorization + audit trail + encrypted storage
+  L4  │ System      │ Red         │ Admin only + mandatory audit + hardware encryption
 ```
 
-### 6.6 Agent 授权流程
+### 6.6 Agent Authorization Flow
 
 ```
-用户部署 OpenClaw Agent
+User deploys OpenClaw Agent
         │
         ▼
   ┌─────────────────────────────────────────┐
-  │  1. 用户指定 Agent 需要的能力:           │
+  │  1. User specifies capabilities required by Agent:│
   │     - storage:share:media:read          │
   │     - share:smb:access                  │
   │     - data:level:internal               │
-  │     - agent:lifecycle:start_stop (自管) │
+  │     - agent:lifecycle:start_stop (self-manage) │
   └──────────────────┬──────────────────────┘
                      │
                      ▼
   ┌─────────────────────────────────────────┐
-  │  2. ATM 签发 Agent Token:               │
+  │  2. ATM issues Agent Token:             │
   │     - token_type: "agent"               │
-  │     - capabilities: [指定能力列表]       │
+  │     - capabilities: [specified capability list]│
   │     - delegation_chain: [admin, alice]  │
-  │     - exp: 24h (自动续期)               │
+  │     - exp: 24h (auto-renew)              │
   │     - device_binding: nas-host-id       │
   └──────────────────┬──────────────────────┘
                      │
                      ▼
   ┌─────────────────────────────────────────┐
-  │  3. Token 注入容器:                      │
-  │     - 环境变量: NAS_TOKEN=<jwt>         │
-  │     - 或 Secret 文件: /run/secrets/     │
-  │     - API 端点: NAS_API_ENDPOINT        │
+  │  3. Token injected into container:       │
+  │     - Environment variable: NAS_TOKEN=<jwt>     │
+  │     - Or Secret file: /run/secrets/           │
+  │     - API endpoint: NAS_API_ENDPOINT          │
   └──────────────────┬──────────────────────┘
                      │
                      ▼
   ┌─────────────────────────────────────────┐
-  │  4. Agent 运行时每次 API 调用携带 Token: │
+  │  4. Agent carries Token on each API call:    │
   │     Header: Authorization: Bearer <jwt> │
-  │     → Permission Engine 解析能力        │
-  │     → 能力匹配? 放行 : 403              │
+  │     → Permission Engine parses capabilities   │
+  │     → Capability matches? Allow : 403        │
   └─────────────────────────────────────────┘
 ```
 
 ---
 
-## 7. 服务总线容器层
+## 7. Service Bus Container Layer
 
-本层是 GNAS 的核心创新——一个 Linux 应用级服务管理器，统一管理 NAS 中所有服务进程（原生服务 + Docker 容器）。
+This layer is GNAS's core innovation — a Linux application-level service manager that uniformly manages all service processes in the NAS (native services + Docker containers).
 
 ```
 ┌═══════════════════════════════════════════════════════════════┐
-║              SERVICE BUS CONTAINER  服务总线容器               ║
+║              SERVICE BUS CONTAINER                           ║
 ║                                                                ║
 ║  ┌──────────────────────────────────────────────────────────┐ ║
-║  │            Service Registry (服务注册中心)                 │ ║
-║  │  注册所有服务的元数据：名称/类型/版本/依赖/端口/健康检查    │ ║
+║  │            Service Registry                               │ ║
+║  │  Registers metadata for all services: name/type/version/   │ ║
+║  │  dependencies/port/health check                            │ ║
 ║  └──────────────────────────────────────────────────────────┘ ║
 ║                                                                ║
 ║  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐          ║
 ║  │  Supervisor   │ │  IPC Bus     │ │  Health      │          ║
-║  │  进程监管器   │ │  进程通信总线 │ │  健康监控    │          ║
-║  │              │ │              │ │              │          ║
-║  │ · 启动/停止  │ │ · 事件总线   │ │ · 心跳检测   │          ║
-║  │ · 重启策略   │ │ · 命令通道   │ │ · 存活探针   │          ║
-║  │ · 依赖排序   │ │ · 数据流     │ │ · 就绪探针   │          ║
-║  │ · 优雅关闭   │ │ · 广播/单播  │ │ · 自动恢复   │          ║
+║  │               │ │              │ │  Monitor     │          ║
+║  │               │ │              │ │              │          ║
+║  │ · Start/Stop  │ │ · Event Bus  │ │ · Heartbeat  │          ║
+║  │ · Restart     │ │ · Command    │ │ · Liveness   │          ║
+║  │   Policy      │ │   Channel    │ │   Probe      │          ║
+║  │ · Dependency  │ │ · Data Flow  │ │ · Readiness  │          ║
+║  │   Ordering    │ │ · Broadcast/ │ │   Probe      │          ║
+║  │ · Graceful    │ │   Unicast    │ │ · Auto-      │          ║
+║  │   Shutdown    │ │              │ │   Recovery   │          ║
 ║  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘          ║
 ║         │                │                │                  ║
 ║         └────────────────┼────────────────┘                  ║
 ║                          │                                   ║
 ║  ┌───────────────────────┴────────────────────────────────┐  ║
-║  │                Service Hosts (服务宿主)                  │  ║
+║  │                Service Hosts                                                │  ║
 ║  │                                                         │  ║
 ║  │  ┌──────────────────────┐  ┌──────────────────────────┐ │  ║
 ║  │  │  Native Service Host │  │  Container Service Host  │ │  ║
-║  │  │  (原生进程宿主)       │  │  (容器化服务宿主)        │ │  ║
+║  │  │                               │  │                                    │ │  ║
 ║  │  │                      │  │                          │ │  ║
 ║  │  │  · smb-daemon        │  │  · openclaw-agent        │ │  ║
 ║  │  │  · nfs-server        │  │  · home-assistant        │ │  ║
@@ -1508,17 +1573,17 @@ Level │ 名称       │ 标签色  │  权限规则
 ║  │  │  · nginx             │  │  · nextcloud             │ │  ║
 ║  │  │  · .NET Modules      │  │  · immich                │ │  ║
 ║  │  │                      │  │                          │ │  ║
-║  │  │  管理方式:            │  │  管理方式:               │ │  ║
-║  │  │  · 直接进程 fork     │  │  · docker compose        │ │  ║
+║  │  │  Management:                          │  │  Management:                             │ │  ║
+║  │  │  · Direct process         │  │  · docker compose        │ │  ║
 ║  │  │  · systemd           │  │  · Docker API            │ │  ║
 ║  │  │                      │  │  · containerd            │ │  ║
 ║  │  └──────────────────────┘  └──────────────────────────┘ │  ║
 ║  └─────────────────────────────────────────────────────────┘  ║
 ║                                                                ║
 ║  ┌──────────────────────────────────────────────────────────┐ ║
-║  │                Event Bus (事件总线)                        │ ║
+║  │                Event Bus                                  │ ║
 ║  │                                                           │ ║
-║  │  Topic 示例:                                               │ ║
+║  │  Topic examples:                                          │ ║
 ║  │  ┌──────────────────┐ ┌──────────────────┐                │ ║
 ║  │  │ storage.*        │ │ service.*        │                │ ║
 ║  │  │ · disk.added     │ │ · smb.started    │                │ ║
@@ -1537,79 +1602,79 @@ Level │ 名称       │ 标签色  │  权限规则
 ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-### 7.1 服务定义模型
+### 7.1 Service Definition Model
 
 ```csharp
 /// <summary>
-/// 服务定义。描述一个受 Service Bus 管理的服务/进程/容器。
+/// Service definition. Describes a service/process/container managed by Service Bus.
 /// </summary>
 public record ServiceDefinition
 {
-    /// <summary>服务唯一标识 (e.g. "smb-daemon")</summary>
+    /// <summary>Service unique identifier (e.g. "smb-daemon")</summary>
     public string ServiceId { get; init; }
 
-    /// <summary>服务显示名称 (e.g. "SMB/CIFS File Sharing")</summary>
+    /// <summary>Service display name (e.g. "SMB/CIFS File Sharing")</summary>
     public string DisplayName { get; init; }
 
-    /// <summary>服务类型</summary>
+    /// <summary>Service type</summary>
     public ServiceType Type { get; init; }  // Native | Container | Module
 
-    /// <summary>依赖的其他服务ID列表</summary>
+    /// <summary>List of other service IDs this depends on</summary>
     public string[] DependsOn { get; init; }  // ["network", "storage-pool-main"]
 
-    /// <summary>服务声明需要的能力</summary>
+    /// <summary>Capabilities required by this service</summary>
     public string[] RequiredCapabilities { get; init; }
 
-    /// <summary>启动策略</summary>
+    /// <summary>Startup policy</summary>
     public ServiceStartup Startup { get; init; }  // Automatic | Manual | Disabled
 
-    /// <summary>重启策略</summary>
+    /// <summary>Restart policy</summary>
     public RestartPolicy RestartPolicy { get; init; }  // Always | OnFailure | Never | ExponentialBackoff
 
-    /// <summary>原生进程: 可执行文件路径</summary>
+    /// <summary>Native process: executable path</summary>
     public string Executable { get; init; }
 
-    /// <summary>容器进程: compose.yml 路径</summary>
+    /// <summary>Container process: compose.yml path</summary>
     public string ComposeFile { get; init; }
 
-    /// <summary>健康检查配置</summary>
+    /// <summary>Health check configuration</summary>
     public HealthCheckConfig HealthCheck { get; init; }
 
-    /// <summary>资源配额</summary>
+    /// <summary>Resource quota</summary>
     public ResourceQuota Quota { get; init; }
 }
 
 public enum ServiceType
 {
-    Native,     // 原生操作系统进程
-    Container,  // Docker 容器
-    Module      // .NET Module (进程内)
+    Native,     // Native OS process
+    Container,  // Docker container
+    Module      // .NET Module (in-process)
 }
 
 public record HealthCheckConfig
 {
     public HealthCheckType Type { get; init; }  // HttpGet | TcpConnect | ExecCommand | Grpc
-    public string Endpoint { get; init; }       // 检查端点/命令
-    public int IntervalSeconds { get; init; }   // 检查间隔
-    public int TimeoutSeconds { get; init; }    // 超时时间
-    public int Retries { get; init; }           // 失败重试次数
-    public int StartPeriodSeconds { get; init; }// 启动宽限期
+    public string Endpoint { get; init; }       // Check endpoint/command
+    public int IntervalSeconds { get; init; }   // Check interval
+    public int TimeoutSeconds { get; init; }    // Timeout
+    public int Retries { get; init; }           // Failure retry count
+    public int StartPeriodSeconds { get; init; }// Startup grace period
 }
 
 public record ResourceQuota
 {
-    public double? CpuLimit { get; init; }     // CPU 核数上限
-    public long? MemoryLimitBytes { get; init; }// 内存上限
-    public int? IoWeight { get; init; }         // IO 权重 (1-1000)
+    public double? CpuLimit { get; init; }     // CPU core limit
+    public long? MemoryLimitBytes { get; init; }// Memory limit
+    public int? IoWeight { get; init; }         // IO weight (1-1000)
 }
 ```
 
-### 7.2 服务间通信模式
+### 7.2 Inter-Service Communication Patterns
 
 ```
-服务间通信有两种模式:
+There are two modes of inter-service communication:
 
-1. 事件总线 (发布/订阅):
+1. Event Bus (Publish/Subscribe):
    ┌─────────────────┐                    ┌─────────────────┐
    │  SMB Service    │                    │  Permission     │
    │  (Native)       │                    │  Engine         │
@@ -1623,7 +1688,7 @@ public record ResourceQuota
                │  · file.access.denied         │
                └──────────────────────────────┘
 
-2. gRPC (请求/响应):
+2. gRPC (Request/Response):
    ┌─────────────────┐                    ┌─────────────────┐
    │  Agent Manager  │                    │  Docker         │
    │  (.NET Module)  │                    │  Engine         │
@@ -1639,24 +1704,28 @@ public record ResourceQuota
 
 ---
 
-## 8. Docker/Agent 集成层
+## 8. Docker/Agent Integration Layer
 
 ```
 ┌═══════════════════════════════════════════════════════════════┐
-║        DOCKER & AGENT INTEGRATION LAYER  容器与代理集成层      ║
+║        DOCKER & AGENT INTEGRATION LAYER                      ║
 ║                                                                ║
 ║  ┌──────────────────────────────────────────────────────────┐ ║
-║  │              Agent Manager (代理管理器)                    │ ║
+║  │              Agent Manager                               │ ║
 ║  │                                                           │ ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐   │ ║
 ║  │  │ Agent Catalog│  │ Token Broker │  │ Compose        │   │ ║
-║  │  │ 代理目录     │  │ 令牌经纪人   │  │ Generator      │   │ ║
-║  │  │              │  │              │  │ 编排生成器     │   │ ║
-║  │  │ · 可用Agent  │  │ · 签发Agent  │  │                │   │ ║
-║  │  │   模板市场   │  │   Token      │  │ · 生成compose  │   │ ║
-║  │  │ · 版本管理   │  │ · 能力范围   │  │ · 自动挂载Vol  │   │ ║
-║  │  │ · 依赖检查   │  │ · 时效控制   │  │ · 网络策略注入 │   │ ║
-║  │  │ · 评分/评论  │  │ · 吊销/续期  │  │ · 环境变量注入 │   │ ║
+║  │  │              │  │              │  │ Generator      │   │ ║
+║  │  │              │  │              │  │                │   │ ║
+║  │  │ · Available │  │ · Issue      │  │                │   │ ║
+║  │  │   Agent     │  │   Agent      │  │ · Generate     │   │ ║
+║  │  │   templates │  │   Token      │  │   compose      │   │ ║
+║  │  │ · Version   │  │ · Capability │  │ · Auto-mount   │   │ ║
+║  │  │   mgmt      │  │   scope      │  │   volumes      │   │ ║
+║  │  │ · Dependency│  │ · Time       │  │ · Network      │   │ ║
+║  │  │   check     │  │   control    │  │   policy       │   │ ║
+║  │  │ · Ratings   │  │ · Revoke/    │  │ · Env var      │   │ ║
+║  │  │   /reviews  │  │   renew      │  │   injection    │   │ ║
 ║  │  └──────┬───────┘  └──────┬───────┘  └────────┬───────┘   │ ║
 ║  └─────────┼─────────────────┼───────────────────┼────────────┘ ║
 ║            │                 │                   │               ║
@@ -1665,7 +1734,7 @@ public record ResourceQuota
 ║  │               Agent Runtime Environment                   │ ║
 ║  │                                                           │ ║
 ║  │   ┌─────────────────────────────────────────────────┐    │ ║
-║  │   │           Docker Engine (官方, 未修改)            │    │ ║
+║  │   │           Docker Engine (Official, unmodified)   │    │ ║
 ║  │   │   Storage Driver: overlay2 | btrfs | zfs         │    │ ║
 ║  │   │   Network: bridge | host | macvlan | ipvlan      │    │ ║
 ║  │   └─────────────────────────────────────────────────┘    │ ║
@@ -1682,50 +1751,56 @@ public record ResourceQuota
 ║  └──────────────────────────────────────────────────────────┘ ║
 ║                                                                ║
 ║  ┌──────────────────────────────────────────────────────────┐ ║
-║  │              Agent ↔ NAS 交互通道                         │ ║
+║  │              Agent ↔ NAS Interaction Channel              │ ║
 ║  │                                                           │ ║
 ║  │  ┌──────────────────┐  ┌──────────────────┐              │ ║
 ║  │  │ Filesystem I/O   │  │  NAS REST/gRPC   │              │ ║
 ║  │  │ (Volume Mount)   │  │  API             │              │ ║
 ║  │  │                  │  │                  │              │ ║
-║  │  │ · 直接文件读写   │  │ · 调用NAS服务    │              │ ║
-║  │  │ · POSIX 权限     │  │ · 查询系统状态   │              │ ║
-║  │  │ · 共享文件夹访问 │  │ · 管理共享/用户  │              │ ║
-║  │  │ · 快照数据访问   │  │ · 触发备份任务   │              │ ║
+║  │  │ · Direct file    │  │ · Call NAS       │              │ ║
+║  │  │   read/write     │  │   services       │              │ ║
+║  │  │ · POSIX          │  │ · Query system   │              │ ║
+║  │  │   permissions    │  │   status         │              │ ║
+║  │  │ · Shared folder  │  │ · Manage         │              │ ║
+║  │  │   access         │  │   shares/users   │              │ ║
+║  │  │ · Snapshot data  │  │ · Trigger backup │              │ ║
+║  │  │   access         │  │   tasks          │              │ ║
 ║  │  └──────────────────┘  └──────────────────┘              │ ║
 ║  │                                                           │ ║
 ║  │  ┌──────────────────┐                                    │ ║
 ║  │  │  Polling / Query  │                                    │ ║
 ║  │  │  (REST API)       │                                    │ ║
 ║  │  │                  │                                    │ ║
-║  │  │ · 查询系统状态   │                                    │ ║
-║  │  │ · 拉取日志       │                                    │ ║
-║  │  │ · 定时轮询       │                                    │ ║
+║  │  │ · Query system   │                                    │ ║
+║  │  │   status         │                                    │ ║
+║  │  │ · Fetch logs     │                                    │ ║
+║  │  │ · Periodic poll  │                                    │ ║
 ║  │  └──────────────────┘                                    │ ║
 ║  └──────────────────────────────────────────────────────────┘ ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```
 
-### 8.1 Agent 部署流程（端到端）
+### 8.1 Agent Deployment Process (End-to-End)
 
 ```
-用户浏览 Agent Catalog
+User browses Agent Catalog
         │
         ▼
   ┌──────────────────────────────────────────────────┐
-  │  选择 OpenClaw Agent, 配置:                      │
-  │  · 可访问的共享文件夹: media, documents           │
-  │  · 需要的API能力: storage:read, share:access     │
-  │  · 网络模式: bridge, 端口: 8080                  │
-  │  · 资源限制: CPU 1核, 内存 512MB                 │
+  │  Select OpenClaw Agent, configure:               │
+  │  · Accessible shared folders: media, documents   │
+  │  · Required API capabilities: storage:read,      │
+  │    share:access                                   │
+  │  · Network mode: bridge, port: 8080              │
+  │  · Resource limits: CPU 1 core, memory 512MB     │
   └──────────────────────┬───────────────────────────┘
                          │
                          ▼
   ┌──────────────────────────────────────────────────┐
-  │  Agent Manager 编排:                             │
+  │  Agent Manager orchestration:                    │
   │                                                  │
-  │  1. 生成 Agent Token (NAS Token)                 │
-  │  2. 生成 docker-compose.yml:                     │
+  │  1. Generate Agent Token (NAS Token)             │
+  │  2. Generate docker-compose.yml:                 │
   │                                                  │
   │     services:                                    │
   │       openclaw:                                  │
@@ -1744,28 +1819,29 @@ public record ResourceQuota
   │           resources:                             │
   │             limits: {cpus: '1', memory: 512M}    │
   │                                                  │
-  │  3. 写入 /srv/nas/agents/openclaw/              │
-  │  4. 注册到 Service Bus                           │
+  │  3. Write to /srv/nas/agents/openclaw/          │
+  │  4. Register with Service Bus                    │
   │  5. docker compose up -d                         │
   └──────────────────────┬───────────────────────────┘
                          │
                          ▼
   ┌──────────────────────────────────────────────────┐
-  │  Service Bus 接管 Agent 生命周期:                 │
-  │  · 监控容器状态 (Docker events + Healthcheck)    │
-  │  · Token 到期前自动续期                           │
-  │  · 崩溃自动重启 (RestartPolicy)                   │
-  │  · 资源使用监控 & 告警                            │
+  │  Service Bus takes over Agent lifecycle:         │
+  │  · Monitor container status (Docker events +     │
+  │    Healthcheck)                                   │
+  │  · Auto-renew Token before expiration            │
+  │  · Auto-restart on crash (RestartPolicy)         │
+  │  · Resource usage monitoring & alerts            │
   └──────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 9. 平台抽象层
+## 9. Platform Abstraction Layer
 
 ```
 ┌═══════════════════════════════════════════════════════════┐
-║      PLATFORM ABSTRACTION LAYER  平台抽象层 (.NET)         ║
+║      PLATFORM ABSTRACTION LAYER (.NET)                   ║
 ║                                                            ║
 ║  ┌──────────────────────────────────────────────────────┐ ║
 ║  │                 Interface Definitions                 │ ║
@@ -1792,12 +1868,12 @@ public record ResourceQuota
 ║  │  (linux-x64)       │                    │  (arm64)    │║
 ║  ├────────────────────┼────────────────────┼─────────────┤║
 ║  │  · systemd         │                    │  · systemd  │║
-║  │  · udev (设备)     │  · WMI (设备枚举)   │  · udev     │║
-║  │  · /proc, /sys     │  · diskpart        │  · /proc    │║
-║  │  · mdadm, LVM      │  · Storage Spaces  │  · mdadm    │║
-║  │  · iptables/nft    │                    │  · nft      │║
+║  │  · udev (device)   │  · WMI (device     │  · udev     │║
+║  │  · /proc, /sys     │    enumeration)    │  · /proc    │║
+║  │  · mdadm, LVM      │  · diskpart        │  · mdadm    │║
+║  │  · iptables/nft    │  · Storage Spaces  │  · nft      │║
 ║  │  · samba, nfs-     │  · SMB Server      │  · samba    │║
-║  │    kernel-server   │    (Win内置)        │  · nfs      │║
+║  │    kernel-server   │    (Win built-in)   │  · nfs      │║
 ║  │  · Docker CE       │  · Docker Desktop  │  · Docker CE│║
 ║  │  · ext4/XFS/Btrfs  │    / Podman        │  · ext4/XFS │║
 ║  │                    │  · NTFS/ReFS       │            │║
@@ -1809,7 +1885,8 @@ public record ResourceQuota
 ║  │  Target Frameworks: net10.0                            │ ║
 ║  │  RIDs: linux-x64 | linux-arm64                       │ ║
 ║  │                                                       │ ║
-║  │  通过依赖注入 (DI) 自动选择平台实现:                   │ ║
+║  │  Platform implementation automatically selected via   │ ║
+║  │  dependency injection (DI):                           │ ║
 ║  │                                                       │ ║
 ║  │  if (!OperatingSystem.IsLinux())                      │ ║
 ║  │      throw new PlatformNotSupportedException();       │ ║
@@ -1822,11 +1899,11 @@ public record ResourceQuota
 ╚═══════════════════════════════════════════════════════════╝
 ```
 
-### 9.1 平台接口定义
+### 9.1 Platform Interface Definitions
 
 ```csharp
 /// <summary>
-/// 磁盘管理抽象。
+/// Disk management abstraction.
 /// </summary>
 public interface IDiskManager
 {
@@ -1838,7 +1915,7 @@ public interface IDiskManager
 }
 
 /// <summary>
-/// 文件系统抽象。
+/// Filesystem abstraction.
 /// </summary>
 public interface IFileSystem
 {
@@ -1849,7 +1926,7 @@ public interface IFileSystem
 }
 
 /// <summary>
-/// 进程/服务管理抽象。
+/// Process/service management abstraction.
 /// </summary>
 public interface IProcessManager
 {
@@ -1862,7 +1939,7 @@ public interface IProcessManager
 }
 
 /// <summary>
-/// 网络管理抽象。
+/// Network management abstraction.
 /// </summary>
 public interface INetworkManager
 {
@@ -1873,7 +1950,7 @@ public interface INetworkManager
 }
 
 /// <summary>
-/// 用户账户抽象。
+/// User account abstraction.
 /// </summary>
 public interface IUserAccount
 {
@@ -1886,29 +1963,30 @@ public interface IUserAccount
 
 ---
 
-## 10. 日志与可观测性层
+## 10. Logging and Observability Layer
 
-### 10.1 日志体系全景
+### 10.1 Log System Panorama
 
 ```
 ┌═══════════════════════════════════════════════════════════════┐
-║            OBSERVABILITY & LOGGING LAYER  可观测性与日志层      ║
+║            OBSERVABILITY & LOGGING LAYER                     ║
 ║                                                                ║
 ║  ┌──────────────────────────────────────────────────────────┐ ║
-║  │                  日志产生端 (Log Producers)                │ ║
+║  │                  Log Producers                            │ ║
 ║  │                                                           │ ║
 ║  │  ┌───────────┐  ┌───────────┐  ┌──────────┐             │ ║
 ║  │  │ CLI Tool │  │ .NET API  │  │ Modules  │             │ ║
-║  │  │ (客户端)  │  │ (网关日志) │  │ (业务日志)│             │ ║
+║  │  │ (client)  │  │ (gateway  │  │ (business │             │ ║
+║  │  │           │  │  logs)    │  │  logs)    │             │ ║
 ║  │  └─────┬─────┘  └─────┬─────┘  └────┬─────┘             │ ║
 ║  │        │              │             │                    │ ║
 ║  │  ┌─────┴──────────────┴─────────────┴────────────────┐   │ ║
-║  │  │             Agent 容器日志 (stdout/stderr)         │   │ ║
+║  │  │             Agent container logs (stdout/stderr)   │   │ ║
 ║  │  └───────────────────────────────────────────────────┘   │ ║
 ║  └──────────────────────────────┬───────────────────────────┘ ║
 ║                                 │                              ║
 ║  ┌──────────────────────────────┴───────────────────────────┐ ║
-║  │              日志采集管道 (Collection Pipeline)           │ ║
+║  │              Collection Pipeline                         │ ║
 ║  │                                                           │ ║
 ║  │  ┌────────────────────┐    ┌────────────────────┐        │ ║
 ║  │  │  Logging Provider   │    │  OpenTelemetry SDK │        │ ║
@@ -1923,102 +2001,114 @@ public interface IUserAccount
 ║  └────────────┼──────────────────────────┼────────────────────┘ ║
 ║               │                          │                       ║
 ║  ┌────────────┴──────────────────────────┴────────────────────┐ ║
-║  │               日志分类器 (Log Classifier)                    │ ║
+║  │               Log Classifier                               │ ║
 ║  │                                                             │ ║
-║  │   System Log  ────→ 系统运行日志 (INFO/WARN/ERROR)         │ ║
-║  │   Audit Log   ────→ 审计日志 (安全事件, 不可篡改)          │ ║
-║  │   Access Log  ────→ 访问日志 (文件访问, API调用)           │ ║
-║  │   Agent Log   ────→ Agent运行日志 (容器stdout/状态)        │ ║
-║  │   Trace Log   ────→ 分布式链路追踪 (跨服务调用链)          │ ║
-║  │   Metric Log  ────→ 指标数据 (CPU/内存/磁盘/网络)          │ ║
+║  │   System Log  ────→ System runtime logs (INFO/WARN/ERROR) │ ║
+║  │   Audit Log   ────→ Audit logs (security events,           │ ║
+║  │                     tamper-proof)                          │ ║
+║  │   Access Log  ────→ Access logs (file access, API calls)   │ ║
+║  │   Agent Log   ────→ Agent runtime logs (container stdout/  │ ║
+║  │                     status)                                 │ ║
+║  │   Trace Log   ────→ Distributed trace                      │ ║
+║  │                     (cross-service call chain)              │ ║
+║  │   Metric Log  ────→ Metric data (CPU/memory/disk/network) │ ║
 ║  └───────────────────────────────┬─────────────────────────────┘ ║
 ║                                  │                               ║
 ║  ┌───────────────────────────────┴─────────────────────────────┐ ║
-║  │                日志存储引擎 (Storage Engines)                │ ║
+║  │                Storage Engines                               │ ║
 ║  │                                                              │ ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │ ║
-║  │  │  File Store  │  │  SQLite/     │  │  Loki (内嵌) │       │ ║
-║  │  │  (轮转文件)  │  │  PostgreSQL  │  │              │       │ ║
-║  │  │ /var/log/nas │  │  (结构化查询)│  │ 容器日志     │       │ ║
-║  │  │ system/*.log │  │              │  │ 聚合搜索     │       │ ║
-║  │  │ agent/*.log  │  │ metrics.db   │  │ 标签索引     │       │ ║
-║  │  │              │  │ audit.db     │  │              │       │ ║
+║  │  │  File Store  │  │  SQLite/     │  │  Loki        │       │ ║
+║  │  │  (rotating)  │  │  PostgreSQL  │  │  (embedded)  │       │ ║
+║  │  │ /var/log/nas │  │  (structured │  │  container   │       │ ║
+║  │  │ system/*.log │  │  queries)    │  │  logs        │       │ ║
+║  │  │ agent/*.log  │  │ metrics.db   │  │  aggregated  │       │ ║
+║  │  │              │  │ audit.db     │  │  search      │       │ ║
+║  │  │              │  │              │  │  tag index   │       │ ║
 ║  │  └──────────────┘  └──────────────┘  └──────────────┘       │ ║
 ║  │                                                              │ ║
 ║  │  ┌──────────────────────┐                                    │ ║
-║  │  │  Audit Vault (防篡改) │                                   │ ║
-║  │  │  · 审计链存储        │                                    │ ║
-║  │  │  · 完整性校验        │                                    │ ║
+║  │  │  Audit Vault         │                                    │ ║
+║  │  │  (tamper-proof)      │                                    │ ║
+║  │  │  · Audit chain       │                                    │ ║
+║  │  │    storage           │                                    │ ║
+║  │  │  · Integrity         │                                    │ ║
+║  │  │    verification      │                                    │ ║
 ║  │  └──────────────────────┘                                    │ ║
 ║  └──────────────────────────────────────────────────────────────┘ ║
 ║                                                                   ║
 ║  ┌──────────────────────────────────────────────────────────────┐ ║
-║  │                日志服务层 (Log Services)                      │ ║
+║  │                Log Services                                  │ ║
 ║  │                                                              │ ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │ ║
 ║  │  │ Log Query    │  │ Alert Engine │  │ Retention    │       │ ║
-║  │  │ Service      │  │ 告警引擎     │  │ Manager      │       │ ║
-║  │  │              │  │              │  │ 保留策略     │       │ ║
-║  │  │ · 全文搜索   │  │ · 规则评估   │  │ · 自动归档   │       │ ║
-║  │  │ · 时间范围   │  │ · 阈值触发   │  │ · 自动删除   │       │ ║
-║  │  │ · 标签过滤   │  │ · 聚合告警   │  │ · 存储配额   │       │ ║
-║  │  │ · 关联查询   │  │ · 静默规则   │  │              │       │ ║
+║  │  │ Service      │  │              │  │ Manager      │       │ ║
+║  │  │              │  │              │  │              │       │ ║
+║  │  │ · Full-text  │  │ · Rule       │  │ · Auto-      │       │ ║
+║  │  │   search     │  │   evaluation │  │   archive    │       │ ║
+║  │  │ · Time range │  │ · Threshold  │  │ · Auto-      │       │ ║
+║  │  │ · Tag filter │  │   trigger    │  │   delete     │       │ ║
+║  │  │ · Correlated │  │ · Aggregate  │  │ · Storage    │       │ ║
+║  │  │   query      │  │   alert      │  │   quota      │       │ ║
+║  │  │              │  │ · Silence    │  │              │       │ ║
+║  │  │              │  │   rules      │  │              │       │ ║
 ║  │  └──────────────┘  └──────────────┘  └──────────────┘       │ ║
 ║  └──────────────────────────────────────────────────────────────┘ ║
 ║                                                                   ║
 ║  ┌──────────────────────────────────────────────────────────────┐ ║
-║  │                展示层 (Visualization)                         │ ║
+║  │               Visualization                                  │ ║
 ║  │                                                              │ ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │ ║
 ║  │  │ Log Viewer   │  │ Dashboard    │  │ Alert        │       │ ║
-║  │  │ (实时+历史)  │  │ (系统+Agent) │  │ Notifications│       │ ║
+║  │  │ (real-time + │  │ (system +    │  │ Notifications│       │ ║
+║  │  │  history)    │  │  Agent)      │  │              │       │ ║
 ║  │  └──────────────┘  └──────────────┘  └──────────────┘       │ ║
 ║  └──────────────────────────────────────────────────────────────┘ ║
 ╚══════════════════════════════════════════════════════════════════╝
 ```
 
-### 10.2 统一日志结构
+### 10.2 Unified Log Structure
 
 ```csharp
 /// <summary>
-/// 统一日志条目，所有类型的日志都使用此结构。
+/// Unified log entry, all log types use this structure.
 /// </summary>
 public record LogEntry
 {
-    // === 基础字段 ===
-    public string LogId { get; init; }             // UUID v7 (时间有序)
+    // === Basic fields ===
+    public string LogId { get; init; }             // UUID v7 (time-ordered)
     public DateTimeOffset Timestamp { get; init; }
     public LogCategory Category { get; init; }     // System | Audit | Access | Agent | Trace | Metric
     public LogLevel Level { get; init; }           // Trace | Debug | Info | Warn | Error | Fatal
 
-    // === 来源标识 ===
+    // === Source identification ===
     public string SourceComponent { get; init; }   // "StorageModule", "SmbService", "OpenClawAgent"
     public string SourceLayer { get; init; }       // "API", "ServiceBus", "Module", "Agent", "OS"
     public string HostName { get; init; }
     public string HostArch { get; init; }          // x64, arm64
 
-    // === 业务上下文 ===
-    public string UserId { get; init; }            // 关联用户 (audit/access 必须)
-    public string AgentId { get; init; }           // 关联 Agent
-    public string ServiceId { get; init; }         // 关联服务
-    public string TraceId { get; init; }           // 分布式追踪
-    public string SpanId { get; init; }            // 调用跨度
+    // === Business context ===
+    public string UserId { get; init; }            // Associated user (required for audit/access)
+    public string AgentId { get; init; }           // Associated Agent
+    public string ServiceId { get; init; }         // Associated service
+    public string TraceId { get; init; }           // Distributed trace
+    public string SpanId { get; init; }            // Call span
 
-    // === 内容 ===
+    // === Content ===
     public string Message { get; init; }
     public string Template { get; init; }          // "User {UserId} accessed {FilePath}"
     public Dictionary<string, object> Properties { get; init; }
     public string[] Tags { get; init; }            // ["security", "permission-denied"]
 
-    // === 审计专用 ===
+    // === Audit-specific ===
     public AuditDetail Audit { get; init; }
 
-    // === 指标专用 ===
+    // === Metric-specific ===
     public MetricData Metric { get; init; }
 }
 
 /// <summary>
-/// 审计日志扩展：记录每次权限决策和敏感操作。
+/// Audit log extension: records every permission decision and sensitive operation.
 /// </summary>
 public record AuditDetail
 {
@@ -2030,17 +2120,17 @@ public record AuditDetail
     public string ClientIp { get; init; }
     public string UserAgent { get; init; }
     public string SessionId { get; init; }
-    public string BeforeState { get; init; }       // 变更前状态 (JSON)
-    public string AfterState { get; init; }        // 变更后状态 (JSON)
+    public string BeforeState { get; init; }       // State before change (JSON)
+    public string AfterState { get; init; }        // State after change (JSON)
 
-    // === 防篡改 (审计链) ===
-    public string PreviousHash { get; init; }      // 前一条审计日志的 SHA-256
-    public string CurrentHash { get; init; }       // 本条日志的 SHA-256
+    // === Tamper-proof (audit chain) ===
+    public string PreviousHash { get; init; }      // SHA-256 of previous audit log
+    public string CurrentHash { get; init; }       // SHA-256 of this log entry
     public string ChainSignature { get; init; }    // HMAC-SHA256(CurrentHash, ChainKey)
 }
 
 /// <summary>
-/// 指标日志扩展。
+/// Metric log extension.
 /// </summary>
 public record MetricData
 {
@@ -2051,24 +2141,24 @@ public record MetricData
 }
 
 /// <summary>
-/// 日志类别枚举。
+/// Log category enum.
 /// </summary>
 public enum LogCategory
 {
-    System,    // 系统运行日志
-    Audit,     // 审计日志 (不可篡改)
-    Access,    // 访问日志 (文件+API)
-    Agent,     // Agent/容器运行日志
-    Trace,     // 分布式链路追踪
-    Metric     // 指标数据
+    System,    // System runtime logs
+    Audit,     // Audit logs (tamper-proof)
+    Access,    // Access logs (file + API)
+    Agent,     // Agent/container runtime logs
+    Trace,     // Distributed trace
+    Metric     // Metric data
 }
 ```
 
-### 10.3 审计防篡改链
+### 10.3 Audit Tamper-Proof Chain
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         Audit Chain (审计链)                              │
+│                         Audit Chain                                     │
 │                                                                          │
 │   Log #1              Log #2              Log #3              Log #4     │
 │  ┌──────────┐        ┌──────────┐        ┌──────────┐        ┌──────────┐│
@@ -2087,74 +2177,85 @@ public enum LogCategory
 │                                                                          │
 │  ChainSignature = HMAC-SHA256(CurrentHash, NasKeyStore.ChainKey)         │
 │                                                                          │
-│  验证规则:                                                                │
-│  1. 遍历链, 验证每个 CurrentHash = H(PrevHash + Content...)              │
-│  2. 验证 ChainSignature 匹配                                             │
-│  3. 任一环节断裂 → 告警 "审计日志可能被篡改"                              │
-│  4. 审计链定期导出到外部存储 (云/外置硬盘)                                 │
+│  Verification rules:                                                     │
+│  1. Traverse the chain, verify each CurrentHash = H(PrevHash +          │
+│     Content...)                                                          │
+│  2. Verify ChainSignature matches                                        │
+│  3. Any broken link → alert "Audit log may have been tampered with"     │
+│  4. Audit chain regularly exported to external storage (cloud/           │
+│     external drive)                                                      │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 10.4 告警引擎
+### 10.4 Alert Engine
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Alert Engine (告警引擎)                         │
+│                           Alert Engine                                  │
 │                                                                          │
-│  告警分级:                                                                │
+│  Alert levels:                                                           │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ Critical (严重) — 磁盘故障/RAID降级/审计链断裂/入侵检测            │ │
-│  │  通知: 邮件 + Webhook + 系统告警                                    │ │
+│  │ Critical — Disk failure/RAID degraded/Audit chain broken/          │ │
+│  │            Intrusion detected                                       │ │
+│  │  Notification: Email + Webhook + System alert                      │ │
 │  │                                                                     │ │
-│  │ Warning (警告) — 磁盘>90%/高内存/Token即将过期/多次登录失败         │ │
-│  │  通知: 邮件 + UI 提示                                               │ │
+│  │ Warning — Disk >90%/High memory/Token expiring soon/Multiple       │ │
+│  │           failed logins                                             │ │
+│  │  Notification: Email + UI prompt                                    │ │
 │  │                                                                     │ │
-│  │ Info (信息) — 服务重启/Agent部署/存储池扩容/OTA更新                 │ │
-│  │  通知: UI 事件流 + 日志记录                                         │ │
+│  │ Info — Service restart/Agent deploy/Storage pool expansion/         │ │
+│  │        OTA update                                                   │ │
+│  │  Notification: UI event stream + log                                │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
-│  静默规则:                                                                │
+│  Silence rules:                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ · 维护模式: 手动进入维护模式时, 抑制所有非Critical告警              │ │
-│  │ · 时间窗口: 备份窗口 (02:00-06:00) 抑制IO相关告警                  │ │
-│  │ · 依赖抑制: 网络不可达时, 抑制下游服务的连接失败告警                │ │
+│  │ · Maintenance mode: when manually entering maintenance mode,        │ │
+│  │   suppress all non-Critical alerts                                  │ │
+│  │ · Time window: backup window (02:00-06:00) suppress IO-related     │ │
+│  │   alerts                                                            │ │
+│  │ · Dependency suppression: when network is unreachable, suppress     │ │
+│  │   downstream service connection failure alerts                      │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 10.5 日志保留策略
+### 10.5 Log Retention Policy
 
 ```
-日志类型      │ 存储位置    │  热存储  │  温存储  │  冷存储  │  说明
-─────────────┼────────────┼─────────┼─────────┼─────────┼───────────
-System       │ 文件+Loki  │  7 天   │  30 天  │  删除   │  自动轮转
-Audit        │ Audit Vault│  90 天  │  1 年   │ 永久(外部)│ 不可删除
-Access       │ SQLite/DB  │  30 天  │  90 天  │ 180天   │  可配置
-Agent        │ Loki       │  7 天   │  30 天  │  删除   │  按Agent分
-Trace        │ Loki       │  3 天   │  7 天   │  删除   │  采样存储
-Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采样
+Log Type     │ Storage     │ Hot     │ Warm    │ Cold    │ Notes
+             │ Location    │ Storage │ Storage │ Storage │
+─────────────┼─────────────┼─────────┼─────────┼─────────┼───────────
+System       │ File + Loki │ 7 days  │ 30 days │ Delete  │ Auto-rotate
+Audit        │ Audit Vault │ 90 days │ 1 year  │ Forever │ Cannot be
+             │             │         │         │(external)│ deleted
+Access       │ SQLite/DB   │ 30 days │ 90 days │ 180 days│ Configurable
+Agent        │ Loki        │ 7 days  │ 30 days │ Delete  │ Per Agent
+Trace        │ Loki        │ 3 days  │ 7 days  │ Delete  │ Sampled
+             │             │         │         │         │ storage
+Metric       │ SQLite/DB   │ 30 days │ 90 days │ 365 days│ Downsampled
 
-存储配额:
-· 默认总配额: NAS总容量的 2% (最小 5GB, 最大 50GB)
-· 审计日志: 不纳入配额管控, 独立存储池
-· 达到 80% 配额 → Info 告警
-· 达到 95% 配额 → Warning 告警 + 自动清理最老的冷数据
-· 达到 100% 配额 → Critical 告警 + 强制清理
+Storage quota:
+· Default total quota: 2% of NAS total capacity (minimum 5GB, maximum 50GB)
+· Audit logs: not subject to quota management, independent storage pool
+· Reaching 80% quota → Info alert
+· Reaching 95% quota → Warning alert + auto-clean oldest cold data
+· Reaching 100% quota → Critical alert + force cleanup
 
-指标降采样:
-原始 (10s) → 1min 聚合 → 5min 聚合 → 1h 聚合 → 1d 聚合
-保留 7 天      30 天       90 天       365 天    永久
+Metric downsampling:
+Raw (10s) → 1min aggregate → 5min aggregate → 1h aggregate → 1d aggregate
+Retain 7 days   30 days        90 days         365 days      Forever
 ```
 
-### 10.6 Agent 日志采集链路
+### 10.6 Agent Log Collection Pipeline
 
 ```
   ┌───────────────────────────────────────────────────────────────┐
   │  OpenClaw Agent Container                                     │
-  │  stdout ──► 应用日志                                          │
-  │  stderr ──► 错误日志                                          │
-  │  /var/log/agent/ ──► 结构化日志文件 (JSON Lines)              │
-  │  NAS API ──► 通过 API 上报关键事件                             │
+  │  stdout ──► Application logs                                  │
+  │  stderr ──► Error logs                                        │
+  │  /var/log/agent/ ──► Structured log files (JSON Lines)        │
+  │  NAS API ──► Report critical events via API                   │
   └────────────────────────────┬──────────────────────────────────┘
                                │
                     Docker Log Driver (json-file)
@@ -2162,10 +2263,10 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
                                ▼
   ┌───────────────────────────────────────────────────────────────┐
   │  Agent Log Collector (.NET BackgroundService)                  │
-  │  1. Docker Events 监听: container start/stop/die/health       │
-  │  2. Docker Logs API 拉取: docker logs --since {timestamp}    │
-  │  3. Volume Mount 读取: /mnt/nas/agents/{agent}/logs/*.jsonl  │
-  │  4. NAS API 接收: Agent 通过 /api/agent/logs 推送            │
+  │  1. Docker Events monitoring: container start/stop/die/health │
+  │  2. Docker Logs API fetch: docker logs --since {timestamp}   │
+  │  3. Volume Mount read: /mnt/nas/agents/{agent}/logs/*.jsonl  │
+  │  4. NAS API receive: Agent pushes via /api/agent/logs         │
   └────────────────────────────┬──────────────────────────────────┘
                                │
                                ▼
@@ -2179,42 +2280,47 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
 
 ---
 
-## 11. 数据流图
+## 11. Data Flow Diagrams
 
-### 11.1 用户操作的完整数据流
+### 11.1 Complete Data Flow for User Operations
 
 ```
 ┌──────────┐    HTTPS     ┌──────────────┐    gRPC     ┌──────────────┐
 │ CLI Tool │ ◄──────────► │  API Gateway │ ◄─────────► │  .NET Module │
-│ (gnas)   │              │  (Kestrel)   │             │  (例如Agent) │
+│ (gnas)   │              │  (Kestrel)   │             │  (e.g. Agent)│
 └──────────┘              └──────┬───────┘             └──────┬───────┘
                                  │                            │
                           ┌──────┴────────────┐      ┌────────┴────────┐
-                          │  NasToken 验证    │      │  业务逻辑处理   │
-                          │  NAbility 权限校验 │      │  · Token生成    │
-                          └───────────────────┘      │  · Compose生成  │
-                                                     └────────┬────────┘
+                          │  NasToken         │      │  Business Logic │
+                          │  Verification     │      │  Processing     │
+                          │  NAbility         │      │  · Token Gen    │
+                          │  Permission Check │      │  · Compose Gen  │
+                          └───────────────────┘      └────────┬────────┘
                                                               │
                                               ┌───────────────┼───────────┐
                                               │               │           │
                                         ┌─────┴─────┐  ┌──────┴──────┐ ┌─┴──────────┐
-                                        │ 存储配置  │  │ Service Bus │ │ Docker API  │
-                                        │ SQLite/DB │  │ 注册服务    │ │ compose up  │
+                                        │ Storage   │  │ Service Bus │ │ Docker API  │
+                                        │ Config    │  │ Register    │ │ compose up  │
+                                        │ SQLite/DB │  │ Service     │ │            │
                                         └───────────┘  └──────┬──────┘ └──────┬──────┘
                                                               │               │
                                                               ▼               ▼
                                                        ┌──────────┐  ┌────────────┐
-                                                       │ 服务监控  │  │ 容器运行    │
-                                                       │ 健康检查  │  │ OpenClaw   │
+                                                       │ Service  │  │ Container  │
+                                                       │ Monitor  │  │ Running    │
+                                                       │ Health   │  │ OpenClaw   │
+                                                       │ Check    │  │            │
                                                        └──────────┘  └─────┬──────┘
                                                                            │
                                                                      ┌─────┴──────┐
                                                                      │ NAS API    │
-                                                                     │ (Agent调用)│
+                                                                     │ (Agent     │
+                                                                     │  calls)    │
                                                                      └────────────┘
 ```
 
-### 11.2 Agent ↔ NAS 交互数据流
+### 11.2 Agent ↔ NAS Interaction Data Flow
 
 ```
                       ┌─────────────────┐
@@ -2225,102 +2331,105 @@ Metric       │ SQLite/DB  │  30 天  │  90 天  │ 365天   │  降采�
               ┌────────────────┼────────────────┐
               │                │
      Volume Mount        NAS API (REST/gRPC)
-     (文件I/O)           │
+     (File I/O)          │
               │                │
               ▼                ▼
       ┌───────────┐    ┌───────────────┐
       │ /mnt/nas/ │    │ NAS API       │
-      │  media/   │    │ · 查询共享    │
-      │  documents│    │ · 读取配置    │
-      │           │    │ · 触发备份   │
-      │ Permission│    │ Permission    │
-      │ Check:    │    │ Check:        │
-      │ POSIX ACL │    │ NasToken      │
-      └───────────┘    └───────────────┘
+      │  media/   │    │ · Query       │
+      │  documents│    │   shares      │
+      │           │    │ · Read        │
+      │           │    │   config      │
+      │ Permission│    │ · Trigger     │
+      │ Check:    │    │   backup      │
+      │ POSIX ACL │    │ Permission    │
+      └───────────┘    │ Check:        │
+                       │ NasToken      │
+                       └───────────────┘
 ```
 
 ---
 
-## 12. 技术选型总览
+## 12. Technology Selection Overview
 
-| 层次 | 技术 | 说明 |
+| Layer | Technology | Description |
 |------|------|------|
-| **交互层** | .NET 10 Console Application (gnas CLI) | Linux 命令行工具，支持 TUI + 批处理 |
-| **API Gateway** | ASP.NET Core Minimal API + gRPC | REST 对外 (CLI/第三方), gRPC 对内 |
-| **内嵌 Dashboard** | 纯静态 HTML + Vanilla JS (可选) | 只读监控面板, 无框架依赖 |
-| **内部 IPC** | gRPC + Unix Sockets / Named Pipes | 服务间高性能通信 |
-| **业务模块** | .NET 10 Class Libraries + AssemblyLoadContext | 模块热加载, 沙箱隔离 |
-| **配置存储** | SQLite (默认) / PostgreSQL (集群) | 轻量但功能完整 |
-| **声明式配置** | YAML + JSON Schema | 替代传统 XML+SaltStack |
-| **容器运行时** | Docker Engine (官方, 未修改) | 社区标准, 避免厂商锁定 |
-| **容器编排** | docker compose (文件生成) | 每 Agent 一个 compose.yml |
-| **安全令牌** | JWT + NAbility (内嵌能力) | 鸿蒙启发的 NAS 安全模型 |
-| **密钥存储** | TPM 2.0 (优先) / 软件 KeyStore (回退) | 硬件安全模块集成 |
-| **文件级权限** | POSIX ACL | 继承 Linux 系统权限 |
-| **数据分级** | NasDataLevel (L0-L4) | 文件/目录级标签 |
-| **日志 SDK** | `Microsoft.Extensions.Logging` + Serilog | .NET 标准日志基础设施 |
-| **链路追踪** | OpenTelemetry (.NET SDK) | OTLP 协议, 行业标准 |
-| **日志存储** | 文件轮转 + 内嵌 Loki + SQLite + Audit Vault | 按日志类型分流存储 |
-| **审计防篡改** | 自研 Audit Chain (SHA-256 + HMAC) | 区块链思想, 零外部依赖 |
-| **告警通知** | SMTP + Webhook + CLI 输出 | 多渠道通知 |
-| **目标平台** | .NET 10 RID 多目标编译 | linux-x64, linux-arm64 |
-| **进程管理** | 自研 Service Bus + systemd 适配 | Linux 服务统一管理 |
+| **Interaction** | .NET 10 Console Application (gnas CLI) | Linux CLI tool, supports TUI + batch processing |
+| **API Gateway** | ASP.NET Core Minimal API + gRPC | REST external (CLI/third-party), gRPC internal |
+| **Embedded Dashboard** | Pure static HTML + Vanilla JS (optional) | Read-only monitoring panel, no framework dependencies |
+| **Internal IPC** | gRPC + Unix Sockets / Named Pipes | High-performance inter-service communication |
+| **Business Modules** | .NET 10 Class Libraries + AssemblyLoadContext | Hot module loading, sandbox isolation |
+| **Config Storage** | SQLite (default) / PostgreSQL (cluster) | Lightweight but fully functional |
+| **Declarative Config** | YAML + JSON Schema | Replaces traditional XML+SaltStack |
+| **Container Runtime** | Docker Engine (official, unmodified) | Community standard, avoids vendor lock-in |
+| **Container Orchestration** | docker compose (file generation) | One compose.yml per Agent |
+| **Security Tokens** | JWT + NAbility (embedded capabilities) | HarmonyOS-inspired NAS security model |
+| **Key Storage** | TPM 2.0 (preferred) / Software KeyStore (fallback) | Hardware security module integration |
+| **File-Level Permissions** | POSIX ACL | Inherits Linux system permissions |
+| **Data Classification** | NasDataLevel (L0-L4) | File/directory level labels |
+| **Log SDK** | `Microsoft.Extensions.Logging` + Serilog | .NET standard logging infrastructure |
+| **Distributed Tracing** | OpenTelemetry (.NET SDK) | OTLP protocol, industry standard |
+| **Log Storage** | File rotation + embedded Loki + SQLite + Audit Vault | Separate storage by log type |
+| **Audit Tamper-Proof** | Self-developed Audit Chain (SHA-256 + HMAC) | Blockchain concept, zero external dependencies |
+| **Alert Notifications** | SMTP + Webhook + CLI output | Multi-channel notification |
+| **Target Platform** | .NET 10 RID multi-target build | linux-x64, linux-arm64 |
+| **Process Management** | Self-developed Service Bus + systemd adaptation | Unified Linux service management |
 
 ---
 
-## 13. 部署架构
+## 13. Deployment Architecture
 
-### 13.1 目录结构
+### 13.1 Directory Structure
 
 ```
-/srv/nas/                          # NAS 数据根目录 (可配置)
+/srv/nas/                          # NAS data root (configurable)
 ├── config/
-│   ├── nas.yaml                   # 主配置文件
-│   ├── modules/                   # 模块配置
+│   ├── nas.yaml                   # Main config file
+│   ├── modules/                   # Module configs
 │   │   ├── storage.yaml
 │   │   ├── share.yaml
 │   │   └── agent.yaml
-│   ├── services/                  # 服务定义
+│   ├── services/                  # Service definitions
 │   │   ├── smb.yaml
 │   │   ├── nfs.yaml
 │   │   └── openclaw.yaml
-│   └── alerts/                    # 告警规则
+│   └── alerts/                    # Alert rules
 │       ├── disk.yaml
 │       └── agent.yaml
-├── agents/                        # Agent 部署目录
+├── agents/                        # Agent deployment directory
 │   ├── openclaw/
-│   │   ├── docker-compose.yml     # 生成的编排文件
-│   │   ├── token.env              # Agent Token (600权限)
-│   │   └── data/                  # Agent 持久化数据
+│   │   ├── docker-compose.yml     # Generated orchestration file
+│   │   ├── token.env              # Agent Token (600 permissions)
+│   │   └── data/                  # Agent persistent data
 │   ├── home-assistant/
 │   │   ├── docker-compose.yml
 │   │   └── data/
-│   └── catalog/                   # Agent 模板目录
+│   └── catalog/                   # Agent template directory
 │       ├── openclaw.template.yaml
 │       └── plex.template.yaml
-├── data/                          # NAS 共享数据根
-│   ├── media/                     # 媒体文件
-│   ├── documents/                 # 文档
-│   └── backups/                   # 备份
-├── logs/                          # 日志存储
-│   ├── system/                    # 系统日志 (轮转)
-│   ├── audit/                     # 审计日志 (防篡改链)
-│   ├── access/                    # 访问日志 (SQLite)
-│   └── agents/                    # Agent 日志 (Loki)
+├── data/                          # NAS shared data root
+│   ├── media/                     # Media files
+│   ├── documents/                 # Documents
+│   └── backups/                   # Backups
+├── logs/                          # Log storage
+│   ├── system/                    # System logs (rotating)
+│   ├── audit/                     # Audit logs (tamper-proof chain)
+│   ├── access/                    # Access logs (SQLite)
+│   └── agents/                    # Agent logs (Loki)
 ├── database/
-│   ├── nas.db                     # 主配置数据库 (SQLite)
-│   ├── metrics.db                 # 指标时序数据库
-│   └── access.db                  # 访问日志数据库
+│   ├── nas.db                     # Main config database (SQLite)
+│   ├── metrics.db                 # Metrics time-series database
+│   └── access.db                  # Access log database
 └── keystore/
-    ├── chain.key                  # 审计链密钥
-    ├── tls/                       # TLS 证书
-    └── agent-secrets/             # Agent 密钥 (加密存储)
+    ├── chain.key                  # Audit chain key
+    ├── tls/                       # TLS certificates
+    └── agent-secrets/             # Agent secrets (encrypted storage)
 ```
 
-### 13.2 Docker Compose (自部署参考)
+### 13.2 Docker Compose (Self-Deployment Reference)
 
 ```yaml
-# docker-compose.yml — GNAS 自身也可以容器化部署
+# docker-compose.yml — GNAS can also be containerized
 version: '3.8'
 
 services:
@@ -2329,7 +2438,7 @@ services:
     container_name: gnas-core
     restart: unless-stopped
     network_mode: host
-    privileged: true              # 需要访问硬件和 Docker socket
+    privileged: true              # Requires hardware and Docker socket access
     volumes:
       - /srv/nas:/srv/nas
       - /var/run/docker.sock:/var/run/docker.sock
@@ -2355,71 +2464,73 @@ services:
 
 ---
 
-## 14. 系统安装与初始化引导
+## 14. System Installation and Initialization Guide
 
-### 14.1 安装方式
+### 14.1 Installation Methods
 
-| 方式 | 适用场景 | 说明 |
+| Method | Scenario | Description |
 |------|----------|------|
-| **ISO 镜像安装** | x64 裸机安装 | 基于 Debian 12 Live ISO，包含 Debian Installer 与 GNAS 全部依赖 |
-| **脚本安装** | 已有 Linux 系统 | `curl -fsSL https://get.gnas.io | bash` 一键安装 |
-| **Docker 自部署** | 开发/测试/轻量部署 | 容器化运行 GNAS Core，挂载 Docker Socket |
+| **ISO Image Install** | x64 bare metal | Based on Debian 12 Live ISO, includes Debian Installer and all GNAS dependencies |
+| **Script Install** | Existing Linux system | `curl -fsSL https://get.gnas.io | bash` one-click install |
+| **Docker Self-Deploy** | Dev/test/lightweight | Run GNAS Core containerized, mount Docker Socket |
 
 ```
-安装方式决策树:
+Installation method decision tree:
 ─────────────────
-  是否裸机?
-    ├── 是 → ISO 镜像安装 (推荐)
-    │        · 下载 gnas-debian12-{version}-amd64.iso
-    │        · 使用 balenaEtcher/Rufus 制作启动盘
-    │        · 从 U 盘启动 → 进入安装向导
+  Bare metal?
+    ├── Yes → ISO image install (recommended)
+    │        · Download gnas-debian12-{version}-amd64.iso
+    │        · Create bootable USB with balenaEtcher/Rufus
+    │        · Boot from USB → enter installation wizard
     │
-    └── 否 → 是否已有 Docker 环境?
-              ├── 是 → Docker Compose 部署 (最简单)
+    └── No → Docker environment already available?
+              ├── Yes → Docker Compose deploy (simplest)
               │        · wget https://get.gnas.io/docker-compose.yml
               │        · docker compose up -d
               │
-              └── 否 → 脚本安装
+              └── No → Script install
                        · curl -fsSL https://get.gnas.io | bash
-                       · 自动检测平台 → 安装 .NET Runtime + 依赖 → 部署 GNAS
+                       · Auto-detect platform → install .NET Runtime +
+                         dependencies → deploy GNAS
 ```
 
-### 14.2 ISO 安装流程
+### 14.2 ISO Installation Process
 
-ISO 由 `eng/iso/build.sh` 在特权 Debian 12 构建容器中生成。构建管线先将
-GNAS API 与 CLI 发布为 `linux-x64` 自包含应用，再通过 `live-build` 写入
-Live 根文件系统，启用 Debian Installer、Docker Compose v2 和 `gnas.service`。
-构建产物及其 SHA-256 校验文件位于 `artifacts/iso/`；GitHub Actions 的
-`GNAS Debian ISO` 工作流可手动触发，并在 Release 发布时自动构建。
+The ISO is generated by `eng/iso/build.sh` inside a privileged Debian 12 build container. The build pipeline first
+publishes the GNAS API and CLI as `linux-x64` self-contained applications, then writes them via `live-build` into
+the Live root filesystem, enabling Debian Installer, Docker Compose v2, and `gnas.service`.
+Build artifacts and their SHA-256 checksum files are located in `artifacts/iso/`; the
+`GNAS Debian ISO` workflow in GitHub Actions can be triggered manually and is automatically built at Release time.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  GNAS Installer (TUI 安装向导)                         │
+│  GNAS Installer (TUI Setup Wizard)                     │
 │                                                         │
-│  Step 1: 语言与时区选择                                 │
+│  Step 1: Language and Timezone Selection                │
 │  ┌───────────────────────────────────────────────────┐ │
 │  │  Language: [English ▾]                            │ │
 │  │  Timezone: [Asia/Shanghai ▾]                      │ │
 │  │  Keyboard: [US English ▾]                         │ │
 │  └───────────────────────────────────────────────────┘ │
 │                                                         │
-│  Step 2: 网络配置                                      │
+│  Step 2: Network Configuration                         │
 │  ┌───────────────────────────────────────────────────┐ │
 │  │  Interface: eth0 [✓] Connected                    │ │
 │  │  IP Config:  (●) DHCP  ( ) Static                 │ │
 │  │  Hostname:   [gnas-nas_____________]              │ │
 │  └───────────────────────────────────────────────────┘ │
 │                                                         │
-│  Step 3: 选择系统盘                                     │
+│  Step 3: Select System Disk                             │
 │  ┌───────────────────────────────────────────────────┐ │
-│  │  [sda] Samsung SSD 256GB — (●) 系统盘             │ │
-│  │  [sdb] WD Red 4TB       — ( ) 数据盘             │ │
-│  │  [sdc] WD Red 4TB       — ( ) 数据盘             │ │
+│  │  [sda] Samsung SSD 256GB — (●) System disk       │ │
+│  │  [sdb] WD Red 4TB       — ( ) Data disk          │ │
+│  │  [sdc] WD Red 4TB       — ( ) Data disk          │ │
 │  │                                                    │ │
-│  │  ⚠ 系统盘将被格式化，所有数据将丢失               │ │
+│  │  ⚠ System disk will be formatted, all data will   │ │
+│  │    be lost                                         │ │
 │  └───────────────────────────────────────────────────┘ │
 │                                                         │
-│  Step 4: 创建管理员账户                                 │
+│  Step 4: Create Administrator Account                  │
 │  ┌───────────────────────────────────────────────────┐ │
 │  │  Username:     [admin____________]                │ │
 │  │  Password:     [****************]                 │ │
@@ -2429,26 +2540,26 @@ Live 根文件系统，启用 Debian Installer、Docker Compose v2 和 `gnas.ser
 │  │  Password strength: ████████████ Strong           │ │
 │  └───────────────────────────────────────────────────┘ │
 │                                                         │
-│  Step 5: 确认安装                                       │
+│  Step 5: Confirm Installation                          │
 │  ┌───────────────────────────────────────────────────┐ │
-│  │  系统盘:    /dev/sda (Samsung SSD 256GB)          │ │
-│  │  主机名:    gnas-nas                              │ │
-│  │  管理员:    admin                                 │ │
-│  │  时区:      Asia/Shanghai                         │ │
+│  │  System disk: /dev/sda (Samsung SSD 256GB)        │ │
+│  │  Hostname:    gnas-nas                            │ │
+│  │  Admin:       admin                               │ │
+│  │  Timezone:    Asia/Shanghai                       │ │
 │  │                                                    │ │
-│  │  安装后请访问 http://gnas-nas:5000                 │ │
+│  │  After installation, visit http://gnas-nas:5000   │ │
 │  │                                                    │ │
-│  │  [ 开始安装 ]  [ 返回修改 ]                        │ │
+│  │  [ Start Install ]  [ Go Back ]                   │ │
 │  └───────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 14.3 首次启动向导 (Onboarding Wizard)
+### 14.3 First Boot Wizard (Onboarding Wizard)
 
-系统安装完成后的首次启动引导，CLI 和 内嵌 Dashboard 均可完成：
+The first boot guide after system installation can be completed through both CLI and the embedded Dashboard:
 
 ```
-首次启动后 CLI 自动进入引导模式:
+After first boot, CLI automatically enters guided mode:
 
 ┌─────────────────────────────────────────────────────────┐
 │  Welcome to GNAS v1.0.0!                                │
@@ -2456,106 +2567,107 @@ Live 根文件系统，启用 Debian Installer、Docker Compose v2 和 `gnas.ser
 │  It looks like this is your first time running GNAS.    │
 │  Let's set up your NAS system.                          │
 │                                                         │
-│  向导流程:                                              │
+│  Wizard Progress:                                       │
 │  ┌───────────────────────────────────────────────────┐ │
-│  │ 1. 网络初始化          [✓] 已完成                 │ │
-│  │ 2. 存储池创建          [→] 进行中                 │ │
-│  │ 3. 共享文件夹创建      [ ] 待处理                 │ │
-│  │ 4. 用户账户创建        [ ] 待处理                 │ │
-│  │ 5. 基础服务启用        [ ] 待处理                 │ │
-│  │ 6. 完成                [ ] 待处理                 │ │
+│  │ 1. Network Initialization    [✓] Completed        │ │
+│  │ 2. Storage Pool Creation     [→] In Progress     │ │
+│  │ 3. Shared Folder Creation    [ ] Pending         │ │
+│  │ 4. User Account Creation     [ ] Pending         │ │
+│  │ 5. Basic Services Enable     [ ] Pending         │ │
+│  │ 6. Complete                  [ ] Pending         │ │
 │  └───────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
 
-Step 2 — 存储池创建向导:
+Step 2 — Storage Pool Creation Wizard:
 ─────────────────────────────
 
 $ gnas setup pool create
 
-  发现以下可用磁盘:
+  The following available disks were found:
 
-  [1] /dev/sdb  WD Red 4TB     (空闲)    ● SATA
-  [2] /dev/sdc  WD Red 4TB     (空闲)    ● SATA
-  [3] /dev/sdd  Seagate IronWolf 8TB (空闲) ● SATA
+  [1] /dev/sdb  WD Red 4TB     (Free)      ● SATA
+  [2] /dev/sdc  WD Red 4TB     (Free)      ● SATA
+  [3] /dev/sdd  Seagate IronWolf 8TB (Free) ● SATA
 
-  请选择要使用的磁盘 (用逗号分隔, 如 "1,2,3"): 1,2
+  Please select disks to use (comma-separated, e.g., "1,2,3"): 1,2
 
-  已选择 2 个磁盘。推荐 RAID 级别: RAID 1 (镜像)
+  2 disks selected. Recommended RAID level: RAID 1 (Mirror)
 
-  请选择 RAID 级别:
-  [1] RAID 1 (推荐) — 4TB 可用, 1 盘容错
-  [2] RAID 0 — 8TB 可用, 无容错
+  Please select RAID level:
+  [1] RAID 1 (Recommended) — 4TB available, 1 disk fault tolerance
+  [2] RAID 0 — 8TB available, no fault tolerance
 
-  请选择: 1
+  Select: 1
 
-  请选择文件系统:
-  [1] Btrfs (推荐) — CoW, 压缩, 快照
-  [2] ext4 — 传统稳定
-  [3] XFS — 大文件优化
+  Please select filesystem:
+  [1] Btrfs (Recommended) — CoW, compression, snapshots
+  [2] ext4 — Traditional, stable
+  [3] XFS — Large file optimization
 
-  请选择: 1
+  Select: 1
 
-  创建中... [████████████████████] 100%
-  存储池 "pool-main" 创建成功
+  Creating... [████████████████████] 100%
+  Storage pool "pool-main" created successfully
 
-Step 3 — 创建默认共享文件夹:
+Step 3 — Create Default Shared Folders:
 ─────────────────────────────
 
-  为存储池 "pool-main" 创建推荐的共享文件夹结构?
+  Create recommended shared folder structure for storage pool "pool-main"?
 
   pool-main/
-  ├── data/media/        媒体库
-  ├── data/documents/    文档
-  ├── data/downloads/    下载
-  ├── backup/            备份目标
-  ├── appdata/           Agent 数据
-  └── home/              用户目录
+  ├── data/media/        Media library
+  ├── data/documents/    Documents
+  ├── data/downloads/    Downloads
+  ├── backup/            Backup target
+  ├── appdata/           Agent data
+  └── home/              User directories
 
-  创建? [Y/n]: Y
-  创建完成 ✓
+  Create? [Y/n]: Y
+  Created ✓
 
-Step 4 — 可选: 创建其他用户账户:
+Step 4 — Optional: Create additional user accounts:
 ────────────────────────────────
 
-  是否创建其他用户? [y/N]: n
+  Create additional users? [y/N]: n
 
-Step 5 — 启用默认服务:
+Step 5 — Enable Default Services:
 ───────────────────────
 
-  以下服务将在系统启动时自动运行:
+  The following services will run automatically at system startup:
 
-  [✓] SMB/CIFS 文件共享 (端口 445)
-  [✓] NFS 文件共享 (端口 2049)
-  [ ] FTP 文件共享 (端口 21)
-  WebDAV 共享暂不开放，待完整认证与客户端兼容层实现后再启用
-  [ ] Agent 市场 (Docker 容器支持)
+  [✓] SMB/CIFS File Sharing (Port 445)
+  [✓] NFS File Sharing (Port 2049)
+  [ ] FTP File Sharing (Port 21)
+  WebDAV sharing is not yet available; will be enabled after full
+  authentication and client compatibility layer implementation
+  [ ] Agent Marketplace (Docker container support)
 
-  按 Enter 确认或修改选择。
+  Press Enter to confirm or modify selection.
 
-Step 6 — 完成:
+Step 6 — Complete:
 ────────────────
 
   ┌─────────────────────────────────────────────────────┐
-  │  GNAS 初始化完成!                                   │
+  │  GNAS Initialization Complete!                      │
   │                                                     │
-  │  系统信息:                                          │
-  │    主机名:   gnas-nas                               │
-  │    地址:     http://gnas-nas:5000 (管理 API)        │
-  │    Dashboard: http://gnas-nas:5000/dashboard         │
-  │    存储池:   pool-main (4TB, RAID 1, Btrfs)         │
-  │    共享:     media, documents, downloads             │
+  │  System Information:                                │
+  │    Hostname:   gnas-nas                             │
+  │    Address:    http://gnas-nas:5000 (Management API)│
+  │    Dashboard:  http://gnas-nas:5000/dashboard       │
+  │    Storage:    pool-main (4TB, RAID 1, Btrfs)       │
+  │    Shares:     media, documents, downloads          │
   │                                                     │
-  │  运行 'gnas' 进入交互式 TUI 管理模式                │
-  │  运行 'gnas help' 查看所有可用命令                  │
+  │  Run 'gnas' to enter interactive TUI management     │
+  │  Run 'gnas help' to view all available commands     │
   └─────────────────────────────────────────────────────┘
 ```
 
-### 14.4 配置初始化详情
+### 14.4 Configuration Initialization Details
 
-首次启动时，GNAS 自动生成初始配置：
+On first boot, GNAS automatically generates initial configuration:
 
 ```yaml
-# /srv/nas/config/nas.yaml — 自动生成的主配置文件
+# /srv/nas/config/nas.yaml — Auto-generated main config file
 nas:
   hostname: gnas-nas
   version: "1.0.0"
@@ -2571,7 +2683,7 @@ api:
     enabled: true
     cert_path: /srv/nas/keystore/tls/server.crt
     key_path: /srv/nas/keystore/tls/server.key
-    # 首次启动自动生成自签名证书
+    # Self-signed certificate auto-generated on first startup
 
 storage:
   pools:
@@ -2651,103 +2763,116 @@ alerts:
 
 ---
 
-## 15. UPS 集成 (不间断电源)
+## 15. UPS Integration (Uninterruptible Power Supply)
 
-NAS 系统必须支持 UPS 以防止意外断电导致数据损坏。
+The NAS system must support UPS to prevent data corruption from unexpected power outages.
 
-### 15.1 NUT (Network UPS Tools) 集成
+### 15.1 NUT (Network UPS Tools) Integration
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  UPS 集成架构                                          │
+│  UPS Integration Architecture                           │
 │                                                         │
 │  ┌──────────┐     USB/Serial     ┌──────────────┐      │
-│  │  UPS 设备 │ ◄───────────────► │  GNAS NAS     │      │
-│  │  (APC/   │                    │  (NUT Client  │      │
-│  │  Eaton/  │                    │   + Server)   │      │
-│  │  Cyber-  │                    │               │      │
-│  │  Power)  │                    │  · upsd       │      │
-│  └──────────┘                    │  · upsmon     │      │
-│                                  └──────┬─────────┘      │
+│  │  UPS     │ ◄───────────────► │  GNAS NAS     │      │
+│  │  Device  │                    │  (NUT Client  │      │
+│  │  (APC/   │                    │   + Server)   │      │
+│  │  Eaton/  │                    │               │      │
+│  │  Cyber-  │                    │  · upsd       │      │
+│  │  Power)  │                    │  · upsmon     │      │
+│  └──────────┘                    └──────┬─────────┘      │
 │                                         │                │
 │                           ┌─────────────┴──────────┐    │
 │                           │                        │    │
 │                     ┌─────┴─────┐          ┌──────┴──┐ │
-│                     │ 从属 NAS  │          │ 其他设备 │ │
-│                     │ (NUT Client)│         │ (NUT     │ │
+│                     │ Slave NAS │          │ Other    │ │
+│                     │ (NUT      │          │ Devices  │ │
+│                     │  Client)  │          │ (NUT     │ │
 │                     │           │          │  Client) │ │
 │                     └───────────┘          └─────────┘ │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 15.2 断电处理策略
+### 15.2 Power Failure Handling Strategy
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  UPS 事件处理流程                                      │
+│  UPS Event Handling Process                             │
 │                                                         │
-│  市电断电 (ONBATT)                                      │
+│  Mains Power Lost (ONBATT)                              │
 │        │                                                │
 │        ▼                                                │
 │  ┌──────────────────────────────────────────────┐      │
-│  │ 阶段 1: 即时响应 (0 秒)                      │      │
-│  │ · 发布 system.power.onbattery 事件           │      │
-│  │ · 所有服务收到通知: 准备降级/暂停非关键任务  │      │
-│  │ · Dashboard / TUI 显示电池状态              │      │
+│  │ Phase 1: Immediate Response (0 seconds)       │      │
+│  │ · Publish system.power.onbattery event        │      │
+│  │ · All services notified: prepare degrade/     │      │
+│  │   pause non-critical tasks                    │      │
+│  │ · Dashboard / TUI displays battery status     │      │
 │  └──────────────────┬───────────────────────────┘      │
 │                     │                                   │
 │        ┌────────────┴────────────┐                      │
 │        │                         │                      │
-│  电池 > 50%                  电池 < 50%                  │
+│   Battery > 50%              Battery < 50%              │
 │        │                         │                      │
 │        ▼                         ▼                      │
-│  继续运行                  ┌──────────────────────┐    │
-│  发布定期状态              │ 阶段 2: 安全模式     │    │
-│  (每30秒)                  │ · 暂停非必要服务     │    │
-│                            │ · 停止文件索引       │    │
-│                            │ · 停止 Scrub         │    │
-│                            │ · 停止备份任务       │    │
-│                            │ · 强制 sync 文件系统 │    │
-│                            │ · Warning 告警       │    │
+│  Continue running         ┌──────────────────────┐    │
+│  Publish periodic status  │ Phase 2: Safe Mode   │    │
+│  (every 30s)              │ · Pause non-essential│    │
+│                            │   services           │    │
+│                            │ · Stop file indexing │    │
+│                            │ · Stop Scrub         │    │
+│                            │ · Stop backup tasks  │    │
+│                            │ · Force sync         │    │
+│                            │   filesystem         │    │
+│                            │ · Warning alert      │    │
 │                            └──────────┬───────────┘    │
 │                                       │                │
-│                                 电池 < 20%              │
+│                              Battery < 20%             │
 │                                       │                │
 │                                       ▼                │
 │                            ┌──────────────────────┐    │
-│                            │ 阶段 3: 准备关机     │    │
-│                            │ · 停止所有 Agent 容器│    │
-│                            │ · 卸载文件共享 (SMB) │    │
-│                            │ · 停止所有非核心服务 │    │
-│                            │ · 写入审计日志       │    │
-│                            │ · sync + 卸载文件系统│    │
-│                            │ · Critical 告警      │    │
+│                            │ Phase 3: Prepare      │    │
+│                            │ Shutdown              │    │
+│                            │ · Stop all Agent      │    │
+│                            │   containers          │    │
+│                            │ · Unmount file shares │    │
+│                            │   (SMB)               │    │
+│                            │ · Stop all non-core   │    │
+│                            │   services            │    │
+│                            │ · Write audit log     │    │
+│                            │ · sync + unmount      │    │
+│                            │   filesystems         │    │
+│                            │ · Critical alert      │    │
 │                            └──────────┬───────────┘    │
 │                                       │                │
-│                                 电池 < 5% 或 2分钟     │
+│                            Battery < 5% or 2 minutes   │
 │                                       │                │
 │                                       ▼                │
 │                            ┌──────────────────────┐    │
-│                            │ 阶段 4: 紧急关机     │    │
-│                            │ · systemctl poweroff │    │
-│                            │   (或 shutdown /s)   │    │
-│                            │ · 等待 UPS 电量耗尽  │    │
+│                            │ Phase 4: Emergency    │    │
+│                            │ Shutdown              │    │
+│                            │ · systemctl poweroff  │    │
+│                            │   (or shutdown /s)    │    │
+│                            │ · Wait for UPS        │    │
+│                            │   battery depletion   │    │
 │                            └──────────────────────┘    │
 │                                                         │
-│  电力恢复 (ONLINE)                                      │
+│  Power Restored (ONLINE)                                │
 │        │                                                │
 │        ▼                                                │
 │  ┌──────────────────────────────────────────────┐      │
-│  │ 恢复处理                                     │      │
-│  │ · 发布 system.power.online 事件              │      │
-│  │ · 如果系统已关机: BIOS 设置 "Restore on AC" │      │
-│  │ · 启动后自动: 文件系统检查 → 服务恢复        │      │
-│  │ · Info 级通知: "电力已恢复"                  │      │
+│  │ Recovery Process                              │      │
+│  │ · Publish system.power.online event           │      │
+│  │ · If system has shut down: BIOS setting       │      │
+│  │   "Restore on AC"                             │      │
+│  │ · After boot: filesystem check → service      │      │
+│  │   recovery                                     │      │
+│  │ · Info level notification: "Power restored"   │      │
 │  └──────────────────────────────────────────────┘      │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 15.3 UPS 配置
+### 15.3 UPS Configuration
 
 ```yaml
 # /srv/nas/config/ups.yaml
@@ -2756,23 +2881,23 @@ ups:
   driver: usbhid-ups              # NUT driver name
   device: /dev/usb/hiddev0
   
-  # 电池阈值
+  # Battery thresholds
   battery:
-    warning_level: 50             # 低电量警告 (%)
-    safe_mode_level: 50           # 进入安全模式 (%)
-    shutdown_level: 20            # 准备关机 (%)
-    emergency_level: 5            # 紧急关机 (%)
+    warning_level: 50             # Low battery warning (%)
+    safe_mode_level: 50           # Enter safe mode (%)
+    shutdown_level: 20            # Prepare shutdown (%)
+    emergency_level: 5            # Emergency shutdown (%)
     
-  # 关机前延迟 (给从属设备时间)
+  # Shutdown delay (time for slave devices)
   shutdown_delay_seconds: 120
   
-  # 通知
+  # Notifications
   notify_on_events:
-    - onbatt                       # 切换到电池供电
-    - lowbatt                      # 电池低电量
-    - online                       # 电力恢复
+    - onbatt                       # Switched to battery power
+    - lowbatt                      # Battery low
+    - online                       # Power restored
     
-  # 从属设备 (可选)
+  # Slave devices (optional)
   slaves:
     - hostname: gnas-backup
       port: 3493
@@ -2780,20 +2905,20 @@ ups:
       port: 3493
 ```
 
-### 15.4 CLI 命令
+### 15.4 CLI Commands
 
 ```bash
-gnas ups status                  # UPS 状态 (电量/负载/剩余时间)
-gnas ups list                    # 列出连接的 UPS 设备
-gnas ups test                    # 触发 UPS 自检
-gnas ups config set             # 配置 UPS 参数
+gnas ups status                  # UPS status (charge/load/remaining time)
+gnas ups list                    # List connected UPS devices
+gnas ups test                    # Trigger UPS self-test
+gnas ups config set             # Configure UPS parameters
 ```
 
 ---
 
-## 16. 安全增强设计
+## 16. Security Enhancement Design
 
-### 16.1 暴力破解防护 (Fail2Ban 集成)
+### 16.1 Brute Force Protection (Fail2Ban Integration)
 
 ```yaml
 # /srv/nas/config/security/fail2ban.yaml
@@ -2805,38 +2930,38 @@ brute_force_protection:
       filter: "Failed login attempt from <HOST>"
       source: /srv/nas/logs/access/auth.log
       max_retries: 5
-      find_time_seconds: 300      # 5 分钟内
-      ban_time_seconds: 900       # 封禁 15 分钟
+      find_time_seconds: 300      # Within 5 minutes
+      ban_time_seconds: 900       # Ban 15 minutes
       
     - name: smb-auth
       filter: "NT_STATUS_WRONG_PASSWORD from <HOST>"
       source: /srv/nas/logs/system/smb-auth.log
       max_retries: 3
       find_time_seconds: 60
-      ban_time_seconds: 1800      # 封禁 30 分钟
+      ban_time_seconds: 1800      # Ban 30 minutes
       
     - name: ssh-brute
       filter: "Failed password for .* from <HOST>"
       source: /var/log/auth.log
       max_retries: 5
       find_time_seconds: 300
-      ban_time_seconds: 3600      # 封禁 60 分钟
+      ban_time_seconds: 3600      # Ban 60 minutes
 
-  # 封禁升级策略
+  # Ban escalation strategy
   recidive:
     enabled: true
     watch_jail: api-auth
-    max_retries: 3                # 被封禁 3 次后
-    ban_time_seconds: 86400       # 封禁 24 小时
+    max_retries: 3                # After being banned 3 times
+    ban_time_seconds: 86400       # Ban 24 hours
     
-  # 白名单
+  # Whitelist
   whitelist:
     - 127.0.0.1
-    - 192.168.1.0/24              # 内网不封禁
+    - 192.168.1.0/24              # Internal network not banned
     - 10.0.0.0/8
 ```
 
-### 16.2 API 速率限制策略
+### 16.2 API Rate Limiting Strategy
 
 ```yaml
 # /srv/nas/config/security/ratelimit.yaml
@@ -2849,7 +2974,7 @@ rate_limit:
     - path: /api/auth/login
       requests_per_minute: 5
       burst: 2
-      message: "登录过于频繁,请稍后再试"
+      message: "Too many login attempts, please try again later"
       
     - path: /api/auth/*
       requests_per_minute: 10
@@ -2869,7 +2994,7 @@ rate_limit:
 
   scope: per_ip                    # per_ip | per_token | per_user
   
-  # 分布式速率限制 (多节点场景)
+  # Distributed rate limiting (multi-node scenario)
   distributed:
     enabled: false
     redis: "redis://localhost:6379"
@@ -2877,113 +3002,113 @@ rate_limit:
 
 ---
 
-## 与 OMV 原架构的对比
+## Comparison with OMV Original Architecture
 
-| 维度 | OMV 原架构 | GNAS 新架构 |
+| Dimension | OMV Original | GNAS New Architecture |
 |------|-----------|-------------|
-| **后端语言** | PHP | .NET 10 (C#) |
-| **Web 服务** | Nginx + PHP-FPM | Kestrel (ASP.NET Core 内建) |
-| **配置存储** | XML (config.xml) | SQLite + YAML 声明式配置 |
-| **配置管理** | SaltStack (masterless) | 自研 Service Bus (事件驱动) |
-| **客户端** | Web UI (Angular/ExtJS) | Desktop CLI Tool (gnas) + 可选 Web Dashboard |
-| **Docker** | 无原生支持 (OMV-Extras 插件) | 一等公民, 深度集成 |
-| **Agent** | 无 | Agent Catalog + Token + Compose |
-| **目标平台** | Debian Only | Debian 12 x64 ISO + Linux ARM64 应用 |
-| **权限模型** | 传统 Linux ACL | NAbility 能力模型 + RBAC + ACL |
-| **服务管理** | systemd | Service Bus + systemd |
-| **IPC** | 文件/socket (隐式) | gRPC + Event Bus (显式) |
-| **日志** | syslog (分散) | 统一六类日志 + 审计链 |
-| **可观测性** | 无 | OpenTelemetry + Loki + Dashboard |
-| **安装方式** | ISO 固化 | ISO + 脚本 + Docker 多方式 |
-| **UPS 支持** | 无原生支持 | NUT 深度集成 + 分级断电策略 |
-| **审计** | syslog | 防篡改审计链 |
-| **快照备份** | 无 | Btrfs/ZFS 快照 + 三层备份体系 |
+| **Backend Language** | PHP | .NET 10 (C#) |
+| **Web Service** | Nginx + PHP-FPM | Kestrel (ASP.NET Core built-in) |
+| **Config Storage** | XML (config.xml) | SQLite + YAML declarative config |
+| **Config Management** | SaltStack (masterless) | Self-developed Service Bus (event-driven) |
+| **Client** | Web UI (Angular/ExtJS) | Desktop CLI Tool (gnas) + optional Web Dashboard |
+| **Docker** | No native support (OMV-Extras plugin) | First-class citizen, deep integration |
+| **Agent** | None | Agent Catalog + Token + Compose |
+| **Target Platform** | Debian Only | Debian 12 x64 ISO + Linux ARM64 applications |
+| **Permission Model** | Traditional Linux ACL | NAbility capability model + RBAC + ACL |
+| **Service Management** | systemd | Service Bus + systemd |
+| **IPC** | File/socket (implicit) | gRPC + Event Bus (explicit) |
+| **Logging** | syslog (dispersed) | Unified 6-category logs + audit chain |
+| **Observability** | None | OpenTelemetry + Loki + Dashboard |
+| **Installation** | ISO only | ISO + Script + Docker multi-method |
+| **UPS Support** | No native support | NUT deep integration + graded power-off strategy |
+| **Audit** | syslog | Tamper-proof audit chain |
+| **Snapshot Backup** | None | Btrfs/ZFS snapshots + 3-tier backup system |
 
 ---
 
-## 架构决策记录 (ADR — Architecture Decision Records)
+## Architecture Decision Records (ADR)
 
-### ADR-001: 选择 .NET 10 而非 Go/Rust
+### ADR-001: Choosing .NET 10 over Go/Rust
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | NAS 系统涉及大量系统调用、文件操作、网络协议处理 |
-| **决策** | 使用 .NET 10 (C# 14) |
-| **理由** | 1. Linux x64/ARM64 支持成熟 2. ASP.NET Core 提供完整的 API/中间件生态 3. gRPC 原生支持 4. 作者团队技术栈以 .NET 为主 5. 热加载 (AssemblyLoadContext) 支持模块化 |
-| **替代方案** | Go (并发优秀但泛型生态弱), Rust (性能极致但开发效率低) |
+| **Status** | ✅ Decided |
+| **Context** | NAS system involves extensive system calls, file operations, network protocol handling |
+| **Decision** | Use .NET 10 (C# 14) |
+| **Rationale** | 1. Mature Linux x64/ARM64 support 2. ASP.NET Core provides complete API/middleware ecosystem 3. Native gRPC support 4. Author team's tech stack is primarily .NET 5. Hot reload (AssemblyLoadContext) supports modularity |
+| **Alternatives** | Go (good concurrency but weak generics ecosystem), Rust (extreme performance but low development efficiency) |
 
-### ADR-002: 默认存储使用 SQLite 而非 PostgreSQL
+### ADR-002: Default Storage Using SQLite over PostgreSQL
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | NAS 系统需要一个嵌入式配置存储 |
-| **决策** | SQLite 作为默认存储，PostgreSQL 作为集群模式可选替代 |
-| **理由** | 1. 零运维 (无需独立数据库进程) 2. 数据量小 (配置+审计约几百 MB) 3. 单文件备份/恢复简单 4. 支持 JSON 查询 5. NAS 通常单节点运行 |
-| **折衷** | 多节点集群时切换到 PostgreSQL |
+| **Status** | ✅ Decided |
+| **Context** | NAS system needs an embedded configuration storage |
+| **Decision** | SQLite as default storage, PostgreSQL as optional replacement for cluster mode |
+| **Rationale** | 1. Zero maintenance (no separate database process needed) 2. Small data volume (config + audit ~ few hundred MB) 3. Simple single-file backup/restore 4. Supports JSON queries 5. NAS typically runs as single node |
+| **Trade-off** | Switch to PostgreSQL for multi-node cluster |
 
-### ADR-003: 默认文件系统选择 Btrfs 而非 ZFS
+### ADR-003: Default Filesystem Choosing Btrfs over ZFS
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | CoW 文件系统对快照/压缩/自愈至关重要 |
-| **决策** | Btrfs 作为默认推荐，ZFS 作为高级备选 |
-| **理由** | 1. Btrfs 内置于 Linux 主线内核 (无 DKMS) 2. 更灵活的磁盘添加/移除 3. 内存占用更低 4. RAID 5/6 已基本稳定 (kernel 5.15+) |
-| **折衷** | ZFS 提供更成熟的数据完整性，但需要 DKMS 且内存开销大。高级用户可通过 `gnas pool create --fs zfs` 选择 |
+| **Status** | ✅ Decided |
+| **Context** | CoW filesystem is critical for snapshots/compression/self-healing |
+| **Decision** | Btrfs as default recommendation, ZFS as advanced alternative |
+| **Rationale** | 1. Btrfs built into Linux mainline kernel (no DKMS) 2. More flexible disk add/remove 3. Lower memory footprint 4. RAID 5/6 largely stable (kernel 5.15+) |
+| **Trade-off** | ZFS provides more mature data integrity but requires DKMS and higher memory overhead. Advanced users can choose via `gnas pool create --fs zfs` |
 
-### ADR-004: Docker Compose 而非 Kubernetes
+### ADR-004: Docker Compose over Kubernetes
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | 需要容器编排来管理 Agent |
-| **决策** | 使用 docker compose (每 Agent 一个 compose 文件) |
-| **理由** | 1. NAS 单节点场景不需要 K8s 的复杂性 2. TrueNAS SCALE 从 K8s 迁移到 Compose 的教训 3. Docker Compose 是社区标准 4. 声明式 + 易于生成和修改 |
-| **折衷** | 不支持多节点 Agent 编排，但 NAS 场景下这不是核心需求 |
+| **Status** | ✅ Decided |
+| **Context** | Need container orchestration to manage Agents |
+| **Decision** | Use docker compose (one compose file per Agent) |
+| **Rationale** | 1. NAS single-node scenario doesn't need K8s complexity 2. TrueNAS SCALE's lesson migrating from K8s to Compose 3. Docker Compose is community standard 4. Declarative + easy to generate and modify |
+| **Trade-off** | Does not support multi-node Agent orchestration, but this is not a core requirement for NAS scenarios |
 
-### ADR-005: CLI 作为唯一管理界面
+### ADR-005: CLI as the Primary Management Interface
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | NAS 管理界面的选择 |
-| **决策** | Desktop CLI Tool 为主要管理界面，Web Dashboard 仅作为只读监控面板 |
-| **理由** | 1. CLI 对所有操作脚本化友好 2. 管道优先设计兼容 Unix 哲学 3. TUI 提供足够的交互体验 4. 减少 Web 安全攻击面 5. 避免维护复杂 Web 前端 |
-| **折衷** | 提供可选 Web Dashboard 用于非技术用户的只看不操作场景 |
+| **Status** | ✅ Decided |
+| **Context** | Choice of NAS management interface |
+| **Decision** | Desktop CLI Tool as primary management interface, Web Dashboard only as read-only monitoring panel |
+| **Rationale** | 1. CLI is scripting-friendly for all operations 2. Pipeline-first design compatible with Unix philosophy 3. TUI provides sufficient interactive experience 4. Reduces web security attack surface 5. Avoids maintaining complex Web frontend |
+| **Trade-off** | Provide optional Web Dashboard for non-technical users' view-only scenarios |
 
-### ADR-006: 审计链采用自研轻量实现而非区块链
+### ADR-006: Self-Developed Lightweight Audit Chain over Blockchain
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | 审计日志需要防篡改 |
-| **决策** | 自研 SHA-256 链式哈希 + HMAC 签名 |
-| **理由** | 1. 区块链引入不必要的复杂度和依赖 2. 单节点 NAS 不需要分布式共识 3. SHA-256 + HMAC 对于防篡改足够 4. 定期导出到外部存储作为额外保险 |
-| **折衷** | 不提供多节点审计共识，高级安全需求可对接外部 SIEM |
+| **Status** | ✅ Decided |
+| **Context** | Audit logs need tamper-proofing |
+| **Decision** | Self-developed SHA-256 chained hash + HMAC signature |
+| **Rationale** | 1. Blockchain introduces unnecessary complexity and dependencies 2. Single-node NAS doesn't need distributed consensus 3. SHA-256 + HMAC is sufficient for tamper-proofing 4. Regular export to external storage as additional insurance |
+| **Trade-off** | Does not provide multi-node audit consensus; advanced security needs can integrate with external SIEM |
 
-### ADR-007: NAbility 能力模型借鉴鸿蒙思想
+### ADR-007: NAbility Capability Model Inspired by HarmonyOS
 
-| 项 | 内容 |
+| Item | Content |
 |----|------|
-| **状态** | ✅ 已决定 |
-| **背景** | NAS 需要细粒度权限控制 |
-| **决策** | 设计 `domain:resource:action:scope` 四级能力命名体系 |
-| **理由** | 1. 比 RBAC 更细粒度 (精确到具体的共享文件夹和操作) 2. 比纯 ACL 可读性好 (结构化字符串) 3. 通配符匹配支持灵活的授权层级 4. 与 NasToken 内嵌能力绑定，实现自包含鉴权 |
+| **Status** | ✅ Decided |
+| **Context** | NAS needs fine-grained permission control |
+| **Decision** | Design `domain:resource:action:scope` four-level capability naming system |
+| **Rationale** | 1. More granular than RBAC (precise to specific shared folders and operations) 2. Better readability than pure ACL (structured strings) 3. Wildcard matching supports flexible authorization levels 4. Bound with NasToken embedded capabilities for self-contained authentication |
 
 ---
 
-## 变更记录 (Changelog)
+## Changelog
 
-| 版本 | 日期 | 变更内容 |
+| Version | Date | Changes |
 |------|------|---------|
-| **v2.1** | 2026-07-25 | 升级技术栈: .NET 9 → .NET 10 (C# 14) |
-| **v2.0** | 2026-07-25 | 新增: §5.3存储池管理、§5.4共享协议、§5.5数据保护、§4.3 gRPC Proto、§14安装初始化、§15 UPS、§16安全增强、ADR |
-| **v1.0** | 2026-07-24 | 初始版本: 13 个章节的完整架构设计 |
+| **v2.1** | 2026-07-25 | Tech stack upgrade: .NET 9 → .NET 10 (C# 14) |
+| **v2.0** | 2026-07-25 | Added: §5.3 Storage Pool Management, §5.4 Share Protocol, §5.5 Data Protection, §4.3 gRPC Proto, §14 Installation Initialization, §15 UPS, §16 Security Enhancement, ADR |
+| **v1.0** | 2026-07-24 | Initial version: Complete architecture design across 13 sections |
 
 ---
 
-> **文档版本**: Architecture v2.1  
-> **更新日期**: 2026-07-25  
-> **关联文档**: [GNAS Implementation Prompts](gnas-implementation-prompts.md)
+> **Document Version**: Architecture v2.1  
+> **Updated**: 2026-07-25  
+> **Related Document**: [GNAS Implementation Prompts](gnas-implementation-prompts.md)

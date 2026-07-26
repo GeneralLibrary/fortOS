@@ -5,13 +5,13 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Commands;
 
-/// <summary>注册状态命令。</summary>
+/// <summary>Register status command.</summary>
 public static class StatusCommand
 {
-    /// <summary>建立 status 命令。</summary>
+    /// <summary>Create status command.</summary>
     public static Command Create(CliOptions options)
     {
-        var command = new Command("status", "显示系统健康与指标摘要");
+        var command = new Command("status", "Show system health and metrics summary");
         command.SetAction(async (parse, ct) => await CommandRuntime.RunAsync(parse, options, async (client, token) =>
         {
             using var health = await client.GetAsync("api/health", token);
@@ -29,8 +29,8 @@ public static class StatusCommand
         {
             var grid = new Grid().AddColumn().AddColumn();
             grid.AddRow(
-                new Panel(new Text(doc.RootElement.GetProperty("health").ToString())) { Header = new PanelHeader("健康") },
-                new Panel(new Text(doc.RootElement.GetProperty("metrics").ToString())) { Header = new PanelHeader("指标") });
+                new Panel(new Text(doc.RootElement.GetProperty("health").ToString())) { Header = new PanelHeader("Health") },
+                new Panel(new Text(doc.RootElement.GetProperty("metrics").ToString())) { Header = new PanelHeader("Metrics") });
             AnsiConsole.Write(grid);
         }, ct));
         return command;

@@ -5,10 +5,11 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Modules.Share.Services;
 
 /// <summary>
-/// Samba 用户供给器。
-/// 将 GNAS 内部用户桥接到 Linux 系统用户与 Samba 用户数据库（smbpasswd），
-/// 使 SMB 客户端可以直接使用 GNAS 账户凭据访问共享。
-/// 所有操作均为幂等；在非 Linux 平台或缺少 Samba 工具链时静默降级为空操作。
+/// Samba user provisioner.
+/// Bridges GNAS internal users to Linux system users and the Samba user database (smbpasswd),
+/// allowing SMB clients to access shares directly using GNAS account credentials.
+/// All operations are idempotent; silently degrades to a no-op on non-Linux platforms or
+/// when the Samba toolchain is missing.
 /// </summary>
 public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
 {
@@ -19,10 +20,10 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
     private readonly IProcessManager _processManager;
     private readonly ILogger<SambaUserProvisioner> _logger;
 
-    /// <summary>初始化 Samba 用户供给器。</summary>
-    /// <param name="userAccount">系统用户账户管理器。</param>
-    /// <param name="processManager">进程管理器。</param>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initialize the Samba user provisioner.</summary>
+    /// <param name="userAccount">System user account manager.</param>
+    /// <param name="processManager">Process manager.</param>
+    /// <param name="logger">Logger.</param>
     public SambaUserProvisioner(IUserAccount userAccount, IProcessManager processManager, ILogger<SambaUserProvisioner> logger)
     {
         _userAccount = userAccount;
@@ -33,36 +34,36 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
     /// <inheritdoc />
     public async Task ProvisionAsync(string username, string password, CancellationToken ct)
     {
-        // 先校验用户名格式，保证后续命令拼接与日志输出安全。
+        // First validate the username format to ensure safe command construction and log output.
         ValidateUsername(username);
 
         if (!CanProvision())
         {
-            _logger.LogDebug("当前环境不支持 Samba 用户供给，跳过用户 {Username}。", username);
+            _logger.LogDebug("Current environment does not support Samba user provisioning; skipping user {Username}.", username);
             return;
         }
 
-        // 第一步：确保存在同名 Linux 系统用户，Samba security = user 模式要求系统用户先行存在。
+        // Step 1: Ensure a Linux system user with the same name exists. Samba security = user mode requires the system user to exist first.
         if (!await SystemUserExistsAsync(username, ct).ConfigureAwait(false))
         {
             await _userAccount.CreateUserAsync(username, password, ct).ConfigureAwait(false);
         }
 
-        // 第二步：写入 Samba 用户数据库。-a 表示不存在时创建、存在时更新密码；
-        // -s 从标准输入读取密码，避免密码出现在进程命令行参数中被泄露。
+        // Step 2: Write to the Samba user database. -a means create if not exists, update password if exists;
+        // -s reads the password from standard input to avoid leaking it through process command-line arguments.
         await _processManager.ExecuteCommandAsync(new ProcessStartConfig
         {
             ExecutablePath = SmbPasswdPath,
             Arguments = $"-s -a {username}",
             StandardInput = $"{password}\n{password}\n",
         }, ct).ConfigureAwait(false);
-        _logger.LogInformation("已为用户 {Username} 供给 Samba 账户。", username);
+        _logger.LogInformation("Samba account provisioned for user {Username}.", username);
     }
 
     /// <inheritdoc />
     public async Task RemoveAsync(string username, CancellationToken ct)
     {
-        // 先校验用户名格式，保证后续命令拼接与日志输出安全。
+        // First validate the username format to ensure safe command construction and log output.
         ValidateUsername(username);
 
         if (!CanProvision())
@@ -70,8 +71,8 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
             return;
         }
 
-        // 仅移除 Samba 数据库中的账户；有意保留 Linux 系统用户及其家目录，
-        // 避免删除 GNAS 账户时连带销毁用户在共享目录之外的数据。
+        // Only remove the account from the Samba database; intentionally keep the Linux system user and home directory
+        // to avoid destroying user data outside the share directories when deleting a GNAS account.
         try
         {
             await _processManager.ExecuteCommandAsync(new ProcessStartConfig
@@ -79,19 +80,19 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
                 ExecutablePath = SmbPasswdPath,
                 Arguments = $"-x {username}",
             }, ct).ConfigureAwait(false);
-            _logger.LogInformation("已移除用户 {Username} 的 Samba 账户。", username);
+            _logger.LogInformation("Samba account removed for user {Username}.", username);
         }
         catch (CommandExecutionException ex)
         {
-            // 账户本就不存在时 smbpasswd 返回非零，视为幂等成功。
-            _logger.LogDebug(ex, "移除用户 {Username} 的 Samba 账户时命令返回非零，视为已移除。", username);
+            // smbpasswd returns non-zero when the account does not already exist; treat as idempotent success.
+            _logger.LogDebug(ex, "Command returned non-zero when removing Samba account for user {Username}; treating as already removed.", username);
         }
     }
 
-    /// <summary>判断当前主机是否具备 Samba 用户供给条件。</summary>
+    /// <summary>Determines whether the current host can provision Samba users.</summary>
     private static bool CanProvision() => OperatingSystem.IsLinux() && File.Exists(SmbPasswdPath);
 
-    /// <summary>检查同名 Linux 系统用户是否已存在。</summary>
+    /// <summary>Checks whether a Linux system user with the same name already exists.</summary>
     private async Task<bool> SystemUserExistsAsync(string username, CancellationToken ct)
     {
         try
@@ -109,12 +110,12 @@ public sealed partial class SambaUserProvisioner : ISystemUserProvisioner
         }
     }
 
-    /// <summary>校验用户名，防止拼接进命令行参数时发生注入。</summary>
+    /// <summary>Validates the username to prevent injection when concatenating into command-line arguments.</summary>
     private static void ValidateUsername(string username)
     {
         if (!UsernameRegex().IsMatch(username))
         {
-            throw new ArgumentException("用户名格式不安全，无法用于系统用户供给。", nameof(username));
+            throw new ArgumentException("Username format is unsafe and cannot be used for system user provisioning.", nameof(username));
         }
     }
 

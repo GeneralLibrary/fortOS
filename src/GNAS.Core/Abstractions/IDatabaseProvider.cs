@@ -2,13 +2,13 @@ using Microsoft.Data.Sqlite;
 
 namespace GNAS.Core;
 
-/// <summary>SQLite 数据库提供器接口。</summary>
+/// <summary>SQLite database provider interface.</summary>
 public interface IDatabaseProvider
 {
-    /// <summary>连接字符串。</summary>
+    /// <summary>Connection string.</summary>
     string ConnectionString { get; }
-    /// <summary>获取已打开连接。</summary>
+    /// <summary>Get an opened connection.</summary>
     Task<SqliteConnection> GetConnectionAsync(CancellationToken ct);
-    /// <summary>初始化数据库结构。</summary>
+    /// <summary>Initialize the database schema.</summary>
     Task InitializeAsync(CancellationToken ct);
 }

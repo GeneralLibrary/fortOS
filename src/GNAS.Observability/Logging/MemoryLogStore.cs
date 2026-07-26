@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Logging;
 
-/// <summary>基于内存环形缓冲区的日志存储。</summary>
+/// <summary>Log store based on in-memory ring buffer.</summary>
 public sealed class MemoryLogStore : ILogStore
 {
     private readonly object _sync = new();
@@ -11,7 +11,7 @@ public sealed class MemoryLogStore : ILogStore
     private int _next;
     private int _count;
 
-    /// <summary>初始化内存日志存储。</summary>
+    /// <summary>Initialize in-memory log store.</summary>
     public MemoryLogStore(int capacity = 100_000)
     {
         _buffer = new LogEntry[capacity];

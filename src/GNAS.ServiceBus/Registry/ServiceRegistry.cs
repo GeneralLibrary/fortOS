@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 namespace GNAS.ServiceBus.Registry;
 
 /// <summary>
-/// 基于 SQLite 的服务注册表。
+/// SQLite-based service registry.
 /// </summary>
 public sealed class ServiceRegistry : IServiceRegistry
 {
@@ -16,9 +16,9 @@ public sealed class ServiceRegistry : IServiceRegistry
     private ConcurrentDictionary<string, ServiceDefinition>? _cache;
 
     /// <summary>
-    /// 初始化服务注册表。
+    /// Initialize the service registry.
     /// </summary>
-    /// <param name="databaseProvider">数据库提供器。</param>
+    /// <param name="databaseProvider">Database provider.</param>
     public ServiceRegistry(IDatabaseProvider databaseProvider)
     {
         _databaseProvider = databaseProvider;
@@ -71,7 +71,7 @@ public sealed class ServiceRegistry : IServiceRegistry
             var cache = await EnsureLoadedNoLockAsync(ct).ConfigureAwait(false);
             if (!cache.ContainsKey(definition.ServiceId))
             {
-                throw new ServiceNotFoundException($"服务不存在: {definition.ServiceId}");
+                throw new ServiceNotFoundException($"Service does not exist: {definition.ServiceId}");
             }
 
             var graph = BuildGraph(cache.Values.Where(s => s.ServiceId != definition.ServiceId).Append(definition));
@@ -94,7 +94,7 @@ public sealed class ServiceRegistry : IServiceRegistry
             var cache = await EnsureLoadedNoLockAsync(ct).ConfigureAwait(false);
             if (!cache.ContainsKey(serviceId))
             {
-                throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+                throw new ServiceNotFoundException($"Service does not exist: {serviceId}");
             }
 
             await using var connection = await _databaseProvider.GetConnectionAsync(ct).ConfigureAwait(false);
@@ -116,7 +116,7 @@ public sealed class ServiceRegistry : IServiceRegistry
         var cache = await EnsureLoadedAsync(ct).ConfigureAwait(false);
         if (!cache.ContainsKey(serviceId))
         {
-            throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+            throw new ServiceNotFoundException($"Service not found: {serviceId}");
         }
 
         return cache.Values.Where(s => s.DependsOn.Contains(serviceId, StringComparer.Ordinal)).OrderBy(s => s.ServiceId, StringComparer.Ordinal).ToArray();
@@ -128,7 +128,7 @@ public sealed class ServiceRegistry : IServiceRegistry
         var cache = await EnsureLoadedAsync(ct).ConfigureAwait(false);
         if (!cache.TryGetValue(serviceId, out var service))
         {
-            throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+            throw new ServiceNotFoundException($"Service not found: {serviceId}");
         }
 
         return service.DependsOn.Where(cache.ContainsKey).Select(id => cache[id]).OrderBy(s => s.ServiceId, StringComparer.Ordinal).ToArray();
@@ -174,7 +174,7 @@ public sealed class ServiceRegistry : IServiceRegistry
         {
             var json = reader.GetString(0);
             var definition = JsonSerializer.Deserialize<ServiceDefinition>(json, JsonOptions)
-                ?? throw new InvalidOperationException("服务定义 JSON 为空。");
+                ?? throw new InvalidOperationException("Service definition JSON is empty.");
             loaded[definition.ServiceId] = definition;
         }
 
@@ -251,7 +251,7 @@ ON CONFLICT(service_id) DO UPDATE SET
         {
             if (Visit(node, graph, states, stack, out var cycle))
             {
-                throw new CircularDependencyException($"服务依赖存在环路: {string.Join(" -> ", cycle)}");
+                throw new CircularDependencyException($"Service dependencies contain a cycle: {string.Join(" -> ", cycle)}");
             }
         }
     }

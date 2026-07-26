@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.ServiceBus.Supervisor;
 
 /// <summary>
-/// 服务生命周期监管器。
+/// Service lifecycle supervisor.
 /// </summary>
 public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
 {
@@ -24,13 +24,13 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
     private readonly IDisposable _crashSubscription;
 
     /// <summary>
-    /// 初始化服务监管器。
+    /// Initialize the service supervisor.
     /// </summary>
-    /// <param name="registry">服务注册表。</param>
-    /// <param name="healthMonitor">健康监控器。</param>
-    /// <param name="eventBus">事件总线。</param>
-    /// <param name="serviceProvider">服务提供器。</param>
-    /// <param name="logger">日志记录器。</param>
+    /// <param name="registry">Service registry.</param>
+    /// <param name="healthMonitor">Health monitor.</param>
+    /// <param name="eventBus">Event bus.</param>
+    /// <param name="serviceProvider">Service provider.</param>
+    /// <param name="logger">Logger.</param>
     public ServiceSupervisor(IServiceRegistry registry, IHealthMonitor healthMonitor, IEventBus eventBus, IServiceProvider serviceProvider, ILogger<ServiceSupervisor> logger)
     {
         _registry = registry;
@@ -54,7 +54,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
             }
 
             var definition = await _registry.GetAsync(serviceId, ct).ConfigureAwait(false)
-                ?? throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+                ?? throw new ServiceNotFoundException($"Service does not exist: {serviceId}");
             await EnsureDependenciesAsync(definition, ct).ConfigureAwait(false);
             SetStatus(definition, ServiceStatus.Starting);
             await _eventBus.PublishAsync($"service.{serviceId}.starting", "service.starting", "{}", ct).ConfigureAwait(false);
@@ -96,7 +96,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         try
         {
             var definition = await _registry.GetAsync(serviceId, ct).ConfigureAwait(false)
-                ?? throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+                ?? throw new ServiceNotFoundException($"Service does not exist: {serviceId}");
             SetStatus(definition, ServiceStatus.Stopping);
             if (_hosts.TryRemove(serviceId, out var host))
             {
@@ -157,7 +157,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         }
 
         var definition = await _registry.GetAsync(serviceId, ct).ConfigureAwait(false)
-            ?? throw new ServiceNotFoundException($"服务不存在: {serviceId}");
+            ?? throw new ServiceNotFoundException($"Service not found: {serviceId}");
         var stopped = new ServiceStatusInfo { ServiceId = serviceId, Type = definition.Type, Status = ServiceStatus.Stopped };
         _statuses[serviceId] = stopped;
         return stopped;
@@ -207,10 +207,10 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
             }
 
             var dependency = await _registry.GetAsync(dependencyId, ct).ConfigureAwait(false)
-                ?? throw new ServiceNotFoundException($"服务不存在: {dependencyId}");
+                ?? throw new ServiceNotFoundException($"Service does not exist: {dependencyId}");
             if (dependency.Startup != ServiceStartup.Automatic)
             {
-                throw new InvalidOperationException($"依赖服务未运行且不是自动启动: {dependencyId}");
+                throw new InvalidOperationException($"Dependency service is not running and is not set to automatic start: {dependencyId}");
             }
 
             await StartAsync(dependencyId, ct).ConfigureAwait(false);
@@ -231,7 +231,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
             await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
         }
 
-        throw new TimeoutException($"服务健康检查未在超时时间内变为 Healthy: {serviceId}");
+        throw new TimeoutException($"Service health check did not become Healthy within the timeout period: {serviceId}");
     }
 
     private async Task OnCrashedAsync(EventEnvelope envelope, CancellationToken ct)
@@ -245,8 +245,8 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         try
         {
             var definition = await _registry.GetAsync(serviceId, ct).ConfigureAwait(false)
-                ?? throw new ServiceNotFoundException($"服务不存在: {serviceId}");
-            SetStatus(definition, ServiceStatus.Failed, "服务崩溃。");
+                ?? throw new ServiceNotFoundException($"Service does not exist: {serviceId}");
+            SetStatus(definition, ServiceStatus.Failed, "Service crashed.");
             if (definition.RestartPolicy == RestartPolicy.Never)
             {
                 return;
@@ -262,7 +262,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "处理服务崩溃失败: {Topic}", envelope.Topic);
+            _logger.LogError(ex, "Failed to process service crash: {Topic}", envelope.Topic);
         }
     }
 

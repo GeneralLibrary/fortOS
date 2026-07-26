@@ -1,6 +1,6 @@
 namespace GNAS.Api.Middleware;
 
-/// <summary>把 v1 前缀集中映射到现有 API 路由，避免为每个 action 复制路由。</summary>
+/// <summary>Maps v1 prefix to existing API routes centrally, avoiding duplicate routing for each action.</summary>
 public sealed class ApiVersionCompatibilityMiddleware(RequestDelegate next)
 {
     public Task InvokeAsync(HttpContext context)

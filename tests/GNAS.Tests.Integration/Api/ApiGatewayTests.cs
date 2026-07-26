@@ -90,15 +90,15 @@ public sealed class ApiGatewayTests
         using var factory = await ApiTestFactory.CreateAsync(nameof(Register_Bootstrap_CreatesFirstAdmin_ThenRequiresAuth));
         using var client = factory.CreateClient();
 
-        // bootstrap 阶段：无用户时允许匿名注册首个账户
+        // Bootstrap phase: anonymous registration allowed when no users exist
         var first = await client.PostAsJsonAsync("/api/auth/register", new { username = "admin", password = "Admin12345", displayName = "Admin" });
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
-        // 存在用户后：匿名注册被拒绝
+        // After user exists: anonymous registration rejected
         var anonymous = await client.PostAsJsonAsync("/api/auth/register", new { username = "bob", password = "Password1", displayName = "Bob" });
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
 
-        // 首个用户自动获得 admin 角色，登录后可以继续创建用户
+        // First user automatically gets admin role, can create more users after login
         var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "Admin12345" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var body = await login.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
@@ -121,7 +121,7 @@ public sealed class ApiGatewayTests
         using var factory = await ApiTestFactory.CreateAsync(nameof(Register_NonAdminToken_ReturnsForbidden), createUser: true);
         using var client = factory.CreateClient();
 
-        // createUser 创建的首个用户是 admin；再创建一个普通用户并用其令牌尝试注册
+        // createUser creates admin as first user; then creates a regular user and attempts registration with their token
         var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "Admin12345" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var adminToken = (await login.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("token").GetString();

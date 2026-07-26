@@ -1,28 +1,28 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// NAS 数据分级。
+/// NAS data classification level.
 /// </summary>
 public enum NasDataLevel
 {
     /// <summary>
-    /// 公开数据。
+    /// Public data.
     /// </summary>
     Public = 0,
     /// <summary>
-    /// 内部数据。
+    /// Internal data.
     /// </summary>
     Internal = 1,
     /// <summary>
-    /// 个人数据。
+    /// Personal data.
     /// </summary>
     Personal = 2,
     /// <summary>
-    /// 敏感数据。
+    /// Sensitive data.
     /// </summary>
     Sensitive = 3,
     /// <summary>
-    /// 系统数据。
+    /// System data.
     /// </summary>
     System = 4,
 }

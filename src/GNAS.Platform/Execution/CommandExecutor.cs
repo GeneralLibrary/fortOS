@@ -5,30 +5,30 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Execution;
 
 /// <summary>
-/// 执行平台命令并收集输出的内部辅助器。
+/// Internal helper for executing platform commands and collecting output.
 /// </summary>
 internal sealed class CommandExecutor
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
     private readonly ILogger _logger;
 
-    /// <summary>初始化命令执行器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the command executor.</summary>
+    /// <param name="logger">Logger.</param>
     public CommandExecutor(ILogger logger)
     {
         _logger = logger;
     }
 
-    /// <summary>执行命令并返回结果。</summary>
-    /// <param name="fileName">可执行文件。</param>
-    /// <param name="arguments">命令参数。</param>
-    /// <param name="ct">取消令牌。</param>
-    /// <param name="timeout">执行超时。</param>
-    /// <param name="throwOnNonZeroExit">是否在非零退出码时抛出异常。</param>
-    /// <param name="workingDirectory">工作目录。</param>
-    /// <param name="environment">环境变量。</param>
-    /// <param name="standardInput">标准输入内容。</param>
-    /// <returns>命令执行结果。</returns>
+    /// <summary>Executes a command and returns the result.</summary>
+    /// <param name="fileName">Executable file.</param>
+    /// <param name="arguments">Command arguments.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="timeout">Execution timeout.</param>
+    /// <param name="throwOnNonZeroExit">Whether to throw an exception on non-zero exit codes.</param>
+    /// <param name="workingDirectory">Working directory.</param>
+    /// <param name="environment">Environment variables.</param>
+    /// <param name="standardInput">Standard input content.</param>
+    /// <returns>Command execution result.</returns>
     public async Task<CommandResult> ExecuteAsync(
         string fileName,
         string? arguments,
@@ -42,7 +42,7 @@ internal sealed class CommandExecutor
         using var timeoutCts = new CancellationTokenSource(timeout ?? DefaultTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-        // 日志安全：去除换行防止日志伪造；携带标准输入（通常为凭据）的命令不记录参数原文。
+        // Log safety: strip newlines to prevent log forgery; commands with standard input (usually credentials) do not log the original arguments.
         var safeArguments = standardInput is null ? SanitizeForLog(arguments) : "<redacted>";
 
         var startInfo = new ProcessStartInfo
@@ -75,13 +75,13 @@ internal sealed class CommandExecutor
         {
             if (!process.Start())
             {
-                throw new PlatformException($"无法启动命令: {fileName}");
+                throw new PlatformException($"Failed to start command: {fileName}");
             }
         }
         catch (Exception ex) when (ex is not PlatformException)
         {
-            _logger.LogError(ex, "启动命令失败: {FileName} {Arguments}", fileName, safeArguments);
-            throw new PlatformException($"启动命令失败: {fileName}", innerException: ex);
+            _logger.LogError(ex, "Failed to start command: {FileName} {Arguments}", fileName, safeArguments);
+            throw new PlatformException($"Failed to start command: {fileName}", innerException: ex);
         }
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
@@ -102,15 +102,15 @@ internal sealed class CommandExecutor
 
             if (process.ExitCode != 0)
             {
-                _logger.LogError("命令失败: {FileName} {Arguments}, ExitCode={ExitCode}, Stderr={Stderr}", fileName, safeArguments, process.ExitCode, SanitizeForLog(stderr));
+                _logger.LogError("Command failed: {FileName} {Arguments}, ExitCode={ExitCode}, Stderr={Stderr}", fileName, safeArguments, process.ExitCode, SanitizeForLog(stderr));
                 if (throwOnNonZeroExit)
                 {
-                    throw new CommandExecutionException($"命令执行失败: {fileName}", process.ExitCode, stdout, stderr);
+                    throw new CommandExecutionException($"Command execution failed: {fileName}", process.ExitCode, stdout, stderr);
                 }
             }
             else
             {
-                _logger.LogInformation("命令成功: {FileName} {Arguments}", fileName, safeArguments);
+                _logger.LogInformation("Command succeeded: {FileName} {Arguments}", fileName, safeArguments);
             }
 
             return result;
@@ -120,12 +120,12 @@ internal sealed class CommandExecutor
             TryKill(process);
             var stdout = await SafeReadAsync(stdoutTask).ConfigureAwait(false);
             var stderr = await SafeReadAsync(stderrTask).ConfigureAwait(false);
-            _logger.LogError(ex, "命令超时: {FileName} {Arguments}", fileName, safeArguments);
-            throw new CommandExecutionException($"命令执行超时: {fileName}", -1, stdout, stderr, innerException: ex);
+            _logger.LogError(ex, "Command timed out: {FileName} {Arguments}", fileName, safeArguments);
+            throw new CommandExecutionException($"Command execution timed out: {fileName}", -1, stdout, stderr, innerException: ex);
         }
     }
 
-    /// <summary>去除换行符，防止外部输入进入日志时伪造多行记录。</summary>
+    /// <summary>Strips newlines to prevent external input from forging multi-line log entries.</summary>
     private static string SanitizeForLog(string? value)
         => value?.ReplaceLineEndings(" ") ?? string.Empty;
 

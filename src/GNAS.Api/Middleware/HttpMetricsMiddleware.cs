@@ -3,7 +3,7 @@ using GNAS.Observability;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>记录 HTTP 计数、时延和 5xx 指标。</summary>
+/// <summary>Records HTTP count, latency, and 5xx metrics.</summary>
 public sealed class HttpMetricsMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, GnasMetrics metrics)

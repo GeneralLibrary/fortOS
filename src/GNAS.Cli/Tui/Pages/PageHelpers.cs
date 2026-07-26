@@ -6,10 +6,10 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Tui.Pages;
 
-/// <summary>提供 TUI 页面共用工具。</summary>
+/// <summary>Provides shared TUI page utilities.</summary>
 internal static class PageHelpers
 {
-    /// <summary>建立资料表。</summary>
+    /// <summary>Create data table.</summary>
     public static Table Table(string title, JsonElement root, params string[] columns)
     {
         var table = new Table().Title(title).RoundedBorder();
@@ -22,7 +22,7 @@ internal static class PageHelpers
         return table;
     }
 
-    /// <summary>尝试取得数组。</summary>
+    /// <summary>Try to get array.</summary>
     public static bool TryArray(JsonElement root, out JsonElement array)
     {
         if (root.ValueKind == JsonValueKind.Array) { array = root; return true; }
@@ -33,7 +33,7 @@ internal static class PageHelpers
         array = default; return false;
     }
 
-    /// <summary>读取属性文字。</summary>
+    /// <summary>Read property text.</summary>
     public static string Get(JsonElement item, string name)
     {
         if (item.ValueKind != JsonValueKind.Object) return item.ToString();
@@ -41,6 +41,6 @@ internal static class PageHelpers
         return string.Empty;
     }
 
-    /// <summary>建立错误降级面板。</summary>
-    public static Panel Error(Exception ex) => new(Markup.Escape(ex is GnasApiException ? ex.Message : "无法连接：" + ex.Message)) { Header = new PanelHeader("无法连接") };
+    /// <summary>Create error fallback panel.</summary>
+    public static Panel Error(Exception ex) => new(Markup.Escape(ex is GnasApiException ? ex.Message : "Connection failed: " + ex.Message)) { Header = new PanelHeader("Error") };
 }

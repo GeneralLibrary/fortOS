@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Modules.Host;
 
-/// <summary>NAS 模块基础实现，封装通用生命周期脚手架。</summary>
+/// <summary>NAS module base implementation, encapsulating common lifecycle scaffolding.</summary>
 public abstract class NasModuleBase : INasModule
 {
     private ModuleContext? context;
@@ -25,16 +25,16 @@ public abstract class NasModuleBase : INasModule
     /// <inheritdoc />
     public virtual IReadOnlyList<string> Dependencies => [];
 
-    /// <summary>模块运行上下文。</summary>
-    protected ModuleContext Context => context ?? throw new InvalidOperationException("模块尚未初始化。");
+    /// <summary>Module runtime context.</summary>
+    protected ModuleContext Context => context ?? throw new InvalidOperationException("Module has not been initialized.");
 
-    /// <summary>模块日志记录器。</summary>
+    /// <summary>Module logger.</summary>
     protected ILogger Logger => logger ??= Context.LoggerFactory.CreateLogger(GetType());
 
-    /// <summary>事件总线。</summary>
+    /// <summary>Event bus.</summary>
     protected IEventBus EventBus => Context.EventBus;
 
-    /// <summary>服务提供器。</summary>
+    /// <summary>Service provider.</summary>
     protected IServiceProvider Services => Context.Services;
 
     /// <inheritdoc />
@@ -56,16 +56,16 @@ public abstract class NasModuleBase : INasModule
     /// <inheritdoc />
     public virtual Task<HealthStatus> CheckHealthAsync(CancellationToken ct) => Task.FromResult(HealthStatus.Healthy);
 
-    /// <summary>派生模块初始化钩子。</summary>
+    /// <summary>Derived module initialization hook.</summary>
     protected virtual Task OnInitializeAsync(CancellationToken ct) => Task.CompletedTask;
 
-    /// <summary>派生模块关闭钩子。</summary>
+    /// <summary>Derived module shutdown hook.</summary>
     protected virtual Task OnShutdownAsync(CancellationToken ct) => Task.CompletedTask;
 
-    /// <summary>解析必需服务；缺失时返回清晰错误。</summary>
-    protected T RequiredService<T>() where T : notnull => Services.GetService<T>() ?? throw new InvalidOperationException($"模块 {ModuleId} 需要服务 {typeof(T).Name}，但当前 DI 未注册。");
+    /// <summary>Resolve required service; returns a clear error when missing.</summary>
+    protected T RequiredService<T>() where T : notnull => Services.GetService<T>() ?? throw new InvalidOperationException($"Module {ModuleId} requires service {typeof(T).Name}, which is not registered in DI.");
 
-    /// <summary>发布 JSON 事件。</summary>
+    /// <summary>Publish JSON events.</summary>
     protected Task PublishAsync(string topic, string type, object payload, CancellationToken ct)
     {
         var json = System.Text.Json.JsonSerializer.Serialize(payload);

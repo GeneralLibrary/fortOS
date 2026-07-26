@@ -4,15 +4,15 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Tui;
 
-/// <summary>定义 TUI 页面契约。</summary>
+/// <summary>Defines the TUI page contract.</summary>
 public interface ITuiPage
 {
-    /// <summary>页面标题。</summary>
+    /// <summary>Page title.</summary>
     string Title { get; }
-    /// <summary>刷新间隔。</summary>
+    /// <summary>Refresh interval.</summary>
     TimeSpan RefreshInterval { get; }
-    /// <summary>渲染页面。</summary>
+    /// <summary>Render page.</summary>
     Task<IRenderable> RenderAsync(GnasApiClient client, CancellationToken cancellationToken);
-    /// <summary>处理按键；返回 true 表示已处理。</summary>
+    /// <summary>Handle key press; returns true if handled.</summary>
     Task<bool> HandleKeyAsync(ConsoleKeyInfo key, GnasApiClient client, CancellationToken cancellationToken);
 }

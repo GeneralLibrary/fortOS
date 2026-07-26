@@ -6,13 +6,13 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Tui.Pages;
 
-/// <summary>显示并操作代理页面。</summary>
+/// <summary>Displays and operates the agent page.</summary>
 public sealed class AgentPage : ITuiPage
 {
     private int _selected;
     private JsonElement[] _items = [];
     /// <inheritdoc />
-    public string Title => "代理（↑↓ 选择，s 启动，x 停止）";
+    public string Title => "Agents (↑↓ select, s start, x stop)";
     /// <inheritdoc />
     public TimeSpan RefreshInterval => TimeSpan.FromSeconds(5);
     /// <inheritdoc />
@@ -22,7 +22,7 @@ public sealed class AgentPage : ITuiPage
         {
             using var doc = await client.GetAsync("api/agents", cancellationToken);
             _items = PageHelpers.TryArray(doc.RootElement, out var arr) ? arr.EnumerateArray().Select(e => e.Clone()).ToArray() : [];
-            var table = new Table().Title("代理").AddColumn(" ").AddColumn("id").AddColumn("name").AddColumn("template").AddColumn("status");
+            var table = new Table().Title("Agents").AddColumn(" ").AddColumn("id").AddColumn("name").AddColumn("template").AddColumn("status");
             for (var i = 0; i < _items.Length; i++) table.AddRow(i == _selected ? "▶" : "", Markup.Escape(PageHelpers.Get(_items[i], "id")), Markup.Escape(PageHelpers.Get(_items[i], "name")), Markup.Escape(PageHelpers.Get(_items[i], "template")), Markup.Escape(PageHelpers.Get(_items[i], "status")));
             return table;
         }

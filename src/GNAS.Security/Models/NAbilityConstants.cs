@@ -1,32 +1,32 @@
 namespace GNAS.Security.Models;
 
 /// <summary>
-/// 常用 NAbility 常量。
+/// Common NAbility constants.
 /// </summary>
 public static class NAbilityConstants
 {
-    /// <summary>存储全部权限。</summary>
+    /// <summary>All storage permissions.</summary>
     public const string StorageAll = "storage:**";
-    /// <summary>存储池读取权限。</summary>
+    /// <summary>Storage pool read permission.</summary>
     public const string StoragePoolRead = "storage:pool:*:read";
-    /// <summary>存储共享读取权限。</summary>
+    /// <summary>Storage share read permission.</summary>
     public const string StorageShareRead = "storage:share:*:read";
-    /// <summary>存储共享写入权限。</summary>
+    /// <summary>Storage share write permission.</summary>
     public const string StorageShareWrite = "storage:share:*:write";
-    /// <summary>Agent 部署权限。</summary>
+    /// <summary>Agent deploy permission.</summary>
     public const string AgentDeploy = "agent:lifecycle:deploy";
-    /// <summary>Agent 启停权限。</summary>
+    /// <summary>Agent start/stop permission.</summary>
     public const string AgentStartStop = "agent:lifecycle:start_stop";
-    /// <summary>Agent 令牌签发权限。</summary>
+    /// <summary>Agent token issue permission.</summary>
     public const string AgentTokenIssue = "agent:token:issue";
-    /// <summary>管理员全部权限。</summary>
+    /// <summary>Administrator all permissions.</summary>
     public const string AdminAll = "admin:**";
-    /// <summary>用户管理权限。</summary>
+    /// <summary>User management permission.</summary>
     public const string AdminUserAll = "admin:user:*";
-    /// <summary>审计读取权限。</summary>
+    /// <summary>Audit read permission.</summary>
     public const string AuditRead = "audit:log:read";
-    /// <summary>内部数据访问权限。</summary>
+    /// <summary>Internal data access permission.</summary>
     public const string DataInternal = "data:level:internal";
-    /// <summary>敏感数据访问权限。</summary>
+    /// <summary>Sensitive data access permission.</summary>
     public const string DataSensitive = "data:level:sensitive";
 }

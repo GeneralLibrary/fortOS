@@ -50,7 +50,7 @@ internal static class TopologySorter
         if (visited != byId.Count)
         {
             var remaining = indegree.Where(pair => pair.Value > 0).Select(pair => pair.Key).Order(StringComparer.Ordinal);
-            throw new CircularDependencyException($"服务依赖存在环路: {string.Join(" -> ", remaining)}");
+            throw new CircularDependencyException($"Service dependencies contain a cycle: {string.Join(" -> ", remaining)}");
         }
 
         return levels;

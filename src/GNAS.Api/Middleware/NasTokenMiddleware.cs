@@ -5,20 +5,20 @@ using Microsoft.Data.Sqlite;
 
 namespace GNAS.Api.Middleware;
 
-/// <summary>NAS 令牌认证中间件。</summary>
+/// <summary>NAS token authentication middleware.</summary>
 public sealed class NasTokenMiddleware
 {
     private readonly RequestDelegate next;
     private readonly ILogger<NasTokenMiddleware> logger;
 
-    /// <summary>初始化令牌中间件。</summary>
+    /// <summary>Initializes the token middleware.</summary>
     public NasTokenMiddleware(RequestDelegate next, ILogger<NasTokenMiddleware> logger)
     {
         this.next = next;
         this.logger = logger;
     }
 
-    /// <summary>处理请求。</summary>
+    /// <summary>Process request.</summary>
     public async Task InvokeAsync(HttpContext context, ITokenManager tokenManager, IDatabaseProvider database, IConfiguration configuration)
     {
         if (ShouldSkip(context.Request.Path))
@@ -39,19 +39,19 @@ public sealed class NasTokenMiddleware
         {
             if (context.GetEndpoint()?.Metadata.GetMetadata<GNAS.Api.Authorization.BootstrapOnlyAttribute>() is not null && await NoUsersExistAsync(database, context.RequestAborted).ConfigureAwait(false))
             {
-                logger.LogWarning("未检测到本地用户，API 处于首次启动匿名引导模式。创建用户后将自动要求认证。");
+                logger.LogWarning("No local users detected, API is in first-start anonymous bootstrap mode. Authentication will be required once a user is created.");
                 await next(context).ConfigureAwait(false);
                 return;
             }
 
-            await UnauthorizedAsync(context, "缺少 NAS 令牌。", "TOKEN_MISSING").ConfigureAwait(false);
+            await UnauthorizedAsync(context, "Missing NAS token.", "TOKEN_MISSING").ConfigureAwait(false);
             return;
         }
 
         var validation = await tokenManager.ValidateTokenAsync(token, context.RequestAborted).ConfigureAwait(false);
         if (!validation.IsValid)
         {
-            await UnauthorizedAsync(context, validation.ErrorMessage ?? "令牌无效。", "TOKEN_INVALID").ConfigureAwait(false);
+            await UnauthorizedAsync(context, validation.ErrorMessage ?? "Invalid token.", "TOKEN_INVALID").ConfigureAwait(false);
             return;
         }
 

@@ -2,21 +2,21 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Backup.Services;
 
-/// <summary>rclone 云备份服务，rclone 缺失时优雅失败。</summary>
+/// <summary>rclone cloud backup service, fails gracefully when rclone is missing.</summary>
 public sealed class CloudBackupService
 {
     private readonly IProcessManager processManager;
 
-    /// <summary>创建云备份服务。</summary>
+    /// <summary>Creates a cloud backup service.</summary>
     public CloudBackupService(IProcessManager processManager)
     {
         this.processManager = processManager;
     }
 
-    /// <summary>检查 rclone 配置。</summary>
+    /// <summary>Checks rclone configuration.</summary>
     public Task<CommandResult> CheckConfigAsync(CancellationToken ct) => ExecuteAsync("config file", ct);
 
-    /// <summary>同步到远程。</summary>
+    /// <summary>Syncs to remote.</summary>
     public Task<CommandResult> SyncAsync(string source, string remote, CancellationToken ct)
     {
         Validate(source);
@@ -36,7 +36,7 @@ public sealed class CloudBackupService
         }
         catch (Exception ex) when (ex is FileNotFoundException or System.ComponentModel.Win32Exception or InvalidOperationException or PlatformException)
         {
-            return new CommandResult { ExitCode = 127, Stderr = "rclone 不可用，已优雅失败。" };
+            return new CommandResult { ExitCode = 127, Stderr = "rclone is not available, gracefully failed." };
         }
     }
 
@@ -46,7 +46,7 @@ public sealed class CloudBackupService
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         if (value.Contains('\n') || value.Contains('\r'))
         {
-            throw new ArgumentException("路径不能包含换行。", nameof(value));
+            throw new ArgumentException("Path cannot contain newlines.", nameof(value));
         }
     }
 }

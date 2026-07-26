@@ -1,24 +1,24 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 健康状态。
+/// Health status.
 /// </summary>
 public enum HealthStatus
 {
     /// <summary>
-    /// 健康。
+    /// Healthy.
     /// </summary>
     Healthy,
     /// <summary>
-    /// 降级运行。
+    /// Degraded.
     /// </summary>
     Degraded,
     /// <summary>
-    /// 不健康。
+    /// Unhealthy.
     /// </summary>
     Unhealthy,
     /// <summary>
-    /// 状态未知。
+    /// Unknown.
     /// </summary>
     Unknown,
 }

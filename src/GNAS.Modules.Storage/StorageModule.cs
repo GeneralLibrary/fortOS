@@ -4,7 +4,7 @@ using GNAS.Modules.Storage.Services;
 
 namespace GNAS.Modules.Storage;
 
-/// <summary>存储业务模块，封装磁盘、RAID 与文件系统操作。</summary>
+/// <summary>Storage business module, encapsulating disk, RAID, and filesystem operations.</summary>
 public sealed class StorageModule : NasModuleBase
 {
     private SmartMonitorService? smartMonitor;
@@ -13,23 +13,23 @@ public sealed class StorageModule : NasModuleBase
     public override string ModuleId => "storage";
 
     /// <inheritdoc />
-    public override string DisplayName => "存储管理";
+    public override string DisplayName => "Storage Management";
 
     /// <inheritdoc />
     public override IReadOnlyList<string> RequiredCapabilities => ["storage:disk:read", "storage:disk:write", "storage:filesystem:write"];
 
-    /// <summary>列出磁盘。</summary>
+    /// <summary>List disks.</summary>
     public Task<IReadOnlyList<DiskInfo>> ListDisksAsync(CancellationToken ct) => RequiredService<IDiskManager>().ListDisksAsync(ct);
 
-    /// <summary>获取磁盘详情。</summary>
+    /// <summary>Get disk details.</summary>
     public async Task<DiskInfo> GetDiskDetailAsync(string path, CancellationToken ct)
     {
         ValidateDevicePath(path);
         return await RequiredService<IDiskManager>().GetDiskAsync(path, ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"磁盘不存在: {path}");
+            ?? throw new InvalidOperationException($"Disk does not exist: {path}");
     }
 
-    /// <summary>创建分区。</summary>
+    /// <summary>Create partition.</summary>
     public async Task<PartitionResult> CreatePartitionAsync(string diskPath, PartitionSpec spec, CancellationToken ct)
     {
         ValidateDevicePath(diskPath);
@@ -39,17 +39,17 @@ public sealed class StorageModule : NasModuleBase
         return result;
     }
 
-    /// <summary>创建 RAID 存储池。</summary>
+    /// <summary>Create RAID storage pool.</summary>
     public async Task<RaidResult> CreateRaidAsync(RaidLevel level, string[] diskPaths, CancellationToken ct)
     {
         if (level == RaidLevel.Unknown)
         {
-            throw new ArgumentException("RAID 等级不能为空。", nameof(level));
+            throw new ArgumentException("RAID level cannot be empty.", nameof(level));
         }
 
         if (diskPaths.Length == 0)
         {
-            throw new ArgumentException("至少需要一块磁盘。", nameof(diskPaths));
+            throw new ArgumentException("At least one disk is required.", nameof(diskPaths));
         }
 
         foreach (var diskPath in diskPaths)
@@ -62,7 +62,7 @@ public sealed class StorageModule : NasModuleBase
         return result;
     }
 
-    /// <summary>挂载文件系统。</summary>
+    /// <summary>Mount filesystem.</summary>
     public async Task MountAsync(string device, string mountPoint, string fsType, CancellationToken ct)
     {
         ValidateDevicePath(device);
@@ -72,7 +72,7 @@ public sealed class StorageModule : NasModuleBase
         await PublishAsync("storage.filesystem.mounted", "storage.filesystem.mounted", new { device, mountPoint, fsType }, ct).ConfigureAwait(false);
     }
 
-    /// <summary>卸载文件系统。</summary>
+    /// <summary>Unmount filesystem.</summary>
     public async Task UnmountAsync(string mountPoint, CancellationToken ct)
     {
         ValidateAbsolutePath(mountPoint, nameof(mountPoint));
@@ -80,7 +80,7 @@ public sealed class StorageModule : NasModuleBase
         await PublishAsync("storage.filesystem.unmounted", "storage.filesystem.unmounted", new { mountPoint }, ct).ConfigureAwait(false);
     }
 
-    /// <summary>格式化文件系统。</summary>
+    /// <summary>Format filesystem.</summary>
     public async Task FormatAsync(string device, string fsType, CancellationToken ct)
     {
         ValidateDevicePath(device);
@@ -116,7 +116,7 @@ public sealed class StorageModule : NasModuleBase
         ValidateAbsolutePath(path, nameof(path));
         if (!path.StartsWith("/dev/", StringComparison.Ordinal))
         {
-            throw new ArgumentException("设备路径必须位于 /dev 下。", nameof(path));
+            throw new ArgumentException("Device path must be under /dev.", nameof(path));
         }
     }
 
@@ -125,7 +125,7 @@ public sealed class StorageModule : NasModuleBase
         ArgumentException.ThrowIfNullOrWhiteSpace(path, paramName);
         if (!Path.IsPathFullyQualified(path) || path.Contains('\n') || path.Contains('\r'))
         {
-            throw new ArgumentException("路径必须为不含换行的绝对路径。", paramName);
+            throw new ArgumentException("Path must be an absolute path without newlines.", paramName);
         }
     }
 }

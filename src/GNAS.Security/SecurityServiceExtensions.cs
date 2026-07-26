@@ -7,16 +7,16 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GNAS.Security;
 
 /// <summary>
-/// GNAS Security 渚濊禆娉ㄥ叆鎵╁睍銆?
+/// GNAS Security dependency injection extensions.
 /// </summary>
 public static class SecurityServiceExtensions
 {
     /// <summary>
-    /// 娉ㄥ唽瀹夊叏涓庤韩浠借璇佸眰鏈嶅姟銆?
+    /// Registers security and identity layer services.
     /// </summary>
-    /// <param name="services">鏈嶅姟闆嗗悎銆?/param>
-    /// <param name="configuration">搴旂敤閰嶇疆銆?/param>
-    /// <returns>鏈嶅姟闆嗗悎銆?/returns>
+    /// <param name="services">Service collection.</param>
+    /// <param name="configuration">Application configuration.</param>
+    /// <returns>Service collection.</returns>
     public static IServiceCollection AddGnasSecurity(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<INasKeyStore, NasKeyStore>();

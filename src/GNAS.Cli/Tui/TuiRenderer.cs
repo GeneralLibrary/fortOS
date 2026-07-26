@@ -5,24 +5,24 @@ using Spectre.Console;
 
 namespace GNAS.Cli.Tui;
 
-/// <summary>负责 TUI Live 渲染与页面切换。</summary>
+/// <summary>Handles TUI Live rendering and page switching.</summary>
 public sealed class TuiRenderer
 {
     private readonly List<ITuiPage> _pages;
     private int _index;
 
-    /// <summary>建立默认 TUI 渲染器。</summary>
+    /// <summary>Creates the default TUI renderer.</summary>
     public TuiRenderer()
     {
         _pages = [new DashboardPage(), new DiskPage(), new ServicePage(), new AgentPage(), new LogPage(), new AlertPage(), new SettingsPage()];
     }
 
-    /// <summary>启动互动界面。</summary>
+    /// <summary>Start interactive interface.</summary>
     public async Task<int> RunAsync(GnasApiClient client, CancellationToken cancellationToken = default)
     {
         try
         {
-            await AnsiConsole.Live(new Panel("正在载入 GNAS...")).AutoClear(false).StartAsync(async ctx =>
+            await AnsiConsole.Live(new Panel("Loading GNAS...")).AutoClear(false).StartAsync(async ctx =>
             {
                 var quit = false;
                 while (!quit && !cancellationToken.IsCancellationRequested)
@@ -46,7 +46,7 @@ public sealed class TuiRenderer
         catch (OperationCanceledException) { return 0; }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"TUI 已退出：{ex.Message}");
+            Console.Error.WriteLine($"TUI exited: {ex.Message}");
             return 1;
         }
     }
@@ -72,13 +72,13 @@ public sealed class TuiRenderer
     private async Task<IRenderable> SafeRenderAsync(GnasApiClient client, CancellationToken cancellationToken)
     {
         try { return await _pages[_index].RenderAsync(client, cancellationToken); }
-        catch (GnasApiException ex) { return new Panel(Markup.Escape(ex.Message)) { Header = new PanelHeader("无法连接") }; }
-        catch (Exception ex) { return new Panel(Markup.Escape("页面渲染失败：" + ex.Message)); }
+        catch (GnasApiException ex) { return new Panel(Markup.Escape(ex.Message)) { Header = new PanelHeader("Cannot connect") }; }
+        catch (Exception ex) { return new Panel(Markup.Escape("Page render failed:" + ex.Message)); }
     }
 
     private IRenderable Wrap(IRenderable body)
     {
-        var menu = "[bold]F1/1[/]总览 [bold]F2/2[/]磁盘 [bold]F3/3[/]服务 [bold]F4/4[/]代理 [bold]F5/5[/]日志 [bold]F6/6[/]警报 [bold]F7/7[/]设置 [bold]Esc[/]总览 [bold]q[/]退出";
+        var menu = "[bold]F1/1[/]Overview [bold]F2/2[/]Disks [bold]F3/3[/]Services [bold]F4/4[/]Agents [bold]F5/5[/]Logs [bold]F6/6[/]Alerts [bold]F7/7[/]Settings [bold]Esc[/]Overview [bold]q[/]Quit";
         return new Rows(new Markup(menu), new Rule(_pages[_index].Title), body);
     }
 }

@@ -1,24 +1,24 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 健康检查类型。
+/// Health check type.
 /// </summary>
 public enum HealthCheckType
 {
     /// <summary>
-    /// HTTP GET 探针。
+    /// HTTP GET probe.
     /// </summary>
     HttpGet,
     /// <summary>
-    /// TCP 连接探针。
+    /// TCP connection probe.
     /// </summary>
     TcpConnect,
     /// <summary>
-    /// 命令执行探针。
+    /// Command execution probe.
     /// </summary>
     ExecCommand,
     /// <summary>
-    /// gRPC 探针。
+    /// gRPC probe.
     /// </summary>
     Grpc,
 }

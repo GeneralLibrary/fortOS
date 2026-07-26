@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Security.Services;
 
 /// <summary>
-/// GNAS 身份认证服务。
+/// GNAS identity authentication service.
 /// </summary>
 public sealed class IdentityService : IIdentityService
 {
@@ -24,13 +24,13 @@ public sealed class IdentityService : IIdentityService
     private readonly ILogger<IdentityService>? _logger;
 
     /// <summary>
-    /// 初始化身份认证服务。
+    /// Initialize the identity service.
     /// </summary>
-    /// <param name="database">数据库提供器。</param>
-    /// <param name="tokenManager">令牌管理器。</param>
-    /// <param name="configuration">可选配置。</param>
-    /// <param name="provisioners">可选系统用户供给器集合（如 Samba 用户桥接）。</param>
-    /// <param name="logger">可选日志记录器。</param>
+    /// <param name="database">Database provider.</param>
+    /// <param name="tokenManager">Token manager.</param>
+    /// <param name="configuration">Optional configuration.</param>
+    /// <param name="provisioners">Optional collection of system user provisioners (e.g., Samba user bridge).</param>
+    /// <param name="logger">Optional logger.</param>
     public IdentityService(IDatabaseProvider database, ITokenManager tokenManager, IGnasConfiguration? configuration = null, IEnumerable<ISystemUserProvisioner>? provisioners = null, ILogger<IdentityService>? logger = null)
     {
         _database = database;
@@ -48,12 +48,12 @@ public sealed class IdentityService : IIdentityService
         var user = await GetUserAsync(connection, username, ct).ConfigureAwait(false);
         if (user is null)
         {
-            return Failure("用户名或密码错误。");
+            return Failure("Incorrect username or password.");
         }
 
         if (user.LockedUntil.HasValue && user.LockedUntil.Value > DateTimeOffset.UtcNow)
         {
-            return Failure("账户已锁定，请稍后重试。");
+            return Failure("Account is locked, please try again later.");
         }
 
         if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
@@ -61,7 +61,7 @@ public sealed class IdentityService : IIdentityService
             var attempts = user.FailedAttempts + 1;
             var lockedUntil = attempts >= 5 ? DateTimeOffset.UtcNow.AddMinutes(15) : (DateTimeOffset?)null;
             await UpdateLoginStateAsync(connection, username, attempts, lockedUntil, ct).ConfigureAwait(false);
-            return Failure(lockedUntil.HasValue ? "账户已锁定，请 15 分钟后重试。" : "用户名或密码错误。");
+            return Failure(lockedUntil.HasValue ? "Account is locked, please try again in 15 minutes." : "Incorrect username or password.");
         }
 
         await UpdateLoginStateAsync(connection, username, 0, null, ct).ConfigureAwait(false);
@@ -82,10 +82,10 @@ public sealed class IdentityService : IIdentityService
         var secret = await command.ExecuteScalarAsync(ct).ConfigureAwait(false) as string;
         if (string.IsNullOrWhiteSpace(secret))
         {
-            return Failure("TOTP 未配置。");
+            return Failure("TOTP not configured.");
         }
 
-        return VerifyTotp(secret, code) ? new AuthResult { Success = true } : Failure("TOTP 验证失败。");
+        return VerifyTotp(secret, code) ? new AuthResult { Success = true } : Failure("TOTP verification failed.");
     }
 
     /// <inheritdoc />
@@ -94,10 +94,10 @@ public sealed class IdentityService : IIdentityService
         var section = _configuration?.GetSection("security:ldap") ?? new Dictionary<string, string>();
         if (section.Count == 0 || !_configurationEnabled("security:ldap:enabled"))
         {
-            return Task.FromResult(Failure("LDAP 认证未配置"));
+            return Task.FromResult(Failure("LDAP authentication not configured"));
         }
 
-        return Task.FromResult(Failure("LDAP 认证配置已检测到，但当前版本未集成目录绑定客户端。"));
+        return Task.FromResult(Failure("LDAP authentication configuration detected, but the current version does not include a directory binding client."));
     }
 
     /// <inheritdoc />
@@ -106,10 +106,10 @@ public sealed class IdentityService : IIdentityService
         var section = _configuration?.GetSection("security:oauth") ?? new Dictionary<string, string>();
         if (section.Count == 0 || !_configurationEnabled("security:oauth:enabled"))
         {
-            return Task.FromResult(Failure("OAuth 认证未配置"));
+            return Task.FromResult(Failure("OAuth authentication not configured"));
         }
 
-        return Task.FromResult(Failure("OAuth 认证配置已检测到，但当前版本未集成 OIDC 客户端。"));
+        return Task.FromResult(Failure("OAuth authentication configuration detected, but the current version does not include an OIDC client."));
     }
 
     /// <inheritdoc />
@@ -123,14 +123,14 @@ public sealed class IdentityService : IIdentityService
         await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
         if (!await reader.ReadAsync(ct).ConfigureAwait(false))
         {
-            return Failure("服务账号不存在。");
+            return Failure("Service account does not exist.");
         }
 
         var expectedHash = reader.GetString(0);
         var capabilitiesJson = reader.IsDBNull(1) ? "[]" : reader.GetString(1);
         if (!FixedTimeEquals(expectedHash, Sha256Hex(apiKey)))
         {
-            return Failure("服务账号密钥错误。");
+            return Failure("Service account key is incorrect.");
         }
 
         var capabilities = JsonSerializer.Deserialize<string[]>(capabilitiesJson, JsonOptions) ?? [];
@@ -145,7 +145,7 @@ public sealed class IdentityService : IIdentityService
         var validation = await _tokenManager.ValidateTokenAsync(token, ct).ConfigureAwait(false);
         if (!validation.IsValid || !string.Equals(validation.Subject, $"agent:{agentId}", StringComparison.Ordinal))
         {
-            return Failure(validation.ErrorMessage ?? "Agent 令牌无效。");
+            return Failure(validation.ErrorMessage ?? "Agent token is invalid.");
         }
 
         return new AuthResult { Success = true, NasToken = token, TokenPayload = validation.Payload };
@@ -156,18 +156,18 @@ public sealed class IdentityService : IIdentityService
     {
         if (!UsernamePattern.IsMatch(username))
         {
-            return Failure("用户名格式无效。");
+            return Failure("Invalid username format.");
         }
 
         if (!IsPasswordValid(password))
         {
-            return Failure("密码必须至少 8 位且包含大小写字母和数字。");
+            return Failure("Password must be at least 8 characters and contain uppercase letters, lowercase letters, and digits.");
         }
 
         await EnsureDatabaseAsync(ct).ConfigureAwait(false);
         await using var connection = await _database.GetConnectionAsync(ct).ConfigureAwait(false);
 
-        // 系统首个用户自动获得管理员角色，使 bootstrap 匿名模式能够顺利过渡到强制认证。
+        // The first system user automatically gets the admin role, allowing the bootstrap anonymous mode to transition smoothly to mandatory authentication.
         var isFirstUser = await CountUsersAsync(connection, ct).ConfigureAwait(false) == 0;
         var roles = isFirstUser ? new[] { "admin", "user" } : new[] { "user" };
 
@@ -188,7 +188,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
         }
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
         {
-            return Failure("用户已存在。");
+            return Failure("User already exists.");
         }
 
         await ProvisionSystemUsersAsync(username, password, ct).ConfigureAwait(false);
@@ -206,7 +206,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
         var affected = await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         if (affected == 0)
         {
-            return Failure("用户不存在。");
+            return Failure("User does not exist.");
         }
 
         await RemoveSystemUsersAsync(username, ct).ConfigureAwait(false);
@@ -220,7 +220,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
         return (long)(await command.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? 0L);
     }
 
-    /// <summary>调用所有系统用户供给器；单个失败仅记录警告，不影响 GNAS 内部用户创建结果。</summary>
+    /// <summary>Invokes all system user provisioners; individual failures are only logged as warnings and do not affect the GNAS internal user creation result.</summary>
     private async Task ProvisionSystemUsersAsync(string username, string password, CancellationToken ct)
     {
         foreach (var provisioner in _provisioners)
@@ -231,12 +231,12 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 处理用户 {Username} 失败。", provisioner.GetType().Name, username.ReplaceLineEndings(" "));
+                _logger?.LogWarning(ex, "System user provisioner {Provisioner} failed to process user {Username}.", provisioner.GetType().Name, username.ReplaceLineEndings(" "));
             }
         }
     }
 
-    /// <summary>调用所有系统用户供给器执行移除；单个失败仅记录警告。</summary>
+    /// <summary>Invokes all system user provisioners to perform removal; individual failures are only logged as warnings.</summary>
     private async Task RemoveSystemUsersAsync(string username, CancellationToken ct)
     {
         foreach (var provisioner in _provisioners)
@@ -247,7 +247,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger?.LogWarning(ex, "系统用户供给器 {Provisioner} 移除用户 {Username} 失败。", provisioner.GetType().Name, username.ReplaceLineEndings(" "));
+                _logger?.LogWarning(ex, "System user provisioner {Provisioner} failed to remove user {Username}.", provisioner.GetType().Name, username.ReplaceLineEndings(" "));
             }
         }
     }
@@ -379,7 +379,7 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
             var index = alphabet.IndexOf(c);
             if (index < 0)
             {
-                throw new ArgumentException("Base32 TOTP 密钥格式无效。", nameof(value));
+                throw new ArgumentException("Invalid Base32 TOTP key format.", nameof(value));
             }
 
             bits = (bits << 5) | index;

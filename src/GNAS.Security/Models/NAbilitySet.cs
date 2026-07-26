@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace GNAS.Security.Models;
 
 /// <summary>
-/// 表示线程安全的 NAbility 可变集合。
+/// Represents a thread-safe mutable collection of NAbility.
 /// </summary>
 public sealed class NAbilitySet : IEnumerable<NAbility>
 {
@@ -13,7 +13,7 @@ public sealed class NAbilitySet : IEnumerable<NAbility>
     private readonly HashSet<NAbility> _items = [];
 
     /// <summary>
-    /// 能力数量。
+    /// Number of capabilities.
     /// </summary>
     public int Count
     {
@@ -27,9 +27,9 @@ public sealed class NAbilitySet : IEnumerable<NAbility>
     }
 
     /// <summary>
-    /// 添加能力。
+    /// Adds a capability.
     /// </summary>
-    /// <param name="ability">能力对象。</param>
+    /// <param name="ability">Capability object.</param>
     public void Add(NAbility ability)
     {
         ArgumentNullException.ThrowIfNull(ability);
@@ -40,16 +40,16 @@ public sealed class NAbilitySet : IEnumerable<NAbility>
     }
 
     /// <summary>
-    /// 添加能力字符串。
+    /// Adds a capability string.
     /// </summary>
-    /// <param name="ability">能力字符串。</param>
+    /// <param name="ability">Capability string.</param>
     public void Add(string ability) => Add(NAbility.Parse(ability));
 
     /// <summary>
-    /// 判断集合是否满足所需能力。
+    /// Determines whether the set satisfies the required capability.
     /// </summary>
-    /// <param name="required">所需能力。</param>
-    /// <returns>满足时返回 true。</returns>
+    /// <param name="required">Required capability.</param>
+    /// <returns>Returns true if satisfied.</returns>
     public bool Satisfies(NAbility required)
     {
         ArgumentNullException.ThrowIfNull(required);
@@ -58,17 +58,17 @@ public sealed class NAbilitySet : IEnumerable<NAbility>
     }
 
     /// <summary>
-    /// 判断集合是否满足所需能力字符串。
+    /// Determines whether the set satisfies the required capability string.
     /// </summary>
-    /// <param name="required">所需能力字符串。</param>
-    /// <returns>满足时返回 true。</returns>
+    /// <param name="required">Required capability string.</param>
+    /// <returns>Returns true if satisfied.</returns>
     public bool Satisfies(string required) => Satisfies(NAbility.Parse(required));
 
     /// <summary>
-    /// 判断集合是否满足全部所需能力。
+    /// Determines whether the set satisfies all required capabilities.
     /// </summary>
-    /// <param name="required">所需能力列表。</param>
-    /// <returns>全部满足时返回 true。</returns>
+    /// <param name="required">List of required capabilities.</param>
+    /// <returns>Returns true if all are satisfied.</returns>
     public bool SatisfiesAll(IEnumerable<NAbility> required)
     {
         ArgumentNullException.ThrowIfNull(required);
@@ -76,9 +76,9 @@ public sealed class NAbilitySet : IEnumerable<NAbility>
     }
 
     /// <summary>
-    /// 合并另一能力集合。
+    /// Merges another capability set.
     /// </summary>
-    /// <param name="other">另一集合。</param>
+    /// <param name="other">Another set.</param>
     public void Merge(NAbilitySet other)
     {
         ArgumentNullException.ThrowIfNull(other);
@@ -93,16 +93,16 @@ public sealed class NAbilitySet : IEnumerable<NAbility>
     }
 
     /// <summary>
-    /// 转换为 JSON 字符串数组。
+    /// Converts to a JSON string array.
     /// </summary>
-    /// <returns>JSON 字符串。</returns>
+    /// <returns>JSON string.</returns>
     public string ToJson() => JsonSerializer.Serialize(Snapshot().Select(static a => a.ToString()).ToArray(), JsonOptions);
 
     /// <summary>
-    /// 从 JSON 字符串数组创建集合。
+    /// Creates a set from a JSON string array.
     /// </summary>
-    /// <param name="json">JSON 字符串。</param>
-    /// <returns>能力集合。</returns>
+    /// <param name="json">JSON string.</param>
+    /// <returns>Capability set.</returns>
     public static NAbilitySet FromJson(string json)
     {
         if (string.IsNullOrWhiteSpace(json))

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Security.KeyStore;
 
 /// <summary>
-/// 使用软件加密回退实现的 NAS 密钥存储。
+/// NAS key store implemented with software encryption fallback.
 /// </summary>
 public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
 {
@@ -17,9 +17,9 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
     private byte[]? _masterKey;
 
     /// <summary>
-    /// 初始化 NAS 密钥存储。
+    /// Initialize the NAS key store.
     /// </summary>
-    /// <param name="logger">可选日志记录器。</param>
+    /// <param name="logger">Optional logger.</param>
     public NasKeyStore(ILogger<NasKeyStore>? logger = null)
     {
         _logger = logger;
@@ -28,7 +28,7 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
         _keyStoreDirectory = Path.GetFullPath(Path.Combine(root, "keystore"));
         if (File.Exists("/dev/tpm0") || File.Exists("/dev/tpmrm0"))
         {
-            _logger?.LogInformation("检测到 TPM 设备；当前版本记录集成点并使用软件密钥存储回退。");
+            _logger?.LogInformation("TPM device detected; current version records integration point and uses software key store fallback.");
         }
     }
 
@@ -158,7 +158,7 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
     public async Task RotateMasterKeyAsync(CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GNAS_MASTER_KEY")))
-            throw new ConfigurationException("????? GNAS_MASTER_KEY ?????????");
+            throw new ConfigurationException("Cannot rotate master key while GNAS_MASTER_KEY environment variable is set.");
         await _sync.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -286,7 +286,7 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
             var key = Convert.FromBase64String(env);
             if (key.Length != 32)
             {
-                throw new ConfigurationException("GNAS_MASTER_KEY 必须是 base64 编码的 32 字节密钥。");
+                throw new ConfigurationException("GNAS_MASTER_KEY must be a base64-encoded 32-byte key.");
             }
 
             _masterKey = key;
@@ -316,7 +316,7 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
     {
         if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains("..", StringComparison.Ordinal))
         {
-            throw new ArgumentException("密钥名称无效。", nameof(name));
+            throw new ArgumentException("Invalid key name.", nameof(name));
         }
 
         return Path.Combine(_keyStoreDirectory, name + ".key");
@@ -336,7 +336,7 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
     {
         if (value.Length < 28)
         {
-            throw new CryptographicException("密文格式无效。");
+            throw new CryptographicException("Invalid ciphertext format.");
         }
 
         var nonce = value[..12];

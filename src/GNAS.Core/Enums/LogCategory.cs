@@ -1,32 +1,32 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 日志类别。
+/// Log category.
 /// </summary>
 public enum LogCategory
 {
     /// <summary>
-    /// 系统运行日志。
+    /// System runtime logs.
     /// </summary>
     System,
     /// <summary>
-    /// 安全审计日志。
+    /// Security audit logs.
     /// </summary>
     Audit,
     /// <summary>
-    /// 访问日志。
+    /// Access logs.
     /// </summary>
     Access,
     /// <summary>
-    /// Agent 日志。
+    /// Agent logs.
     /// </summary>
     Agent,
     /// <summary>
-    /// 链路追踪日志。
+    /// Trace logs.
     /// </summary>
     Trace,
     /// <summary>
-    /// 指标日志。
+    /// Metric logs.
     /// </summary>
     Metric,
 }

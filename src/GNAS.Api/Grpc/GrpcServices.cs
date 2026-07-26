@@ -13,14 +13,14 @@ using static GNAS.Api.Grpc.GrpcMappings;
 
 namespace GNAS.Api.Grpc;
 
-/// <summary>存储 gRPC 服务。</summary>
+/// <summary>Storage gRPC service.</summary>
 public sealed class StorageGrpcService : Proto.StorageService.StorageServiceBase
 {
     private readonly StorageModule storage;
     private readonly IDiskManager disks;
     private readonly IEventBus events;
 
-    /// <summary>初始化存储 gRPC 服务。</summary>
+    /// <summary>Initializes the storage gRPC service.</summary>
     public StorageGrpcService(StorageModule storage, IDiskManager disks, IEventBus events)
     {
         this.storage = storage;
@@ -70,13 +70,13 @@ public sealed class StorageGrpcService : Proto.StorageService.StorageServiceBase
     private static Proto.PageInfo Page(int count) => new() { TotalCount = count, HasMore = false };
 }
 
-/// <summary>共享 gRPC 服务。</summary>
+/// <summary>Share gRPC service.</summary>
 public sealed class ShareGrpcService : Proto.ShareService.ShareServiceBase
 {
     private readonly ShareModule shares;
     private readonly IEventBus events;
 
-    /// <summary>初始化共享 gRPC 服务。</summary>
+    /// <summary>Initializes the share gRPC service.</summary>
     public ShareGrpcService(ShareModule shares, IEventBus events) { this.shares = shares; this.events = events; }
 
     /// <inheritdoc />
@@ -116,14 +116,14 @@ public sealed class ShareGrpcService : Proto.ShareService.ShareServiceBase
     private static Proto.ShareProtocol ToProtoProtocol(string value) => value.ToLowerInvariant() switch { "smb" => Proto.ShareProtocol.Smb, "nfs" => Proto.ShareProtocol.Nfs, "ftp" => Proto.ShareProtocol.Ftp, "sftp" => Proto.ShareProtocol.Sftp, "webdav" => Proto.ShareProtocol.Webdav, _ => Proto.ShareProtocol.Unknown };
 }
 
-/// <summary>Agent gRPC 服务。</summary>
+/// <summary>Agent gRPC service.</summary>
 public sealed class AgentGrpcService : Proto.AgentService.AgentServiceBase
 {
     private readonly AgentModule agents;
     private readonly IAgentCatalog catalog;
     private readonly MemoryLogStore logs;
 
-    /// <summary>初始化 Agent gRPC 服务。</summary>
+    /// <summary>Initializes the Agent gRPC service.</summary>
     public AgentGrpcService(AgentModule agents, IAgentCatalog catalog, MemoryLogStore logs) { this.agents = agents; this.catalog = catalog; this.logs = logs; }
 
     /// <inheritdoc />
@@ -139,7 +139,7 @@ public sealed class AgentGrpcService : Proto.AgentService.AgentServiceBase
     public override async Task<Proto.DeployAgentResponse> DeployAgent(Proto.DeployAgentRequest request, ServerCallContext context)
     {
         var ownerToken = ExtractBearerToken(context.RequestHeaders)
-            ?? throw new RpcException(new Status(StatusCode.Unauthenticated, "缺少 Bearer token。"));
+            ?? throw new RpcException(new Status(StatusCode.Unauthenticated, "Missing Bearer token."));
         var service = await agents.DeployAgentAsync(request.TemplateId, ToCore(request.Config), ownerToken, context.CancellationToken).ConfigureAwait(false);
         return new Proto.DeployAgentResponse { Success = true, AgentId = request.Config.AgentId, ComposeFilePath = service.ComposeFile ?? string.Empty, ErrorCode = Proto.ErrorCode.Ok };
     }
@@ -184,13 +184,13 @@ public sealed class AgentGrpcService : Proto.AgentService.AgentServiceBase
     }
 }
 
-/// <summary>服务总线 gRPC 服务。</summary>
+/// <summary>Service bus gRPC service.</summary>
 public sealed class ServiceBusGrpcService : Proto.ServiceBusService.ServiceBusServiceBase
 {
     private readonly IServiceSupervisor supervisor;
     private readonly IEventBus events;
 
-    /// <summary>初始化服务总线 gRPC 服务。</summary>
+    /// <summary>Initializes the service bus gRPC service.</summary>
     public ServiceBusGrpcService(IServiceSupervisor supervisor, IEventBus events) { this.supervisor = supervisor; this.events = events; }
 
     /// <inheritdoc />
@@ -216,13 +216,13 @@ public sealed class ServiceBusGrpcService : Proto.ServiceBusService.ServiceBusSe
     private static Proto.ServiceActionResult ServiceOk(string serviceId, string message) => new() { Success = true, ServiceId = serviceId, Message = message, ErrorCode = Proto.ErrorCode.Ok };
 }
 
-/// <summary>审计 gRPC 服务。</summary>
+/// <summary>Audit gRPC service.</summary>
 public sealed class AuditGrpcService : Proto.AuditService.AuditServiceBase
 {
     private readonly MemoryLogStore logs;
     private readonly IAuditChain chain;
 
-    /// <summary>初始化审计 gRPC 服务。</summary>
+    /// <summary>Initializes the audit gRPC service.</summary>
     public AuditGrpcService(MemoryLogStore logs, IAuditChain chain) { this.logs = logs; this.chain = chain; }
 
     /// <inheritdoc />

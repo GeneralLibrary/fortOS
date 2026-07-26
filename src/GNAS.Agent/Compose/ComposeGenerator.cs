@@ -9,7 +9,7 @@ using YamlDotNet.RepresentationModel;
 namespace GNAS.Agent.Compose;
 
 /// <summary>
-/// 生成 Agent Docker Compose 与私有环境变量文件。
+/// Generates Agent Docker Compose and private environment variable files.
 /// </summary>
 public sealed class ComposeGenerator : IComposeGenerator
 {
@@ -17,7 +17,7 @@ public sealed class ComposeGenerator : IComposeGenerator
     private readonly IGnasConfiguration? _configuration;
 
     /// <summary>
-    /// 初始化 Compose 生成器。
+    /// Initialize the Compose generator.
     /// </summary>
     public ComposeGenerator(ITokenBroker tokenBroker, IGnasConfiguration? configuration = null)
     {
@@ -39,7 +39,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         var composeText = SerializeYaml(yaml);
         if (composeText.Contains(tokenResult.Token, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("生成的 compose.yml 不能包含原始 Agent token。");
+            throw new InvalidOperationException("The generated compose.yml must not contain the raw Agent token.");
         }
 
         ParseYaml(composeText);
@@ -66,7 +66,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         var parsed = Template.Parse(text);
         if (parsed.HasErrors)
         {
-            throw new InvalidDataException("Compose 模板 Scriban 解析失败：" + string.Join("; ", parsed.Messages.Select(m => m.Message)));
+            throw new InvalidDataException("Compose template Scriban parsing failed: " + string.Join("; ", parsed.Messages.Select(m => m.Message)));
         }
 
         var variables = new ScriptObject();
@@ -94,7 +94,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         }
         catch (YamlException ex)
         {
-            throw new InvalidDataException("Compose YAML 无效。", ex);
+            throw new InvalidDataException("Compose YAML is invalid.", ex);
         }
     }
 
@@ -109,7 +109,7 @@ public sealed class ComposeGenerator : IComposeGenerator
     {
         if (stream.Documents.Count == 0 || stream.Documents[0].RootNode is not YamlMappingNode root)
         {
-            throw new InvalidDataException("Compose YAML 根节点必须是映射。");
+            throw new InvalidDataException("Compose YAML root node must be a mapping.");
         }
 
         var services = GetOrAddMapping(root, "services");

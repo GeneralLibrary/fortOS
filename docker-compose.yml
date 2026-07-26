@@ -1,4 +1,4 @@
-# GNAS 自部署参考 (参见 docs/gnas-architecture.md §13.2)
+# GNAS self-deployment reference (see docs/gnas-architecture.md §13.2)
 services:
   gnas-core:
     image: gnas/core:latest

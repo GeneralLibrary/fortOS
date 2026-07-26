@@ -3,12 +3,12 @@ using GNAS.Core;
 
 namespace GNAS.Observability.Logging.Stages;
 
-/// <summary>原始日志解析阶段。</summary>
+/// <summary>Raw log parsing stage.</summary>
 public sealed class ParseStage
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>解析原始文本为日志条目。</summary>
+    /// <summary>Parse raw text into a log entry.</summary>
     public Task<LogEntry> ProcessRawAsync(string rawText, LogCategory category, string sourceComponent, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

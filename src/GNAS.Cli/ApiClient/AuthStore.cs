@@ -2,19 +2,19 @@ using System.Text.Json;
 
 namespace GNAS.Cli.ApiClient;
 
-/// <summary>管理本机 GNAS CLI 认证资料。</summary>
+/// <summary>Manages local GNAS CLI authentication data.</summary>
 public sealed class AuthStore
 {
-    /// <summary>已保存的服务器 URL。</summary>
+    /// <summary>Saved server URL.</summary>
     public string? Server { get; init; }
 
-    /// <summary>已保存的访问令牌或刷新令牌。</summary>
+    /// <summary>Saved access token or refresh token.</summary>
     public string? Token { get; init; }
 
-    /// <summary>返回默认配置文件路径。</summary>
+    /// <summary>Returns the default configuration file path.</summary>
     public static string ConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gnas", "config.json");
 
-    /// <summary>读取本机认证资料，无法读取时返回空资料。</summary>
+    /// <summary>Reads local authentication data, returns empty data on failure.</summary>
     public static AuthStore Load()
     {
         try
@@ -29,7 +29,7 @@ public sealed class AuthStore
         }
     }
 
-    /// <summary>保存服务器 URL 与令牌。</summary>
+    /// <summary>Saves server URL and token.</summary>
     public static void Save(string? server, string? token)
     {
         var path = ConfigPath;
@@ -39,7 +39,7 @@ public sealed class AuthStore
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
-    /// <summary>清除已保存的令牌但保留服务器 URL。</summary>
+    /// <summary>Clears saved token but preserves server URL.</summary>
     public static void SaveToken(string? server, string? token) => Save(server, token);
 
 }

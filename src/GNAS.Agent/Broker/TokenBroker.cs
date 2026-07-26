@@ -5,7 +5,8 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Agent.Broker;
 
 /// <summary>
-/// 对 Agent 令牌签发、续期与吊销执行能力收窄和审计。
+/// Performs capability narrowing and auditing for Agent token issuance,
+/// renewal, and revocation.
 /// </summary>
 public sealed class TokenBroker : ITokenBroker
 {
@@ -15,7 +16,7 @@ public sealed class TokenBroker : ITokenBroker
     private readonly AgentTokenRegistry _registry;
 
     /// <summary>
-    /// 初始化 Agent 令牌代理。
+    /// Initialize the Agent token broker.
     /// </summary>
     public TokenBroker(ITokenManager tokenManager, ILogPipeline logPipeline, AgentTokenRegistry? registry = null)
     {
@@ -34,7 +35,7 @@ public sealed class TokenBroker : ITokenBroker
             var owner = await _tokenManager.ValidateTokenAsync(ownerToken, ct).ConfigureAwait(false);
             if (!owner.IsValid)
             {
-                throw new TokenValidationException(owner.ErrorMessage ?? "Owner token 无效。");
+                throw new TokenValidationException(owner.ErrorMessage ?? "Owner token is invalid.");
             }
 
             var ownerSet = BuildAbilitySet(owner.Capabilities);
@@ -71,7 +72,7 @@ public sealed class TokenBroker : ITokenBroker
             var validation = await _tokenManager.ValidateTokenAsync(renewed, ct).ConfigureAwait(false);
             if (!validation.IsValid)
             {
-                throw new TokenValidationException(validation.ErrorMessage ?? "续期后的 Agent token 无效。");
+                throw new TokenValidationException(validation.ErrorMessage ?? "Renewed Agent token is invalid.");
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -101,7 +102,7 @@ public sealed class TokenBroker : ITokenBroker
         {
             if (!_registry.Remove(agentId, out var state) || string.IsNullOrWhiteSpace(state?.Jti))
             {
-                throw new TokenValidationException($"Agent {agentId} 没有可吊销的已知令牌。");
+                throw new TokenValidationException($"Agent {agentId} has no known revocable token.");
             }
 
             await _tokenManager.RevokeTokenAsync(state.Jti, reason, ct).ConfigureAwait(false);
@@ -132,12 +133,12 @@ public sealed class TokenBroker : ITokenBroker
             var isAdmin = string.Equals(required.Domain, "admin", StringComparison.OrdinalIgnoreCase);
             if (isAdmin && !ownerSet.Satisfies("admin:**"))
             {
-                throw new PermissionDeniedException($"Owner token 不允许向 Agent 委派管理能力：{capability}。");
+                throw new PermissionDeniedException($"Owner token is not allowed to delegate administrative capability to Agent: {capability}.");
             }
 
             if (!ownerSet.Satisfies(required))
             {
-                throw new PermissionDeniedException($"Owner token 不满足 Agent 请求能力：{capability}。");
+                throw new PermissionDeniedException($"Owner token does not satisfy the Agent requested capability: {capability}.");
             }
         }
     }

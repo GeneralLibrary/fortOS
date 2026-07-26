@@ -1,18 +1,18 @@
 namespace GNAS.Core;
 
-/// <summary>进程管理抽象。</summary>
+/// <summary>Process management abstraction.</summary>
 public interface IProcessManager
 {
-    /// <summary>启动进程。</summary>
+    /// <summary>Start a process.</summary>
     Task<ProcessInfo> StartProcessAsync(ProcessStartConfig config, CancellationToken ct);
-    /// <summary>停止进程。</summary>
+    /// <summary>Stop a process.</summary>
     Task StopProcessAsync(int pid, TimeSpan gracefulTimeout, CancellationToken ct);
-    /// <summary>获取进程信息。</summary>
+    /// <summary>Get process information.</summary>
     Task<ProcessInfo?> GetProcessAsync(int pid, CancellationToken ct);
-    /// <summary>执行命令并等待完成。</summary>
+    /// <summary>Execute a command and wait for completion.</summary>
     Task<CommandResult> ExecuteCommandAsync(ProcessStartConfig config, CancellationToken ct);
-    /// <summary>启用系统服务。</summary>
+    /// <summary>Enable a system service.</summary>
     Task EnableServiceAsync(string serviceName, CancellationToken ct);
-    /// <summary>禁用系统服务。</summary>
+    /// <summary>Disable a system service.</summary>
     Task DisableServiceAsync(string serviceName, CancellationToken ct);
 }

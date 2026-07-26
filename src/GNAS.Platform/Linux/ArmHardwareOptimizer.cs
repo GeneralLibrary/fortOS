@@ -8,31 +8,31 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.Platform.Linux;
 
 /// <summary>
-/// ARM 硬件优化器。
+/// ARM hardware optimizer.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed class ArmHardwareOptimizer
 {
     private readonly CommandExecutor _executor;
 
-    /// <summary>初始化 ARM 硬件优化器。</summary>
-    /// <param name="logger">日志记录器。</param>
+    /// <summary>Initializes the ARM hardware optimizer.</summary>
+    /// <param name="logger">Logger.</param>
     public ArmHardwareOptimizer(ILogger<ArmHardwareOptimizer> logger)
     {
         _executor = new CommandExecutor(logger);
     }
 
-    /// <summary>检测根文件系统是否位于 SD 卡。</summary>
-    /// <returns>如果根设备可移动则返回 true。</returns>
+    /// <summary>Detects whether the root file system is on an SD card.</summary>
+    /// <returns>True if the root device is removable.</returns>
     public bool IsRootOnSdCard() => GetRootBlockDevice() is { } device && IsRemovable(device);
 
-    /// <summary>检测根文件系统是否位于 SSD。</summary>
-    /// <returns>如果根设备不可旋转且不可移动则返回 true。</returns>
+    /// <summary>Detects whether the root file system is on an SSD.</summary>
+    /// <returns>True if the root device is non-rotational and non-removable.</returns>
     public bool IsRootOnSsd() => GetRootBlockDevice() is { } device && !IsRemovable(device) && !IsRotational(device);
 
-    /// <summary>计算建议的 Docker 内存限制。</summary>
-    /// <param name="reserveBytes">保留给系统的字节数。</param>
-    /// <returns>建议限制字节数。</returns>
+    /// <summary>Computes the recommended Docker memory limit.</summary>
+    /// <param name="reserveBytes">Bytes to reserve for the system.</param>
+    /// <returns>Recommended limit in bytes.</returns>
     public long GetRecommendedDockerMemoryLimitBytes(long reserveBytes = 512L * 1024 * 1024)
     {
         var total = GetTotalMemoryBytes();
@@ -40,9 +40,9 @@ public sealed class ArmHardwareOptimizer
         return Math.Max(total / 2, total - reserveBytes);
     }
 
-    /// <summary>读取硬件温度。</summary>
-    /// <param name="ct">取消令牌。</param>
-    /// <returns>温度摄氏度，无法读取时为空。</returns>
+    /// <summary>Reads the hardware temperature.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Temperature in Celsius, or null if unreadable.</returns>
     public async Task<double?> ReadTemperatureCelsiusAsync(CancellationToken ct)
     {
         CommandResult? vcgen = null;

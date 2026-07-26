@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Logging;
 
-/// <summary>基于有界通道的五阶段日志管线。</summary>
+/// <summary>Five-stage log pipeline based on bounded channels.</summary>
 public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
 {
     private readonly Channel<LogEntry> _channel;
@@ -17,7 +17,7 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     private Task? _consumer;
     private int _disposed;
 
-    /// <summary>初始化日志管线。</summary>
+    /// <summary>Initialize log pipeline.</summary>
     public LogPipeline(IEnumerable<ILogStore> stores, IGnasConfiguration? configuration = null, IAuditChain? auditChain = null, ILogger<LogPipeline>? logger = null)
     {
         _logger = logger;
@@ -78,7 +78,7 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
         await ProcessAsync(entry, ct).ConfigureAwait(false);
     }
 
-    /// <summary>尝试非阻塞写入日志。</summary>
+    /// <summary>Attempt non-blocking log write.</summary>
     public bool TryEnqueue(LogEntry entry) => _channel.Writer.TryWrite(entry);
 
     private async Task ConsumeAsync(CancellationToken ct)
@@ -111,7 +111,7 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger?.LogError(ex, "日志管线阶段处理失败。 ");
+                _logger?.LogError(ex, "Log pipeline stage processing failed.");
                 return;
             }
         }

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace GNAS.ServiceBus.Hosts;
 
 /// <summary>
-/// Docker Compose 容器服务宿主。
+/// Docker Compose container service host.
 /// </summary>
 public sealed class ContainerServiceHost : IServiceHost
 {
@@ -19,12 +19,12 @@ public sealed class ContainerServiceHost : IServiceHost
     private Task? _logsTask;
 
     /// <summary>
-    /// 初始化容器服务宿主。
+    /// Initialize the container service host.
     /// </summary>
-    /// <param name="processManager">进程管理器。</param>
-    /// <param name="eventBus">事件总线。</param>
-    /// <param name="logger">日志记录器。</param>
-    /// <param name="logPipeline">可选日志管线。</param>
+    /// <param name="processManager">Process manager.</param>
+    /// <param name="eventBus">Event bus.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="logPipeline">Optional log pipeline.</param>
     public ContainerServiceHost(IProcessManager processManager, IEventBus eventBus, ILogger<ContainerServiceHost> logger, ILogPipeline? logPipeline = null)
     {
         _processManager = processManager;
@@ -42,7 +42,7 @@ public sealed class ContainerServiceHost : IServiceHost
         ArgumentNullException.ThrowIfNull(definition);
         if (string.IsNullOrWhiteSpace(definition.ComposeFile))
         {
-            throw new ArgumentException("容器服务必须配置 Compose 文件。", nameof(definition));
+            throw new ArgumentException("Container service must have a Compose file configured.", nameof(definition));
         }
 
         _definition = definition;
@@ -161,7 +161,7 @@ public sealed class ContainerServiceHost : IServiceHost
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "容器日志跟随失败: {ServiceId}", serviceId);
+            _logger.LogError(ex, "Container log follow failed: {ServiceId}", serviceId);
         }
     }
 

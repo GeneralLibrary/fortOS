@@ -5,13 +5,13 @@ using Microsoft.Extensions.Logging;
 
 namespace GNAS.Observability.Alerts.Notifiers;
 
-/// <summary>基于 SMTP 的邮件告警通知器。</summary>
+/// <summary>Email alert notifier based on SMTP.</summary>
 public sealed class EmailNotifier : INotifier
 {
     private readonly IGnasConfiguration _configuration;
     private readonly ILogger<EmailNotifier>? _logger;
 
-    /// <summary>初始化邮件通知器。</summary>
+    /// <summary>Initialize email notifier.</summary>
     public EmailNotifier(IGnasConfiguration configuration, ILogger<EmailNotifier>? logger = null)
     {
         _configuration = configuration;
@@ -26,7 +26,7 @@ public sealed class EmailNotifier : INotifier
         var recipients = _configuration.GetArray("alerts:smtp:to");
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(from) || recipients.Length == 0)
         {
-            _logger?.LogWarning("SMTP 未配置，跳过邮件告警。 ");
+            _logger?.LogWarning("SMTP not configured, skipping email alert.");
             return;
         }
 

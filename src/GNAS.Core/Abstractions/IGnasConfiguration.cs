@@ -1,14 +1,14 @@
 namespace GNAS.Core;
 
-/// <summary>GNAS 配置读取接口。</summary>
+/// <summary>GNAS configuration read interface.</summary>
 public interface IGnasConfiguration
 {
-    /// <summary>获取字符串配置值。</summary>
+    /// <summary>Get a string configuration value.</summary>
     string? GetValue(string key);
-    /// <summary>获取数组配置值。</summary>
+    /// <summary>Get an array configuration value.</summary>
     string[] GetArray(string key);
-    /// <summary>获取配置段。</summary>
+    /// <summary>Get a configuration section.</summary>
     IReadOnlyDictionary<string, string> GetSection(string key);
-    /// <summary>重新加载配置。</summary>
+    /// <summary>Reload configuration.</summary>
     Task ReloadAsync(CancellationToken ct);
 }

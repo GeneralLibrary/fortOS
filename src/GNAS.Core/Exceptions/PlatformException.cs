@@ -1,15 +1,15 @@
 namespace GNAS.Core;
 
 /// <summary>
-/// 平台调用异常。
+/// Exception thrown for platform invocation errors.
 /// </summary>
 public class PlatformException : GnasException
 {
-    /// <summary>初始化 平台调用异常。</summary>
-    /// <param name="message">异常消息。</param>
-    /// <param name="errorCode">错误码。</param>
-    /// <param name="traceId">链路追踪标识。</param>
-    /// <param name="innerException">内部异常。</param>
+    /// <summary>Initialize a platform exception.</summary>
+    /// <param name="message">Exception message.</param>
+    /// <param name="errorCode">Error code.</param>
+    /// <param name="traceId">Trace ID.</param>
+    /// <param name="innerException">Inner exception.</param>
     public PlatformException(string message, string errorCode = "PLATFORM_ERROR", string? traceId = null, Exception? innerException = null)
         : base(message, errorCode, traceId, innerException)
     {

@@ -3,10 +3,10 @@ using GNAS.Core;
 
 namespace GNAS.Modules.Share.Services;
 
-/// <summary>SMB 配置生成器。</summary>
+/// <summary>SMB configuration generator.</summary>
 public sealed class SmbConfigGenerator
 {
-    /// <summary>生成 smb.conf 内容。</summary>
+    /// <summary>Generate smb.conf content.</summary>
     public string Generate(IEnumerable<ShareDefinition> shares)
     {
         var sb = new StringBuilder();

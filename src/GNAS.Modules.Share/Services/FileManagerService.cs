@@ -6,7 +6,7 @@ using GNAS.Core;
 namespace GNAS.Modules.Share.Services;
 
 /// <summary>
-/// 受限于 NAS 沙箱根目录的文件管理服务。
+/// File management service restricted to the NAS sandbox root directory.
 /// </summary>
 public sealed partial class FileManagerService
 {
@@ -16,7 +16,7 @@ public sealed partial class FileManagerService
     private readonly IDatabaseProvider? _database;
 
     /// <summary>
-    /// 初始化文件管理服务。
+    /// Initialize the file management service.
     /// </summary>
     public FileManagerService(IGnasConfiguration? configuration = null, ShareModule? shareModule = null, IProcessManager? processManager = null, IDatabaseProvider? database = null)
     {
@@ -26,13 +26,13 @@ public sealed partial class FileManagerService
         _database = database;
     }
 
-    /// <summary>列出目录。</summary>
+    /// <summary>List directory contents.</summary>
     public async Task<IReadOnlyList<ManagedFileEntry>> ListAsync(string path, bool recursive, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (!Directory.Exists(fullPath))
         {
-            throw new DirectoryNotFoundException($"目录不存在：{fullPath}");
+            throw new DirectoryNotFoundException($"Directory does not exist: {fullPath}");
         }
 
         var entries = new List<ManagedFileEntry>();
@@ -74,41 +74,41 @@ public sealed partial class FileManagerService
         return entries.OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    /// <summary>读取文件内容。</summary>
+    /// <summary>Read file content.</summary>
     public async Task<ManagedFileContent> ReadAsync(string path, bool asBase64, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (!File.Exists(fullPath))
         {
-            throw new FileNotFoundException("文件不存在。", fullPath);
+            throw new FileNotFoundException("File does not exist.", fullPath);
         }
 
         var max = ReadMaximumLegacyBytes();
         var info = new FileInfo(fullPath);
-        if (info.Length > max) throw new IOException($"旧 JSON 内容接口最多支持 {max} 字节；请使用流式下载。");
+        if (info.Length > max) throw new IOException($"The legacy JSON content interface supports a maximum of {max} bytes; please use streaming download.");
         var bytes = await File.ReadAllBytesAsync(fullPath, ct).ConfigureAwait(false);
         return asBase64
             ? new ManagedFileContent { Path = fullPath, Encoding = "base64", Content = Convert.ToBase64String(bytes), SizeBytes = bytes.LongLength }
             : new ManagedFileContent { Path = fullPath, Encoding = "text", Content = Encoding.UTF8.GetString(bytes), SizeBytes = bytes.LongLength };
     }
 
-    /// <summary>写入文件。</summary>
+    /// <summary>Write file.</summary>
     public async Task<ManagedFileStat> WriteAsync(string path, string content, string encoding, bool overwrite, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (File.Exists(fullPath) && !overwrite)
         {
-            throw new IOException($"文件已存在：{fullPath}");
+            throw new IOException($"File already exists: {fullPath}");
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        if (Encoding.UTF8.GetByteCount(content) > ReadMaximumLegacyBytes()) throw new IOException("旧 JSON/base64 写入接口的内容超出限制；请使用可恢复上传。");
+        if (Encoding.UTF8.GetByteCount(content) > ReadMaximumLegacyBytes()) throw new IOException("The legacy JSON/base64 write interface content exceeds the limit; please use resumable upload.");
         var bytes = DecodeContent(content, encoding);
         await File.WriteAllBytesAsync(fullPath, bytes, ct).ConfigureAwait(false);
         return await StatAsync(fullPath, ct).ConfigureAwait(false);
     }
 
-    /// <summary>创建目录。</summary>
+    /// <summary>Create directory.</summary>
     public async Task<ManagedFileStat> CreateDirectoryAsync(string path, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
@@ -123,7 +123,7 @@ public sealed partial class FileManagerService
         };
     }
 
-    /// <summary>移动路径。</summary>
+    /// <summary>Move path.</summary>
     public async Task<ManagedFileStat> MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken ct)
     {
         var source = await ResolvePathAsync(sourcePath, ct).ConfigureAwait(false);
@@ -141,7 +141,7 @@ public sealed partial class FileManagerService
             {
                 if (!overwrite)
                 {
-                    throw new IOException($"目标目录已存在：{destination}");
+                    throw new IOException($"Target directory already exists: {destination}");
                 }
 
                 Directory.Delete(destination, recursive: true);
@@ -153,7 +153,7 @@ public sealed partial class FileManagerService
         return await StatAsync(destination, ct).ConfigureAwait(false);
     }
 
-    /// <summary>复制路径。</summary>
+    /// <summary>Copy path.</summary>
     public async Task<ManagedFileStat> CopyAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken ct)
     {
         var source = await ResolvePathAsync(sourcePath, ct).ConfigureAwait(false);
@@ -170,7 +170,7 @@ public sealed partial class FileManagerService
         return await StatAsync(destination, ct).ConfigureAwait(false);
     }
 
-    /// <summary>删除路径（软删或硬删）。</summary>
+    /// <summary>Delete path (soft delete or hard delete).</summary>
     public async Task<ManagedDeleteResult> DeleteAsync(string path, bool hardDelete, string requestedBy, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
@@ -190,7 +190,7 @@ public sealed partial class FileManagerService
         };
     }
 
-    /// <summary>恢复软删路径。</summary>
+    /// <summary>Restore softly deleted path.</summary>
     public async Task<ManagedFileStat> RestoreAsync(string recyclePath, string targetPath, CancellationToken ct)
     {
         var source = await ResolvePathAsync(recyclePath, ct).ConfigureAwait(false);
@@ -198,7 +198,7 @@ public sealed partial class FileManagerService
         if (!source.Contains($"{Path.DirectorySeparatorChar}.recycle{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
             && !source.Contains("/.recycle/", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException("恢复源路径必须位于 .recycle 目录下。", nameof(recyclePath));
+            throw new ArgumentException("The restore source path must be located under the .recycle directory.", nameof(recyclePath));
         }
 
         EnsureExists(source);
@@ -220,7 +220,7 @@ public sealed partial class FileManagerService
         return await StatAsync(destination, ct).ConfigureAwait(false);
     }
 
-    /// <summary>查询路径元数据。</summary>
+    /// <summary>Query path metadata.</summary>
     public async Task<ManagedFileStat> StatAsync(string path, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
@@ -260,27 +260,27 @@ public sealed partial class FileManagerService
         };
     }
 
-    /// <summary>设置 Linux 权限位。</summary>
+    /// <summary>Set Linux permission bits.</summary>
     public async Task ApplyChmodAsync(string path, string mode, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
         EnsureExists(fullPath);
         if (!ModeRegex().IsMatch(mode))
         {
-            throw new ArgumentException("chmod 模式必须是 3-4 位八进制数字。", nameof(mode));
+            throw new ArgumentException("chmod mode must be a 3-4 digit octal number.", nameof(mode));
         }
 
         await ExecuteUnixCommandAsync("chmod", $"{mode} {Quote(fullPath)}", ct).ConfigureAwait(false);
     }
 
-    /// <summary>设置 Linux 所有者。</summary>
+    /// <summary>Set Linux owner.</summary>
     public async Task ApplyChownAsync(string path, string owner, CancellationToken ct)
     {
         var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
         EnsureExists(fullPath);
         if (!OwnerRegex().IsMatch(owner))
         {
-            throw new ArgumentException("chown owner 格式非法，应为 user 或 user:group。", nameof(owner));
+            throw new ArgumentException("chown owner format is invalid; should be user or user:group.", nameof(owner));
         }
 
         await ExecuteUnixCommandAsync("chown", $"{owner} {Quote(fullPath)}", ct).ConfigureAwait(false);
@@ -291,7 +291,7 @@ public sealed partial class FileManagerService
             ? Convert.FromBase64String(content)
             : Encoding.UTF8.GetBytes(content);
 
-    /// <summary>创建持久化可恢复上传会话，临时文件与目标文件位于同一目录以保证替换原子性。</summary>
+    /// <summary>Create a persistent resumable upload session; the temporary file and target file are in the same directory to ensure atomic replacement.</summary>
     public async Task<UploadSession> CreateUploadSessionAsync(string targetPath, string subject, long? expectedSize, string? expectedSha256, CancellationToken ct)
     {
         var database = RequireDatabase();
@@ -414,7 +414,7 @@ public sealed partial class FileManagerService
         await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
-    private IDatabaseProvider RequireDatabase() => _database ?? throw new InvalidOperationException("上传需要 IDatabaseProvider。");
+    private IDatabaseProvider RequireDatabase() => _database ?? throw new InvalidOperationException("Upload requires IDatabaseProvider.");
     private long ReadMaximumLegacyBytes() => Math.Clamp(long.TryParse(_configuration?.GetValue("files:legacy_max_bytes"), out var value) ? value : 1024 * 1024, 1, 16 * 1024 * 1024);
 
     private async Task<string> ResolvePathAsync(string path, CancellationToken ct)
@@ -422,7 +422,7 @@ public sealed partial class FileManagerService
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (path.Contains('\n') || path.Contains('\r'))
         {
-            throw new ArgumentException("路径不能包含换行。", nameof(path));
+            throw new ArgumentException("Path cannot contain newlines.", nameof(path));
         }
 
         var fullPath = Path.GetFullPath(path);
@@ -430,7 +430,7 @@ public sealed partial class FileManagerService
         var allowedRoots = await GetAllowedRootsAsync(ct).ConfigureAwait(false);
         if (!allowedRoots.Any(root => IsPathUnderRoot(normalizedPath, root)))
         {
-            throw new PermissionDeniedException($"路径超出允许目录：{path}");
+            throw new PermissionDeniedException($"Path exceeds allowed directories: {path}");
         }
 
         return fullPath;
@@ -531,7 +531,7 @@ public sealed partial class FileManagerService
             .FirstOrDefault();
         if (root is null)
         {
-            throw new PermissionDeniedException($"路径不在共享目录或数据根目录下：{path}");
+            throw new PermissionDeniedException($"Path is not under a shared directory or the data root directory: {path}");
         }
 
         return root.Original;
@@ -551,14 +551,14 @@ public sealed partial class FileManagerService
             return;
         }
 
-        throw new FileNotFoundException("路径不存在。", path);
+        throw new FileNotFoundException("Path does not exist.", path);
     }
 
     private static void EnsureExists(string path)
     {
         if (!File.Exists(path) && !Directory.Exists(path))
         {
-            throw new FileNotFoundException("路径不存在。", path);
+            throw new FileNotFoundException("Path does not exist.", path);
         }
     }
 
@@ -568,7 +568,7 @@ public sealed partial class FileManagerService
         {
             if (!overwrite)
             {
-                throw new IOException($"目标目录已存在：{destination}");
+                throw new IOException($"Target directory already exists: {destination}");
             }
 
             Directory.Delete(destination, recursive: true);
@@ -594,7 +594,7 @@ public sealed partial class FileManagerService
     {
         if (_processManager is null)
         {
-            throw new InvalidOperationException($"未注册 IProcessManager，无法执行 {executable}。");
+            throw new InvalidOperationException($"IProcessManager is not registered; cannot execute {executable}.");
         }
 
         var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
@@ -605,7 +605,7 @@ public sealed partial class FileManagerService
         }, ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new InvalidOperationException($"{executable} 执行失败：{result.Stderr}");
+            throw new InvalidOperationException($"{executable} execution failed: {result.Stderr}");
         }
     }
 
@@ -625,71 +625,71 @@ public sealed partial class FileManagerService
     private static partial Regex OwnerRegex();
 }
 
-/// <summary>文件列表项。</summary>
+/// <summary>File list entry.</summary>
 public sealed record ManagedFileEntry
 {
-    /// <summary>完整路径。</summary>
+    /// <summary>Full path.</summary>
     public required string Path { get; init; }
-    /// <summary>名称。</summary>
+    /// <summary>Name.</summary>
     public required string Name { get; init; }
-    /// <summary>是否目录。</summary>
+    /// <summary>Is directory.</summary>
     public required bool IsDirectory { get; init; }
-    /// <summary>文件大小；目录时为空。</summary>
+    /// <summary>File size; null for directories.</summary>
     public required long? SizeBytes { get; init; }
-    /// <summary>最后修改时间（UTC）。</summary>
+    /// <summary>Last modified time (UTC).</summary>
     public required DateTime? ModifiedAt { get; init; }
 }
 
-/// <summary>文件读取结果。</summary>
+/// <summary>File read result.</summary>
 public sealed record ManagedFileContent
 {
-    /// <summary>路径。</summary>
+    /// <summary>Path.</summary>
     public required string Path { get; init; }
-    /// <summary>编码（text/base64）。</summary>
+    /// <summary>Encoding (text/base64).</summary>
     public required string Encoding { get; init; }
-    /// <summary>内容。</summary>
+    /// <summary>Content.</summary>
     public required string Content { get; init; }
-    /// <summary>原始字节数。</summary>
+    /// <summary>Raw byte count.</summary>
     public required long SizeBytes { get; init; }
 }
 
-/// <summary>可恢复上传会话状态。</summary>
+/// <summary>Resumable upload session state.</summary>
 public sealed record UploadSession(string SessionId, string TargetPath, long ReceivedBytes, long? ExpectedSize, string? ExpectedSha256, string State, DateTimeOffset ExpiresAt, string? Etag, string? TemporaryPath = null);
 
-/// <summary>客户端写入偏移与服务端不一致。</summary>
+/// <summary>Client write offset does not match server.</summary>
 public sealed class UploadOffsetConflictException(long expectedOffset) : IOException("UPLOAD_OFFSET_CONFLICT")
 {
     public long ExpectedOffset { get; } = expectedOffset;
 }
 
-/// <summary>上传完成时的版本条件失败。</summary>
+/// <summary>Version condition failed on upload completion.</summary>
 public sealed class UploadVersionConflictException(string? currentEtag) : IOException("UPLOAD_VERSION_CONFLICT")
 {
     public string? CurrentEtag { get; } = currentEtag;
 }
 
-/// <summary>文件或目录元数据。</summary>
+/// <summary>File or directory metadata.</summary>
 public sealed record ManagedFileStat
 {
-    /// <summary>路径。</summary>
+    /// <summary>Path.</summary>
     public required string Path { get; init; }
-    /// <summary>是否存在。</summary>
+    /// <summary>Whether it exists.</summary>
     public required bool Exists { get; init; }
-    /// <summary>是否目录。</summary>
+    /// <summary>Is directory.</summary>
     public required bool IsDirectory { get; init; }
-    /// <summary>大小；目录时为空。</summary>
+    /// <summary>Size; null for directories.</summary>
     public required long? SizeBytes { get; init; }
-    /// <summary>最后修改时间（UTC）。</summary>
+    /// <summary>Last modified time (UTC).</summary>
     public required DateTime? ModifiedAt { get; init; }
 }
 
-/// <summary>删除结果。</summary>
+/// <summary>Delete result.</summary>
 public sealed record ManagedDeleteResult
 {
-    /// <summary>删除目标路径。</summary>
+    /// <summary>Deleted target path.</summary>
     public required string DeletedPath { get; init; }
-    /// <summary>是否硬删除。</summary>
+    /// <summary>Whether hard deleted.</summary>
     public required bool HardDeleted { get; init; }
-    /// <summary>软删除后的回收站路径。</summary>
+    /// <summary>Recycle bin path after soft delete.</summary>
     public string? RecyclePath { get; init; }
 }

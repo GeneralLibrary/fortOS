@@ -1,8 +1,8 @@
 namespace GNAS.Core;
 
-/// <summary>权限决策引擎接口。</summary>
+/// <summary>Permission decision engine interface.</summary>
 public interface IPermissionEngine
 {
-    /// <summary>检查权限。</summary>
+    /// <summary>Check permissions.</summary>
     Task<PermissionResult> CheckPermissionAsync(string token, string requiredCapability, string? resourcePath, NasDataLevel dataLevel, CancellationToken ct);
 }

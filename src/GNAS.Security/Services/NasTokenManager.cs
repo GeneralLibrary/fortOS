@@ -11,7 +11,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace GNAS.Security.Services;
 
 /// <summary>
-/// 基于 RS256 JWT 的 NAS 令牌管理器。
+/// NAS token manager based on RS256 JWT.
 /// </summary>
 public sealed class NasTokenManager : ITokenManager
 {
@@ -24,11 +24,11 @@ public sealed class NasTokenManager : ITokenManager
     private readonly ConcurrentDictionary<string, bool> _revocationCache = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 初始化令牌管理器。
+    /// Initialize the token manager.
     /// </summary>
-    /// <param name="keyStore">密钥存储。</param>
-    /// <param name="database">数据库提供器。</param>
-    /// <param name="configuration">可选配置。</param>
+    /// <param name="keyStore">Key store.</param>
+    /// <param name="database">Database provider.</param>
+    /// <param name="configuration">Optional configuration.</param>
     public NasTokenManager(INasKeyStore keyStore, IDatabaseProvider database, IGnasConfiguration? configuration = null)
     {
         _keyStore = keyStore;
@@ -41,12 +41,12 @@ public sealed class NasTokenManager : ITokenManager
     {
         if (string.IsNullOrWhiteSpace(subject))
         {
-            throw new ArgumentException("令牌主体不能为空。", nameof(subject));
+            throw new ArgumentException("Token subject cannot be empty.", nameof(subject));
         }
 
         if (trustLevel is < 0 or > 5)
         {
-            throw new ArgumentOutOfRangeException(nameof(trustLevel), "信任级别必须位于 0 到 5。");
+            throw new ArgumentOutOfRangeException(nameof(trustLevel), "Trust level must be between 0 and 5.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -79,14 +79,14 @@ public sealed class NasTokenManager : ITokenManager
     {
         if (string.IsNullOrWhiteSpace(token))
         {
-            return Failed("令牌不能为空。");
+            return Failed("Token cannot be empty.");
         }
 
         try
         {
             var keyId = ReadKeyId(token);
             var keyBytes = await _keyStore.GetSecretAsync($"signing-{keyId}", ct).ConfigureAwait(false);
-            if (keyBytes is null) return Failed("?????????");
+            if (keyBytes is null) return Failed("Signing key not found.");
             using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(keyBytes, out _);
             var validationKey = new RsaSecurityKey(rsa)
@@ -111,19 +111,19 @@ public sealed class NasTokenManager : ITokenManager
             var jti = principal.FindFirstValue(JwtRegisteredClaimNames.Jti) ?? principal.FindFirstValue(ClaimTypes.SerialNumber);
             if (string.IsNullOrWhiteSpace(jti))
             {
-                return Failed("令牌缺少 jti。");
+                return Failed("Token missing jti.");
             }
 
             if (await IsTokenRevokedAsync(jti, ct).ConfigureAwait(false))
             {
-                return Failed("令牌已被吊销。", jti: jti);
+                return Failed("Token has been revoked.", jti: jti);
             }
 
             var payload = BuildPayload(principal, jti);
             var expectedDevice = _configuration?.GetValue("security:device_binding") ?? Environment.GetEnvironmentVariable("GNAS_DEVICE_BINDING");
             if (!string.IsNullOrWhiteSpace(expectedDevice) && !string.Equals(expectedDevice, payload.DeviceBinding, StringComparison.Ordinal))
             {
-                return Failed("令牌设备绑定不匹配。", jti: jti);
+                return Failed("Token device binding does not match.", jti: jti);
             }
 
             return new GNAS.Core.TokenValidationResult
@@ -139,11 +139,11 @@ public sealed class NasTokenManager : ITokenManager
         }
         catch (SecurityTokenExpiredException ex)
         {
-            return Failed("令牌已过期。", ex);
+            return Failed("Token has expired.", ex);
         }
         catch (Exception ex) when (ex is SecurityTokenException or ArgumentException or FormatException or CryptographicException)
         {
-            return Failed($"令牌验证失败：{ex.Message}", ex);
+            return Failed($"Token validation failed: {ex.Message}", ex);
         }
     }
 
@@ -152,7 +152,7 @@ public sealed class NasTokenManager : ITokenManager
     {
         if (string.IsNullOrWhiteSpace(jti))
         {
-            throw new ArgumentException("jti 不能为空。", nameof(jti));
+            throw new ArgumentException("jti cannot be empty.", nameof(jti));
         }
 
         await EnsureSecurityTablesAsync(ct).ConfigureAwait(false);
@@ -172,7 +172,7 @@ public sealed class NasTokenManager : ITokenManager
         var validation = await ValidateTokenAsync(token, ct).ConfigureAwait(false);
         if (!validation.IsValid || validation.Payload is not NasTokenPayload payload)
         {
-            throw new TokenValidationException(validation.ErrorMessage ?? "令牌不可续期。");
+            throw new TokenValidationException(validation.ErrorMessage ?? "Token cannot be renewed.");
         }
 
         var lifetime = GetDefaultLifetime();

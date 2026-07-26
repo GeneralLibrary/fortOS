@@ -31,6 +31,6 @@ public class IdentityServiceTests
 
         var locked = await identity.AuthenticateLocalAsync("alice", "Password1", ct);
         Assert.False(locked.Success);
-        Assert.Contains("锁定", locked.ErrorMessage);
+        Assert.Contains("locked", locked.ErrorMessage);
     }
 }

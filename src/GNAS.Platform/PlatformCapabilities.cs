@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace GNAS.Platform;
 
 /// <summary>
-/// 平台能力探测结果。
+/// Platform capability detection result.
 /// </summary>
 public static class PlatformCapabilities
 {
@@ -14,25 +14,25 @@ public static class PlatformCapabilities
     private static readonly Lazy<bool> SupportsZfsValue = new(() => HasBinary("zfs"));
     private static readonly Lazy<long> TotalMemoryBytesValue = new(GetTotalMemoryBytesSafe);
 
-    /// <summary>是否支持 Docker。</summary>
+    /// <summary>Whether Docker is supported.</summary>
     public static bool SupportsDocker => SupportsDockerValue.Value;
 
-    /// <summary>是否支持 SMART 监控。</summary>
+    /// <summary>Whether SMART monitoring is supported.</summary>
     public static bool SupportsSmartMonitoring => SupportsSmartMonitoringValue.Value;
 
-    /// <summary>是否支持硬件 RAID。</summary>
+    /// <summary>Whether hardware RAID is supported.</summary>
     public static bool SupportsHardwareRaid => SupportsHardwareRaidValue.Value;
 
-    /// <summary>是否支持 TPM。</summary>
+    /// <summary>Whether TPM is supported.</summary>
     public static bool SupportsTpm => SupportsTpmValue.Value;
 
-    /// <summary>是否支持 ZFS。</summary>
+    /// <summary>Whether ZFS is supported.</summary>
     public static bool SupportsZfs => SupportsZfsValue.Value;
 
-    /// <summary>总内存字节数。</summary>
+    /// <summary>Total memory in bytes.</summary>
     public static long TotalMemoryBytes => TotalMemoryBytesValue.Value;
 
-    /// <summary>CPU 核心数。</summary>
+    /// <summary>Number of CPU cores.</summary>
     public static int CpuCores => Environment.ProcessorCount;
 
     private static bool HasBinary(string name)
