@@ -32,6 +32,8 @@ compose:
     {{.AgentId}}:
       image: "{{.ImageName}}"
       restart: unless-stopped
+      tmpfs:
+        - /var/cache/nginx:rw,noexec,nosuid,size=64m
       labels:
         gnas.template: nginx-basic
 """,

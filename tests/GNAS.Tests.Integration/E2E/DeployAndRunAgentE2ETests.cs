@@ -22,20 +22,21 @@ public sealed class DeployAndRunAgentE2ETests
         var generator = new ComposeGenerator(new FixedTokenBroker("e2e-agent-token"));
         var template = new AgentTemplate
         {
-            Id = "nginx-e2e",
-            Name = "Nginx E2E",
+            Id = "alpine-e2e",
+            Name = "Alpine E2E",
             Version = "1.0.0",
             ComposeTemplate = """
                 services:
                   {{.AgentId}}:
                     image: "{{.ImageName}}"
+                    command: ["tail", "-f", "/dev/null"]
                 """
         };
         var config = new AgentConfig
         {
-            AgentId = "nginx-e2e-" + Guid.NewGuid().ToString("N")[..8],
-            DisplayName = "Nginx E2E",
-            ImageName = "nginx:alpine",
+            AgentId = "alpine-e2e-" + Guid.NewGuid().ToString("N")[..8],
+            DisplayName = "Alpine E2E",
+            ImageName = "alpine:3.21",
             Capabilities = ["data:level:internal"]
         };
         var result = await generator.GenerateAsync(template, config, "owner-token", CancellationToken.None);

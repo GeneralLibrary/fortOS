@@ -133,7 +133,21 @@ public sealed class ComposeGenerator : IComposeGenerator
         service.Children[new YamlScalarNode("read_only")] = new YamlScalarNode("true");
         service.Children[new YamlScalarNode("security_opt")] = new YamlSequenceNode(new YamlScalarNode("no-new-privileges:true"));
         service.Children[new YamlScalarNode("cap_drop")] = new YamlSequenceNode(new YamlScalarNode("ALL"));
-        service.Children[new YamlScalarNode("tmpfs")] = new YamlSequenceNode(new YamlScalarNode("/tmp:rw,noexec,nosuid,size=64m"));
+        var existingTmpfs = service.Children.TryGetValue(new YamlScalarNode("tmpfs"), out var tmp) && tmp is YamlSequenceNode seq ? seq : null;
+        var mergedTmpfs = new YamlSequenceNode();
+        if (existingTmpfs is not null)
+        {
+            foreach (var child in existingTmpfs.Children)
+            {
+                mergedTmpfs.Add(child);
+            }
+        }
+        var hasTmp = existingTmpfs?.Children.OfType<YamlScalarNode>().Any(n => (n.Value ?? string.Empty).StartsWith("/tmp:", StringComparison.Ordinal)) == true;
+        if (!hasTmp)
+        {
+            mergedTmpfs.Add(new YamlScalarNode("/tmp:rw,noexec,nosuid,size=64m"));
+        }
+        service.Children[new YamlScalarNode("tmpfs")] = mergedTmpfs;
         service.Children.Remove(new YamlScalarNode("volumes"));
         service.Children[new YamlScalarNode("env_file")] = new YamlSequenceNode(new YamlScalarNode(".env"));
         var environment = GetOrAddMapping(service, "environment");
