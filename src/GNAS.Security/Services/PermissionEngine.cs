@@ -67,6 +67,18 @@ public sealed class PermissionEngine : IPermissionEngine
             return await DenyAsync(requiredCapability, dataLevel, validation.Subject, resourcePath, validation.ErrorMessage ?? "令牌无效。", ct).ConfigureAwait(false);
         }
 
+        if (payload.Capabilities.Satisfies(NAbilityConstants.AdminAll))
+        {
+            var adminResult = new PermissionResult
+            {
+                Granted = true,
+                RequiredDataLevel = dataLevel,
+                MatchedCapability = NAbilityConstants.AdminAll,
+            };
+            await PublishDecisionAsync(true, payload.Sub, requiredCapability, resourcePath, null, ct).ConfigureAwait(false);
+            return adminResult;
+        }
+
         var required = NAbility.Parse(requiredCapability);
         var matched = payload.Capabilities.FirstOrDefault(capability => capability.Matches(required));
         if (matched is null)

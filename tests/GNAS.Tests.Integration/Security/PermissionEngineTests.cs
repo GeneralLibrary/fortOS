@@ -45,4 +45,20 @@ public class PermissionEngineTests
         var overridden = await engine.CheckPermissionAsync(token, "files:file:read", "/shares/team/reports/q1.txt", NasDataLevel.Personal, CancellationToken.None);
         Assert.False(overridden.Granted);
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task PermissionEngine_AdminCapability_BypassesCapabilityAndAclChecks()
+    {
+        using var fixture = new SecurityFixture();
+        var manager = fixture.CreateTokenManager();
+        var engine = new PermissionEngine(manager, fixture.Database);
+        var token = await manager.IssueTokenAsync("user:admin", TokenType.Session, ["admin:**"], 0, TimeSpan.FromHours(1), ["user:admin"], null, CancellationToken.None);
+
+        engine.AddAcl("/shares/finance", "user:alice", ["files:file:read"]);
+        var result = await engine.CheckPermissionAsync(token, "files:file:read", "/shares/finance/q1.xlsx", NasDataLevel.Sensitive, CancellationToken.None);
+
+        Assert.True(result.Granted, result.DenyReason);
+        Assert.Equal("admin:**", result.MatchedCapability);
+    }
 }

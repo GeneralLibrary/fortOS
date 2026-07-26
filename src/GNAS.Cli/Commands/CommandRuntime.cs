@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Net;
 using System.Text.Json;
 using GNAS.Cli.ApiClient;
 using Spectre.Console;
@@ -37,6 +38,9 @@ public static class CommandRuntime
     public static async Task<int> RunAsync(ParseResult result, CliOptions options, Func<GnasApiClient, CancellationToken, Task<JsonDocument>> action, Action<JsonDocument>? render = null, CancellationToken cancellationToken = default)
     {
         ApplyConsole(result, options);
+        var hasRetriedAfterLogin = false;
+
+    retry:
         try
         {
             using var client = Client(result, options);
@@ -47,6 +51,14 @@ public static class CommandRuntime
         }
         catch (GnasApiException ex)
         {
+            if (!hasRetriedAfterLogin && ShouldPromptLogin(ex, result, options))
+            {
+                hasRetriedAfterLogin = true;
+                if (await TryInteractiveLoginAsync(result, options, cancellationToken).ConfigureAwait(false))
+                {
+                    goto retry;
+                }
+            }
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
@@ -54,6 +66,57 @@ public static class CommandRuntime
         {
             Console.Error.WriteLine($"执行失败：{ex.Message}");
             return 1;
+        }
+    }
+
+    private static bool ShouldPromptLogin(GnasApiException ex, ParseResult result, CliOptions options)
+    {
+        if (Console.IsInputRedirected)
+        {
+            return false;
+        }
+
+        var explicitToken = result.GetValue(options.Token);
+        if (!string.IsNullOrWhiteSpace(explicitToken) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GNAS_TOKEN")))
+        {
+            return false;
+        }
+
+        if (ex.StatusCode != HttpStatusCode.Unauthorized)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static async Task<bool> TryInteractiveLoginAsync(ParseResult result, CliOptions options, CancellationToken cancellationToken)
+    {
+        var username = AnsiConsole.Ask<string>("用户名：");
+        var password = AnsiConsole.Prompt(new TextPrompt<string>("密码：").Secret());
+
+        try
+        {
+            // Avoid sending stale stored token while calling the anonymous login endpoint.
+            using var client = new GnasApiClient(result.GetValue(options.Server), string.Empty);
+            using var doc = await client.PostAsync("api/auth/login", new { username, password }, cancellationToken).ConfigureAwait(false);
+            var token = FindString(doc.RootElement, "token")
+                ?? FindString(doc.RootElement, "accessToken")
+                ?? FindString(doc.RootElement, "jwt");
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                Console.Error.WriteLine("登入失败：服务器未返回可用令牌。");
+                return false;
+            }
+
+            AuthStore.Save(client.Server, token);
+            AnsiConsole.MarkupLine("[green]登入成功，后续命令将默认使用本次令牌。[/]");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"登入失败：{ex.Message}");
+            return false;
         }
     }
 
@@ -169,5 +232,38 @@ public static class CommandRuntime
             dict[value[..index]] = value[(index + 1)..];
         }
         return dict;
+    }
+
+    private static string? FindString(JsonElement element, string name)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
+                {
+                    return property.Value.GetString();
+                }
+
+                var nested = FindString(property.Value, name);
+                if (nested is not null)
+                {
+                    return nested;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = FindString(item, name);
+                if (nested is not null)
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
     }
 }

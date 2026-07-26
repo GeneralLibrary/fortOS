@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using GNAS.Cli.ApiClient;
 using Spectre.Console;
 
 namespace GNAS.Cli.Commands;
@@ -14,12 +15,22 @@ public static class StatusCommand
         command.SetAction(async (parse, ct) => await CommandRuntime.RunAsync(parse, options, async (client, token) =>
         {
             using var health = await client.GetAsync("api/health", token);
-            using var metrics = await client.GetAsync("api/metrics", token);
+            JsonDocument metrics;
+            try
+            {
+                metrics = await client.GetAsync("api/metrics/current", token);
+            }
+            catch (GnasApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                metrics = await client.GetAsync("api/metrics", token);
+            }
             return JsonDocument.Parse(JsonSerializer.Serialize(new { health = health.RootElement, metrics = metrics.RootElement }));
         }, doc =>
         {
             var grid = new Grid().AddColumn().AddColumn();
-            grid.AddRow(new Panel(doc.RootElement.GetProperty("health").ToString()) { Header = new PanelHeader("健康") }, new Panel(doc.RootElement.GetProperty("metrics").ToString()) { Header = new PanelHeader("指标") });
+            grid.AddRow(
+                new Panel(new Text(doc.RootElement.GetProperty("health").ToString())) { Header = new PanelHeader("健康") },
+                new Panel(new Text(doc.RootElement.GetProperty("metrics").ToString())) { Header = new PanelHeader("指标") });
             AnsiConsole.Write(grid);
         }, ct));
         return command;
