@@ -1,0 +1,12 @@
+# Root filesystem — too large, binary blob, not source
+rootfs/
+
+# Docker build temp files
+*.tar
+*.tar.gz
+*.tar.xz
+
+# Temporary files
+*.tmp
+*.swp
+*~

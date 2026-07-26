@@ -29,6 +29,8 @@ grep -q 'download.docker.com/linux/debian' \
 grep -q 'download.docker.com/linux/debian/gpg' "${SCRIPT_DIR}/build-in-container.sh"
 grep -q 'config/packages.chroot' "${SCRIPT_DIR}/build-in-container.sh"
 grep -q 'docker-compose-plugin' "${SCRIPT_DIR}/build-in-container.sh"
+grep -q 'CACHE_DEBS' "${SCRIPT_DIR}/build-in-container.sh"
+grep -q 'gnas-cache.list.chroot' "${SCRIPT_DIR}/build-in-container.sh"
 grep -q '^netplan.io$' "${CONFIG_ROOT}/package-lists/gnas.list.chroot"
 grep -q '^network-manager$' "${CONFIG_ROOT}/package-lists/gnas.list.chroot"
 grep -q '^libicu72$' "${CONFIG_ROOT}/package-lists/gnas.list.chroot"
