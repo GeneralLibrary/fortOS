@@ -1,0 +1,1 @@
+import{a3 as a,a2 as t}from"./index-CysYKSXN.js";function e(s){return t("/api/disks",{},s)}function n(s,i){return t("/api/disks/detail",{path:s},i)}function k(s){return a("/api/disks/smart-check",{path:s})}export{n as g,e as l,k as r};

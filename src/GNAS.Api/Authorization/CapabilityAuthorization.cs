@@ -52,6 +52,10 @@ public sealed class CapabilityAuthorizationFilter : IAsyncAuthorizationFilter
         if (context.ActionDescriptor is ControllerActionDescriptor descriptor && descriptor.MethodInfo.GetCustomAttributes(inherit: true).Any(attribute => attribute.GetType().Name == "AllowAnonymousAttribute")) return;
         var requirement = context.Filters.OfType<RequiresCapabilityAttribute>().LastOrDefault();
         if (requirement is null) { context.Result = new StatusCodeResult(StatusCodes.Status403Forbidden); return; }
+        var configuration = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var requireAuth = configuration.GetValue("security:require_auth", true);
+        if (!requireAuth) return; // Auth disabled — allow all requests.
+
         var token = context.HttpContext.Request.Headers.Authorization.ToString();
         token = token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? token[7..].Trim() : context.HttpContext.Request.Headers["X-Nas-Token"].ToString();
         var payload = context.HttpContext.Items["NasTokenPayload"] as NasTokenPayload;
