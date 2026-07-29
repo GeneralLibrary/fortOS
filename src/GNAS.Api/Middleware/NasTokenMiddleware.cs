@@ -31,14 +31,6 @@ public sealed class NasTokenMiddleware
         var token = ExtractToken(context.Request);
         if (!requireAuth && string.IsNullOrWhiteSpace(token))
         {
-            // Place anonymous admin context so downstream filters and capability checks pass through.
-            var anon = new NasTokenPayload
-            {
-                Sub = "anonymous",
-                Capabilities = CapabilitySet.All,
-                Exp = DateTimeOffset.UtcNow.AddHours(24)
-            };
-            context.Items["NasTokenPayload"] = anon;
             await next(context).ConfigureAwait(false);
             return;
         }
