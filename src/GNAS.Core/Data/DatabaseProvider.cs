@@ -133,6 +133,10 @@ CREATE TABLE IF NOT EXISTS upload_sessions (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_upload_sessions_subject_state ON upload_sessions(subject, state, expires_at);
+"""),
+        new(4, """
+CREATE INDEX IF NOT EXISTS ix_metrics_name_timestamp ON metrics(metric_name, timestamp DESC);
+CREATE INDEX IF NOT EXISTS ix_metrics_timestamp ON metrics(timestamp);
 """)
     ];
 

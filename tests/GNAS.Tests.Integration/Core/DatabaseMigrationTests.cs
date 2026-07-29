@@ -16,6 +16,6 @@ public sealed class DatabaseMigrationTests
         await using var connection = await database.GetConnectionAsync(CancellationToken.None);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-        Assert.Equal(3L, (long)(await command.ExecuteScalarAsync(CancellationToken.None))!);
+        Assert.Equal(4L, (long)(await command.ExecuteScalarAsync(CancellationToken.None))!);
     }
 }

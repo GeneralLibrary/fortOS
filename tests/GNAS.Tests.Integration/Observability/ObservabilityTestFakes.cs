@@ -81,9 +81,16 @@ internal sealed class TestEventBus : IEventBus
 internal sealed class TestNotifier : global::GNAS.Observability.Alerts.Notifiers.INotifier
 {
     public List<ActiveAlert> Alerts { get; } = [];
+    public List<ActiveAlert> ResolvedAlerts { get; } = [];
     public Task NotifyAsync(ActiveAlert alert, AlertRule rule, CancellationToken ct)
     {
         Alerts.Add(alert);
+        return Task.CompletedTask;
+    }
+
+    public Task NotifyResolvedAsync(ActiveAlert alert, AlertRule rule, MetricData metric, CancellationToken ct)
+    {
+        ResolvedAlerts.Add(alert);
         return Task.CompletedTask;
     }
 }

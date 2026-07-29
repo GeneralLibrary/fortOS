@@ -3,6 +3,7 @@ using GNAS.Observability.Alerts;
 using GNAS.Observability.Alerts.Notifiers;
 using GNAS.Observability.Audit;
 using GNAS.Observability.Logging;
+using GNAS.Observability.Metrics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,6 +18,7 @@ public static class ObservabilityExtensions
     public static IServiceCollection AddObservability(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<GnasMetrics>();
+        services.AddSingleton<MetricStore>();
         services.AddSingleton<MemoryLogStore>();
         services.AddSingleton<FileLogStore>();
         services.AddSingleton<LokiLogStore>();
@@ -42,6 +44,10 @@ public static class ObservabilityExtensions
         services.AddSingleton<AlertEngine>();
         services.AddSingleton<IAlertEngine>(sp => sp.GetRequiredService<AlertEngine>());
         services.AddHostedService(sp => sp.GetRequiredService<AlertEngine>());
+
+        services.AddSingleton<SystemMetricsService>();
+        services.AddSingleton<ISystemMetricsService>(sp => sp.GetRequiredService<SystemMetricsService>());
+        services.AddHostedService(sp => sp.GetRequiredService<SystemMetricsService>());
 
         services.AddHostedService<LazySerilogBootstrapper>();
         services.AddLogging(builder => builder.AddSerilog(dispose: false));

@@ -66,9 +66,12 @@ Unlike traditional NAS software, GNAS treats **Docker containers as first-class 
 - Unified lifecycle management (native + container services)
 
 ### Observability
+- Live host uptime, CPU/load, memory/swap, OOM, disk I/O, TCP, and per-interface traffic metrics
+- SMART temperature/health, filesystem growth projection, RAID state, and NAS protocol sessions
+- systemd service uptime/restarts and Docker CPU, memory, network, and block-I/O metrics
 - Five-stage log pipeline (parse → filter → classify → enrich → dispatch)
 - Loki integration for Agent log aggregation
-- Alert engine with event, metric, and availability rules
+- Dimension-aware alert engine with recovery notifications via system log, SMTP, and Webhook
 - Prometheus `/metrics` endpoint
 - Full TraceId propagation across all layers
 
@@ -115,7 +118,9 @@ curl http://localhost:5000/api/health
 {"status":"ok"}
 ```
 
-> **Note:** The Docker Compose file uses `network_mode: host`, mounts `/srv/nas` as the data root, and binds the Docker socket. For NFS kernel-server support, use the bare-metal ISO installation.
+> **Note:** The Docker Compose file uses the host network and PID namespaces, mounts host procfs/sysfs read-only,
+> mounts `/srv/nas` as the data root, and binds the Docker socket so monitoring describes the NAS host rather
+> than the GNAS container. For NFS kernel-server support, use the bare-metal ISO installation.
 
 ```bash
 # Stop
@@ -158,6 +163,11 @@ gnas
 
 # Health and metrics
 gnas status
+gnas status --watch --interval 5
+
+# Historical metric query
+curl -H "Authorization: Bearer $GNAS_TOKEN" \
+  "http://localhost:5000/api/metrics/history?metric=system.cpu.usage.percent&limit=100"
 
 # Disk management
 gnas disk list --output json
@@ -290,6 +300,12 @@ services.AddObservability(configuration);
 | `ASPNETCORE_ENVIRONMENT` | `Production` | ASP.NET environment |
 | `GNAS_TOKEN` | — | CLI authentication token |
 | `GNAS_API_ENDPOINT` | `http://host.docker.internal:5000` | Agent API endpoint |
+
+Monitoring settings are read from `nas.yaml`: `monitoring:interval_seconds` (default `5`),
+`monitoring:history_interval_seconds` (default `60`), `monitoring:smart_interval_seconds` (default `60`),
+`monitoring:retention_days` (default `30`),
+and `monitoring:services` (the systemd units whose uptime and restart count are tracked).
+Alert delivery uses `alerts:smtp:*` and `alerts:webhook:urls`.
 
 ---
 

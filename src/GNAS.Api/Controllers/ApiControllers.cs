@@ -410,29 +410,38 @@ public sealed class AuditController : GnasControllerBase
 [Route("api/metrics")]
 public sealed class MetricsController : GnasControllerBase
 {
-    /// <summary>Return current metrics.</summary>
+    /// <summary>Return the legacy runtime and disk response retained for API compatibility.</summary>
     [HttpGet("current")]
     public async Task<object> Current([FromServices] IDiskManager disks, CancellationToken ct)
     {
         var diskList = await disks.ListDisksAsync(ct).ConfigureAwait(false);
-        return new { gc = new { totalMemory = GC.GetTotalMemory(false), gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2) }, disks = diskList };
+        return new
+        {
+            gc = new
+            {
+                totalMemory = GC.GetTotalMemory(false),
+                gen0 = GC.CollectionCount(0),
+                gen1 = GC.CollectionCount(1),
+                gen2 = GC.CollectionCount(2),
+            },
+            disks = diskList,
+        };
     }
+
+    /// <summary>Return the latest typed host, storage, network, service, and container snapshot.</summary>
+    [HttpGet("system")]
+    public Task<SystemMetricsSnapshot> System([FromServices] ISystemMetricsService metrics, CancellationToken ct)
+        => metrics.GetCurrentAsync(ct);
 
     /// <summary>Return historical metrics.</summary>
     [HttpGet("history")]
-    public async Task<IReadOnlyList<object>> History([FromServices] IDatabaseProvider database, [FromQuery] string? metric, [FromQuery] int limit = 100, CancellationToken ct = default)
-    {
-        await database.InitializeAsync(ct).ConfigureAwait(false);
-        await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT metric_name, value, unit, dimensions_json, timestamp FROM metrics WHERE ($metric IS NULL OR metric_name = $metric) ORDER BY timestamp DESC LIMIT $limit;";
-        command.Parameters.AddWithValue("$metric", (object?)metric ?? DBNull.Value);
-        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 1000));
-        var rows = new List<object>();
-        await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        while (await reader.ReadAsync(ct).ConfigureAwait(false)) rows.Add(new { metricName = reader.GetString(0), value = reader.GetDouble(1), unit = reader.GetString(2), dimensions = reader.IsDBNull(3) ? null : reader.GetString(3), timestamp = reader.GetString(4) });
-        return rows;
-    }
+    public Task<IReadOnlyList<MetricData>> History(
+        [FromServices] ISystemMetricsService metrics,
+        [FromQuery] string? metric,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] int limit = 500,
+        CancellationToken ct = default)
+        => metrics.GetHistoryAsync(new SystemMetricHistoryQuery { MetricName = metric, From = from, Limit = limit }, ct);
 }
 
 /// <summary>Alert controller.</summary>

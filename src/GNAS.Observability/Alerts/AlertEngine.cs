@@ -1,8 +1,11 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using GNAS.Core;
 using GNAS.Observability.Alerts.Notifiers;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -16,21 +19,31 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     private readonly IDatabaseProvider _database;
     private readonly IEventBus _eventBus;
     private readonly IReadOnlyList<INotifier> _notifiers;
+    private readonly ILogger<AlertEngine> _logger;
     private readonly object _sync = new();
     private readonly List<AlertRule> _rules = [];
     private readonly List<ActiveAlert> _activeAlerts = [];
     private readonly Dictionary<string, DateTimeOffset> _lastFired = [];
     private readonly Dictionary<string, List<DateTimeOffset>> _eventWindows = [];
+    private readonly Dictionary<string, DateTimeOffset> _eventLastMatched = [];
     private readonly Dictionary<string, DateTimeOffset> _metricSince = [];
+    private readonly Dictionary<string, HashSet<INotifier>> _pendingActiveNotifications = [];
+    private readonly CancellationTokenSource _stopping = new();
     private IDisposable? _subscription;
 
     /// <summary>Initialize the alert engine.</summary>
-    public AlertEngine(IGnasConfiguration configuration, IDatabaseProvider database, IEventBus eventBus, IEnumerable<INotifier> notifiers)
+    public AlertEngine(
+        IGnasConfiguration configuration,
+        IDatabaseProvider database,
+        IEventBus eventBus,
+        IEnumerable<INotifier> notifiers,
+        ILogger<AlertEngine>? logger = null)
     {
         _configuration = configuration;
         _database = database;
         _eventBus = eventBus;
         _notifiers = notifiers.ToArray();
+        _logger = logger ?? NullLogger<AlertEngine>.Instance;
     }
 
     /// <inheritdoc />
@@ -44,6 +57,7 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _subscription?.Dispose();
+        _stopping.Cancel();
         return Task.CompletedTask;
     }
 
@@ -67,20 +81,26 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
         {
             if (!TopicMatches(rule.Condition.Topic, envelope.Topic) && !TopicMatches(rule.Condition.Topic, envelope.Type)) continue;
             var now = DateTimeOffset.UtcNow;
+            var dimensions = new Dictionary<string, string>(StringComparer.Ordinal) { ["topic"] = envelope.Topic };
+            var instanceKey = BuildMetricInstanceKey(rule.RuleId, dimensions);
+            lock (_sync) _eventLastMatched[instanceKey] = now;
             if (rule.Condition.WithinSeconds is { } windowSeconds && rule.Condition.Count is { } count)
             {
-                var key = rule.RuleId;
                 List<DateTimeOffset> bucket;
                 lock (_sync)
                 {
-                    bucket = _eventWindows.TryGetValue(key, out var existing) ? existing : (_eventWindows[key] = []);
+                    bucket = _eventWindows.TryGetValue(instanceKey, out var existing) ? existing : (_eventWindows[instanceKey] = []);
                     bucket.Add(now);
                     bucket.RemoveAll(item => item < now.AddSeconds(-windowSeconds));
                     if (bucket.Count < count) continue;
                 }
             }
 
-            await FireAsync(rule, $"Event rule {rule.Name} triggered: {envelope.Topic}", ct).ConfigureAwait(false);
+            await FireAsync(rule, instanceKey, $"Event rule {rule.Name} triggered: {envelope.Topic}", dimensions, ct).ConfigureAwait(false);
+            if (rule.Condition.WithinSeconds is { } quietSeconds and > 0)
+            {
+                _ = ResolveEventAfterQuietPeriodAsync(rule, instanceKey, dimensions, now, quietSeconds, _stopping.Token);
+            }
         }
     }
 
@@ -90,10 +110,11 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
         foreach (var rule in SnapshotRules().Where(rule => rule.Condition.Type.Equals("metric", StringComparison.OrdinalIgnoreCase)))
         {
             if (!string.Equals(rule.Condition.Metric, metric.MetricName, StringComparison.OrdinalIgnoreCase)) continue;
+            var instanceKey = BuildMetricInstanceKey(rule.RuleId, metric.Dimensions);
             if (!Compare(metric.Value, rule.Condition.Operator, rule.Condition.Value))
             {
-                lock (_sync) _metricSince.Remove(rule.RuleId);
-                await ResolveAsync(rule, metric, ct).ConfigureAwait(false);
+                lock (_sync) _metricSince.Remove(instanceKey);
+                await ResolveAsync(rule, metric, instanceKey, ct).ConfigureAwait(false);
                 continue;
             }
 
@@ -102,9 +123,9 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
                 var now = DateTimeOffset.UtcNow;
                 lock (_sync)
                 {
-                    if (!_metricSince.TryGetValue(rule.RuleId, out var since))
+                    if (!_metricSince.TryGetValue(instanceKey, out var since))
                     {
-                        _metricSince[rule.RuleId] = now;
+                        _metricSince[instanceKey] = now;
                         continue;
                     }
 
@@ -112,7 +133,12 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
                 }
             }
 
-            await FireAsync(rule, $"Metric rule {rule.Name} triggered: {metric.MetricName}={metric.Value}", ct).ConfigureAwait(false);
+            await FireAsync(
+                rule,
+                instanceKey,
+                $"Metric rule {rule.Name} triggered: {metric.MetricName}={metric.Value}{FormatDimensions(metric.Dimensions)}",
+                metric.Dimensions,
+                ct).ConfigureAwait(false);
         }
     }
 
@@ -147,7 +173,12 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     }
 
     /// <inheritdoc />
-    public void Dispose() => _subscription?.Dispose();
+    public void Dispose()
+    {
+        _subscription?.Dispose();
+        _stopping.Cancel();
+        _stopping.Dispose();
+    }
 
     private async Task<IReadOnlyList<AlertRule>> LoadYamlRulesAsync(CancellationToken ct)
     {
@@ -193,43 +224,89 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
         return rules;
     }
 
-    private async Task FireAsync(AlertRule rule, string message, CancellationToken ct)
+    private async Task FireAsync(
+        AlertRule rule,
+        string instanceKey,
+        string message,
+        IReadOnlyDictionary<string, string>? dimensions,
+        CancellationToken ct)
     {
         if (IsSuppressed(rule)) return;
         var now = DateTimeOffset.UtcNow;
+        var notifiers = SelectNotifiers(rule).ToArray();
+        ActiveAlert alert;
         lock (_sync)
         {
-            if (_lastFired.TryGetValue(rule.RuleId, out var last) && now - last < TimeSpan.FromSeconds(rule.CooldownSeconds)) return;
-            _lastFired[rule.RuleId] = now;
+            var existing = _activeAlerts.FirstOrDefault(candidate =>
+                BuildMetricInstanceKey(candidate.RuleId, candidate.Dimensions) == instanceKey);
+            if (existing is not null)
+            {
+                if (!_pendingActiveNotifications.TryGetValue(instanceKey, out var pending) || pending.Count == 0) return;
+                alert = existing;
+            }
+            else
+            {
+                if (_lastFired.TryGetValue(instanceKey, out var last)
+                    && now - last < TimeSpan.FromSeconds(rule.CooldownSeconds)) return;
+                _lastFired[instanceKey] = now;
+                alert = new ActiveAlert
+                {
+                    AlertId = Guid.CreateVersion7().ToString(),
+                    RuleId = rule.RuleId,
+                    Severity = rule.Severity,
+                    Message = message,
+                    TriggeredAt = now,
+                    Dimensions = dimensions is null
+                        ? []
+                        : new Dictionary<string, string>(dimensions, StringComparer.Ordinal),
+                };
+                _activeAlerts.Add(alert);
+                _pendingActiveNotifications[instanceKey] = notifiers.ToHashSet();
+            }
         }
 
-        var alert = new ActiveAlert
-        {
-            AlertId = Guid.CreateVersion7().ToString(),
-            RuleId = rule.RuleId,
-            Severity = rule.Severity,
-            Message = message,
-            TriggeredAt = now
-        };
-        lock (_sync) _activeAlerts.Add(alert);
-
-        foreach (var notifier in SelectNotifiers(rule.Severity))
-        {
-            await notifier.NotifyAsync(alert, rule, ct).ConfigureAwait(false);
-        }
+        await DeliverActiveNotificationsAsync(instanceKey, alert, rule, ct).ConfigureAwait(false);
     }
 
-    private async Task ResolveAsync(AlertRule rule, MetricData metric, CancellationToken ct)
+    private async Task ResolveAsync(
+        AlertRule rule,
+        MetricData metric,
+        string instanceKey,
+        CancellationToken ct,
+        DateTimeOffset? eventMatchedAt = null)
     {
         ActiveAlert[] resolved;
         lock (_sync)
         {
-            resolved = _activeAlerts.Where(alert => alert.RuleId == rule.RuleId).ToArray();
+            if (eventMatchedAt is { } expected
+                && (!_eventLastMatched.TryGetValue(instanceKey, out var latest) || latest != expected)) return;
+            resolved = _activeAlerts
+                .Where(alert => BuildMetricInstanceKey(alert.RuleId, alert.Dimensions) == instanceKey)
+                .ToArray();
             if (resolved.Length == 0) return;
-            _activeAlerts.RemoveAll(alert => alert.RuleId == rule.RuleId);
-            _lastFired.Remove(rule.RuleId);
+            _activeAlerts.RemoveAll(alert => BuildMetricInstanceKey(alert.RuleId, alert.Dimensions) == instanceKey);
+            _lastFired.Remove(instanceKey);
+            _pendingActiveNotifications.Remove(instanceKey);
         }
 
+        foreach (var alert in resolved)
+        {
+            foreach (var notifier in SelectNotifiers(rule))
+            {
+                try
+                {
+                    await notifier.NotifyResolvedAsync(alert, rule, metric, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Alert recovery notification failed for rule {RuleId} via {Notifier}.", rule.RuleId, notifier.GetType().Name);
+                }
+            }
+        }
         await _eventBus.PublishAsync(
             "alert.resolved",
             "observability.alert.resolved",
@@ -244,9 +321,93 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
             ct).ConfigureAwait(false);
     }
 
-    private IEnumerable<INotifier> SelectNotifiers(string severity)
+    private async Task DeliverActiveNotificationsAsync(
+        string instanceKey,
+        ActiveAlert alert,
+        AlertRule rule,
+        CancellationToken ct)
     {
-        var lower = severity.ToLowerInvariant();
+        INotifier[] pending;
+        lock (_sync)
+        {
+            pending = _pendingActiveNotifications.TryGetValue(instanceKey, out var channels)
+                ? channels.ToArray()
+                : [];
+        }
+
+        foreach (var notifier in pending)
+        {
+            try
+            {
+                await notifier.NotifyAsync(alert, rule, ct).ConfigureAwait(false);
+                lock (_sync)
+                {
+                    if (_pendingActiveNotifications.TryGetValue(instanceKey, out var channels))
+                    {
+                        channels.Remove(notifier);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Alert notification failed for rule {RuleId} via {Notifier}; delivery will be retried.", rule.RuleId, notifier.GetType().Name);
+            }
+        }
+    }
+
+    private async Task ResolveEventAfterQuietPeriodAsync(
+        AlertRule rule,
+        string instanceKey,
+        IReadOnlyDictionary<string, string> dimensions,
+        DateTimeOffset matchedAt,
+        int quietSeconds,
+        CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(quietSeconds), ct).ConfigureAwait(false);
+            await ResolveAsync(
+                rule,
+                new MetricData
+                {
+                    MetricName = "event.quiet_window",
+                    Unit = "seconds",
+                    Value = quietSeconds,
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Dimensions = new Dictionary<string, string>(dimensions, StringComparer.Ordinal),
+                },
+                instanceKey,
+                ct,
+                matchedAt).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resolve event alert {RuleId} after its quiet period.", rule.RuleId);
+        }
+    }
+
+    private IEnumerable<INotifier> SelectNotifiers(AlertRule rule)
+    {
+        if (rule.Actions.Length > 0)
+        {
+            var actions = rule.Actions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return _notifiers.Where(notifier => notifier switch
+            {
+                EmailNotifier => actions.Contains("email"),
+                WebhookNotifier => actions.Contains("webhook"),
+                SystemNotifier => actions.Contains("system") || actions.Contains("log"),
+                _ => true,
+            });
+        }
+
+        var lower = rule.Severity.ToLowerInvariant();
         return _notifiers.Where(notifier => notifier switch
         {
             EmailNotifier => lower is "critical" or "warning",
@@ -279,8 +440,13 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     private static bool TopicMatches(string? pattern, string value)
     {
         if (string.IsNullOrWhiteSpace(pattern) || pattern is "*" or "**") return true;
-        if (pattern.EndsWith("**", StringComparison.Ordinal)) return value.StartsWith(pattern[..^2], StringComparison.OrdinalIgnoreCase);
-        if (pattern.EndsWith('*')) return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
+        if (pattern.Contains('*', StringComparison.Ordinal))
+        {
+            var expression = "^" + Regex.Escape(pattern)
+                .Replace(@"\*\*", ".*", StringComparison.Ordinal)
+                .Replace(@"\*", @"[^.]*", StringComparison.Ordinal) + "$";
+            return Regex.IsMatch(value, expression, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
         return string.Equals(pattern, value, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -301,17 +467,57 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
         SloRule("slo-protocol-health", "Share protocol unavailable", "critical", "gnas_protocol_health", "lt", 1),
         SloRule("slo-agent-restarts", "Agent restart storm", "warning", "gnas_agent_restarts_total", "gt", 5),
         SloRule("slo-http-errors", "HTTP 5xx errors", "warning", "gnas_http_errors_total", "gt", 0),
+        SloRule("host-cpu-high", "Host CPU usage is high", "warning", "system.cpu.usage.percent", "gt", 90, 300),
+        SloRule("host-memory-high", "Host memory usage is high", "warning", "system.memory.used.percent", "gt", 90, 300),
+        SloRule("host-swap-high", "Host swap usage is high", "warning", "system.swap.used.percent", "gt", 50, 300),
+        SloRule("host-oom-kill", "The kernel terminated a process because memory was exhausted", "critical", "system.memory.oom_kills", "gt", 0),
+        SloRule("tcp-retransmits-high", "TCP retransmission rate is high", "warning", "network.tcp.retransmits_per_second", "gt", 100, 300),
+        SloRule("disk-utilization-high", "Disk utilization is saturated", "warning", "storage.disk.utilization.percent", "gt", 95, 300),
+        SloRule("disk-latency-high", "Disk I/O latency is high", "warning", "storage.disk.latency.milliseconds", "gt", 100, 300),
+        SloRule("disk-temperature-high", "Disk temperature is high", "warning", "storage.disk.temperature.celsius", "gt", 55, 60),
+        SloRule("disk-smart-failed", "Disk SMART health check failed", "critical", "storage.disk.smart.health", "lt", 1),
+        SloRule("filesystem-capacity-high", "Filesystem capacity is high", "warning", "storage.filesystem.used.percent", "gt", 90, 300),
+        SloRule("filesystem-capacity-critical", "Filesystem capacity is critical", "critical", "storage.filesystem.used.percent", "gt", 97, 60),
+        SloRule("filesystem-exhaustion-near", "Filesystem is projected to fill within seven days", "warning", "storage.filesystem.estimated_full.seconds", "lt", 604800, 300),
+        SloRule("raid-degraded", "RAID array is degraded", "critical", "storage.raid.health", "lt", 1),
+        SloRule("service-unavailable", "Managed system service is unavailable", "critical", "service.health", "lt", 1, 60),
+        SloRule("container-cpu-high", "Container CPU usage is high", "warning", "container.cpu.usage.percent", "gt", 90, 300),
+        SloRule("container-memory-high", "Container memory usage is high", "warning", "container.memory.used.percent", "gt", 90, 300),
+        EventRule("service-restart-storm", "Managed system service is repeatedly crashing", "critical", "service.*.crashed", 3, 300),
     ];
 
-    private static AlertRule SloRule(string id, string name, string severity, string metric, string op, double value) => new()
+    private static AlertRule SloRule(string id, string name, string severity, string metric, string op, double value, int? durationSeconds = null) => new()
     {
         RuleId = id,
         Name = name,
         Description = $"GNAS default SLO rule: {name}",
         Severity = severity,
-        Condition = new AlertCondition { Type = "metric", Metric = metric, Operator = op, Value = value },
+        Condition = new AlertCondition { Type = "metric", Metric = metric, Operator = op, Value = value, DurationSeconds = durationSeconds },
         CooldownSeconds = 300,
     };
+
+    private static AlertRule EventRule(string id, string name, string severity, string topic, int count, int withinSeconds) => new()
+    {
+        RuleId = id,
+        Name = name,
+        Description = $"GNAS default event rule: {name}",
+        Severity = severity,
+        Condition = new AlertCondition { Type = "event", Topic = topic, Count = count, WithinSeconds = withinSeconds },
+        CooldownSeconds = 300,
+    };
+
+    private static string BuildMetricInstanceKey(string ruleId, IReadOnlyDictionary<string, string> dimensions)
+        => dimensions.Count == 0
+            ? ruleId
+            : ruleId + "|" + string.Join(
+                "|",
+                dimensions.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                    .Select(pair => $"{pair.Key}={pair.Value}"));
+
+    private static string FormatDimensions(IReadOnlyDictionary<string, string> dimensions)
+        => dimensions.Count == 0
+            ? string.Empty
+            : " [" + string.Join(", ", dimensions.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}={pair.Value}")) + "]";
 
     private sealed class AlertRulesDocument
     {

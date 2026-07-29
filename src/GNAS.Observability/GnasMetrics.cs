@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using GNAS.Core;
 
 namespace GNAS.Observability;
 
@@ -14,6 +15,8 @@ public sealed class GnasMetrics : IDisposable
     private readonly Counter<long> _backupSuccess;
     private readonly Counter<long> _backupFailure;
     private readonly ConcurrentDictionary<string, double> _values = new(StringComparer.Ordinal);
+    private readonly object _systemMetricSync = new();
+    private readonly HashSet<string> _systemMetricKeys = new(StringComparer.Ordinal);
 
     public GnasMetrics()
     {
@@ -45,9 +48,44 @@ public sealed class GnasMetrics : IDisposable
     public void RecordAgentRestart() => Increment("gnas_agent_restarts_total");
     public void RecordProtocolHealth(string protocol, bool healthy) => _values[$"gnas_protocol_health{{protocol=\"{protocol}\"}}"] = healthy ? 1 : 0;
 
+    /// <summary>Replace the current host metric snapshot exposed to Prometheus.</summary>
+    public void RecordSystemSnapshot(IEnumerable<MetricData> metrics)
+    {
+        lock (_systemMetricSync)
+        {
+            foreach (var key in _systemMetricKeys)
+            {
+                _values.TryRemove(key, out _);
+            }
+            _systemMetricKeys.Clear();
+
+            foreach (var metric in metrics)
+            {
+                var key = BuildPrometheusKey(metric);
+                _values[key] = metric.Value;
+                _systemMetricKeys.Add(key);
+            }
+        }
+    }
+
     public string ExportPrometheus()
         => string.Join('\n', _values.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{x.Key} {x.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")) + "\n";
 
     private void Increment(string key) => _values.AddOrUpdate(key, 1, (_, value) => value + 1);
+
+    private static string BuildPrometheusKey(MetricData metric)
+    {
+        var name = "gnas_" + metric.MetricName.Replace('.', '_').Replace('-', '_');
+        if (metric.Dimensions.Count == 0) return name;
+        var labels = metric.Dimensions.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => $"{pair.Key.Replace('-', '_')}=\"{EscapeLabel(pair.Value)}\"");
+        return $"{name}{{{string.Join(',', labels)}}}";
+    }
+
+    private static string EscapeLabel(string value)
+        => value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
+
     public void Dispose() => _meter.Dispose();
 }

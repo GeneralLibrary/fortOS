@@ -20,6 +20,16 @@ public sealed class EmailNotifier : INotifier
 
     /// <inheritdoc />
     public async Task NotifyAsync(ActiveAlert alert, AlertRule rule, CancellationToken ct)
+        => await SendAsync($"[{alert.Severity}] {rule.Name}", alert.Message, ct).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task NotifyResolvedAsync(ActiveAlert alert, AlertRule rule, MetricData metric, CancellationToken ct)
+        => await SendAsync(
+            $"[RECOVERED] {rule.Name}",
+            $"Recovered: {metric.MetricName}={metric.Value}. Original alert: {alert.Message}",
+            ct).ConfigureAwait(false);
+
+    private async Task SendAsync(string subject, string body, CancellationToken ct)
     {
         var host = _configuration.GetValue("alerts:smtp:host");
         var from = _configuration.GetValue("alerts:smtp:from");
@@ -30,7 +40,7 @@ public sealed class EmailNotifier : INotifier
             return;
         }
 
-        using var message = new MailMessage { From = new MailAddress(from), Subject = $"[{alert.Severity}] {rule.Name}", Body = alert.Message };
+        using var message = new MailMessage { From = new MailAddress(from), Subject = subject, Body = body };
         foreach (var recipient in recipients) message.To.Add(recipient);
         using var client = new SmtpClient(host, int.TryParse(_configuration.GetValue("alerts:smtp:port"), out var port) ? port : 587)
         {

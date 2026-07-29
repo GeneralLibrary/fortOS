@@ -21,6 +21,13 @@ public sealed class WebhookNotifier : INotifier
 
     /// <inheritdoc />
     public async Task NotifyAsync(ActiveAlert alert, AlertRule rule, CancellationToken ct)
+        => await SendAsync(new { eventType = "alert.triggered", alert, rule }, ct).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task NotifyResolvedAsync(ActiveAlert alert, AlertRule rule, MetricData metric, CancellationToken ct)
+        => await SendAsync(new { eventType = "alert.resolved", alert, rule, metric, resolvedAt = DateTimeOffset.UtcNow }, ct).ConfigureAwait(false);
+
+    private async Task SendAsync(object payload, CancellationToken ct)
     {
         var urls = _configuration.GetArray("alerts:webhook:urls");
         if (urls.Length == 0)
@@ -33,7 +40,7 @@ public sealed class WebhookNotifier : INotifier
         {
             try
             {
-                await _httpClient.PostAsJsonAsync(url, new { alert, rule }, ct).ConfigureAwait(false);
+                await _httpClient.PostAsJsonAsync(url, payload, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

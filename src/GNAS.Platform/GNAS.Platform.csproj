@@ -4,6 +4,10 @@
     <ProjectReference Include="..\GNAS.Core\GNAS.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GNAS.Tests.Integration" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

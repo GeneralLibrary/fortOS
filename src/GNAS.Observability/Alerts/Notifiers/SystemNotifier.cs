@@ -33,4 +33,21 @@ public sealed class SystemNotifier : INotifier
             Properties = new Dictionary<string, object> { ["rule_id"] = rule.RuleId, ["alert_id"] = alert.AlertId }
         }, ct);
     }
+
+    /// <inheritdoc />
+    public Task NotifyResolvedAsync(ActiveAlert alert, AlertRule rule, MetricData metric, CancellationToken ct)
+        => _pipeline.ProcessAsync(new LogEntry
+        {
+            Category = LogCategory.System,
+            Level = LogLevel.Information,
+            SourceComponent = "AlertEngine",
+            SourceLayer = "Observability",
+            Message = $"Alert recovered: {rule.Name}; {metric.MetricName}={metric.Value}",
+            Properties = new Dictionary<string, object>
+            {
+                ["rule_id"] = rule.RuleId,
+                ["alert_id"] = alert.AlertId,
+                ["metric"] = metric.MetricName,
+            }
+        }, ct);
 }

@@ -36,6 +36,23 @@ public static class CommandRuntime
 
     /// <summary>Execute API operation with unified error output.</summary>
     public static async Task<int> RunAsync(ParseResult result, CliOptions options, Func<GnasApiClient, CancellationToken, Task<JsonDocument>> action, Action<JsonDocument>? render = null, CancellationToken cancellationToken = default)
+        => await RunWithClientAsync(result, options, async (client, token) =>
+        {
+            using var doc = await action(client, token).ConfigureAwait(false);
+            if (IsJson(result, options)) PrintJson(doc);
+            else (render ?? RenderGeneric)(doc);
+            return 0;
+        }, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Execute a command that owns a client for multiple requests while preserving the shared
+    /// interactive login and one-time retry behavior.
+    /// </summary>
+    public static async Task<int> RunWithClientAsync(
+        ParseResult result,
+        CliOptions options,
+        Func<GnasApiClient, CancellationToken, Task<int>> action,
+        CancellationToken cancellationToken = default)
     {
         ApplyConsole(result, options);
         var hasRetriedAfterLogin = false;
@@ -44,9 +61,10 @@ public static class CommandRuntime
         try
         {
             using var client = Client(result, options);
-            using var doc = await action(client, cancellationToken);
-            if (IsJson(result, options)) PrintJson(doc);
-            else (render ?? RenderGeneric)(doc);
+            return await action(client, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
             return 0;
         }
         catch (GnasApiException ex)

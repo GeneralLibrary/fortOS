@@ -37,7 +37,8 @@ internal sealed class CommandExecutor
         bool throwOnNonZeroExit = true,
         string? workingDirectory = null,
         IReadOnlyDictionary<string, string>? environment = null,
-        string? standardInput = null)
+        string? standardInput = null,
+        bool logResult = true)
     {
         using var timeoutCts = new CancellationTokenSource(timeout ?? DefaultTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
@@ -102,13 +103,16 @@ internal sealed class CommandExecutor
 
             if (process.ExitCode != 0)
             {
-                _logger.LogError("Command failed: {FileName} {Arguments}, ExitCode={ExitCode}, Stderr={Stderr}", fileName, safeArguments, process.ExitCode, SanitizeForLog(stderr));
+                if (logResult)
+                {
+                    _logger.LogError("Command failed: {FileName} {Arguments}, ExitCode={ExitCode}, Stderr={Stderr}", fileName, safeArguments, process.ExitCode, SanitizeForLog(stderr));
+                }
                 if (throwOnNonZeroExit)
                 {
                     throw new CommandExecutionException($"Command execution failed: {fileName}", process.ExitCode, stdout, stderr);
                 }
             }
-            else
+            else if (logResult)
             {
                 _logger.LogInformation("Command succeeded: {FileName} {Arguments}", fileName, safeArguments);
             }

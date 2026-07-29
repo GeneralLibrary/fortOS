@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using GNAS.Core;
+using GNAS.Platform.Linux.Monitoring;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GNAS.Platform.Linux;
@@ -19,6 +20,7 @@ public static class LinuxPlatformExtensions
         services.AddSingleton<IFileSystem, LinuxFileSystem>();
         services.AddSingleton<IProcessManager, LinuxProcessManager>();
         services.AddSingleton<INetworkManager, LinuxNetworkManager>();
+        services.AddSingleton<ISystemMetricsCollector, LinuxSystemMetricsCollector>();
         services.AddSingleton<IUserAccount, LinuxUserAccount>();
         services.AddSingleton<ArchitectureDetector>();
         return services;

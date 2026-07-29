@@ -520,6 +520,11 @@ public record ActiveAlert
     public required string Message { get; init; }
     /// <summary>Trigger time.</summary>
     public DateTimeOffset TriggeredAt { get; init; }
+    /// <summary>
+    /// Metric dimensions that identify the affected resource. These prevent one healthy disk,
+    /// interface, service, or container from resolving another resource's alert.
+    /// </summary>
+    public Dictionary<string, string> Dimensions { get; init; } = [];
 }
 
 /// <summary>Backup task definition.</summary>
