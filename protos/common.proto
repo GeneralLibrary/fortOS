@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-package gnas.v1;
-option csharp_namespace = "GNAS.Proto";
+package gort.v1;
+option csharp_namespace = "GORT.Proto";
 
 message EmptyRequest {}
 

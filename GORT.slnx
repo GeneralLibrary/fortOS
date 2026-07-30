@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GORT.Agent/GORT.Agent.csproj" />
+    <Project Path="src/GORT.Api/GORT.Api.csproj" />
+    <Project Path="src/GORT.Cli/GORT.Cli.csproj" />
+    <Project Path="src/GORT.Core/GORT.Core.csproj" />
+    <Project Path="src/GORT.Modules.Agent/GORT.Modules.Agent.csproj" />
+    <Project Path="src/GORT.Modules.Backup/GORT.Modules.Backup.csproj" />
+    <Project Path="src/GORT.Modules.Network/GORT.Modules.Network.csproj" />
+    <Project Path="src/GORT.Modules.Share/GORT.Modules.Share.csproj" />
+    <Project Path="src/GORT.Modules.Storage/GORT.Modules.Storage.csproj" />
+    <Project Path="src/GORT.Modules.Update/GORT.Modules.Update.csproj" />
+    <Project Path="src/GORT.Modules/GORT.Modules.csproj" />
+    <Project Path="src/GORT.Observability/GORT.Observability.csproj" />
+    <Project Path="src/GORT.Platform/GORT.Platform.csproj" />
+    <Project Path="src/GORT.Security/GORT.Security.csproj" />
+    <Project Path="src/GORT.ServiceBus/GORT.ServiceBus.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GORT.Tests.Integration/GORT.Tests.Integration.csproj" />
+  </Folder>
+</Solution>

@@ -5,7 +5,7 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPOSITORY_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 readonly VERSION="${VERSION:-$(git -C "${REPOSITORY_ROOT}" describe --tags --always --dirty)}"
 readonly OUTPUT_DIR="${OUTPUT_DIR:-${REPOSITORY_ROOT}/artifacts/iso}"
-readonly CACHE_VOLUME="${CACHE_VOLUME:-gnas-iso-live-cache}"
+readonly CACHE_VOLUME="${CACHE_VOLUME:-gort-iso-live-cache}"
 readonly BUILDER_IMAGE="${BUILDER_IMAGE:-debian:12.11-slim}"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
@@ -28,13 +28,13 @@ mkdir -p "${OUTPUT_DIR}"
 # live-build mounts pseudo filesystems and creates loop devices while assembling
 # the hybrid image, therefore the disposable builder requires --privileged.
 docker run --rm --privileged \
-    --env "GNAS_VERSION=${VERSION}" \
+    --env "GORT_VERSION=${VERSION}" \
     --env "DOTNET_SDK_VERSION=${DOTNET_SDK_VERSION:-10.0.302}" \
     --env "OUTPUT_UID=$(id -u)" \
     --env "OUTPUT_GID=$(id -g)" \
     --volume "${REPOSITORY_ROOT}:/workspace:ro" \
     --volume "${OUTPUT_DIR}:/output" \
-    --mount "type=volume,source=${CACHE_VOLUME},target=/build/gnas-iso/live/cache" \
+    --mount "type=volume,source=${CACHE_VOLUME},target=/build/gort-iso/live/cache" \
     --workdir /workspace \
     "${BUILDER_IMAGE}" \
     bash /workspace/eng/iso/build-in-container.sh

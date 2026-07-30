@@ -1,4 +1,4 @@
-name: GNAS CI
+name: GORT CI
 on:
   push:
     branches: [main]
@@ -18,9 +18,9 @@ jobs:
         run: |
           bash -n eng/iso/build.sh eng/iso/build-in-container.sh eng/iso/verify-config.sh
           bash eng/iso/verify-config.sh
-      - run: dotnet restore GNAS.slnx
-      - run: dotnet build GNAS.slnx -c Release --no-restore -warnaserror:CS
-      - run: dotnet test GNAS.slnx -c Release --no-build --collect:"XPlat Code Coverage" --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+      - run: dotnet restore GORT.slnx
+      - run: dotnet build GORT.slnx -c Release --no-restore -warnaserror:CS
+      - run: dotnet test GORT.slnx -c Release --no-build --collect:"XPlat Code Coverage" --logger "trx;LogFileName=tests.trx" --results-directory TestResults
       - name: Enforce line coverage floor
         shell: pwsh
         run: |
@@ -47,7 +47,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: docker compose -f docker-compose.test.yml up -d --build
-      - run: dotnet test tests/GNAS.Tests.Integration/GNAS.Tests.Integration.csproj --filter "Category=Integration" --logger "trx;LogFileName=docker-e2e.trx" --results-directory TestResults
+      - run: dotnet test tests/GORT.Tests.Integration/GORT.Tests.Integration.csproj --filter "Category=Integration" --logger "trx;LogFileName=docker-e2e.trx" --results-directory TestResults
       - if: always()
         run: docker compose -f docker-compose.test.yml down --volumes
       - uses: actions/upload-artifact@v4

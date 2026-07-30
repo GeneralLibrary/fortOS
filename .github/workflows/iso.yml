@@ -1,4 +1,4 @@
-name: GNAS Debian ISO
+name: GORT Debian ISO
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
       - name: Upload ISO and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: gnas-debian12-amd64
+          name: gort-debian12-amd64
           path: artifacts/iso/*
           if-no-files-found: error
           retention-days: 14

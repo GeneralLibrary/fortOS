@@ -1,6 +1,6 @@
-# GNAS Integration Test Compose
+# GORT Integration Test Compose
 services:
-  gnas-test:
+  gort-test:
     build: .
     privileged: true
     volumes:
@@ -8,7 +8,7 @@ services:
       - ./test-data:/srv/nas
     environment:
       - ASPNETCORE_ENVIRONMENT=Testing
-      - GNAS_DATA_ROOT=/srv/nas
+      - GORT_DATA_ROOT=/srv/nas
       - ASPNETCORE_URLS=http://0.0.0.0:5000
     ports:
       - "5001:5000"

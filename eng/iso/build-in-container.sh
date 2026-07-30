@@ -3,10 +3,10 @@ set -Eeuo pipefail
 
 readonly ARCHITECTURE="amd64"
 readonly DOTNET_RUNTIME="linux-x64"
-readonly VERSION="${GNAS_VERSION:?GNAS_VERSION must be set by build.sh}"
+readonly VERSION="${GORT_VERSION:?GORT_VERSION must be set by build.sh}"
 readonly SAFE_VERSION="${VERSION//[^a-zA-Z0-9._-]/-}"
-readonly IMAGE_BASENAME="gnas-debian12-${SAFE_VERSION}-${ARCHITECTURE}"
-readonly BUILD_ROOT="/build/gnas-iso"
+readonly IMAGE_BASENAME="gort-debian12-${SAFE_VERSION}-${ARCHITECTURE}"
+readonly BUILD_ROOT="/build/gort-iso"
 readonly LIVE_ROOT="${BUILD_ROOT}/live"
 readonly PUBLISH_ROOT="${BUILD_ROOT}/publish"
 readonly DOTNET_ROOT="/opt/dotnet"
@@ -51,17 +51,17 @@ install_dotnet_sdk() {
         --no-path
 }
 
-publish_gnas() {
+publish_gort() {
     mkdir -p "${PUBLISH_ROOT}/api" "${PUBLISH_ROOT}/cli"
 
-    dotnet publish /workspace/src/GNAS.Api/GNAS.Api.csproj \
+    dotnet publish /workspace/src/GORT.Api/GORT.Api.csproj \
         --configuration Release \
         --runtime "${DOTNET_RUNTIME}" \
         --self-contained true \
         --artifacts-path "${BUILD_ROOT}/artifacts" \
         --output "${PUBLISH_ROOT}/api"
 
-    dotnet publish /workspace/src/GNAS.Cli/GNAS.Cli.csproj \
+    dotnet publish /workspace/src/GORT.Cli/GORT.Cli.csproj \
         --configuration Release \
         --runtime "${DOTNET_RUNTIME}" \
         --self-contained true \
@@ -78,7 +78,7 @@ configure_live_image() {
     # When present, the ISO build avoids downloading packages from the
     # internet — all .deb files are resolved from the local cache.
     # -----------------------------------------------------------------
-    local CACHE_DEBS="/workspace/gnas debian12/cache/debs"
+    local CACHE_DEBS="/workspace/gort debian12/cache/debs"
     local USE_LOCAL_CACHE=false
     if [[ -d "${CACHE_DEBS}" ]] && compgen -G "${CACHE_DEBS}/*.deb" > /dev/null; then
         USE_LOCAL_CACHE=true
@@ -87,7 +87,7 @@ configure_live_image() {
         echo "=== Using local Debian package cache (${CACHED_COUNT} .deb files) ==="
     else
         echo "=== No local cache at '${CACHE_DEBS}'. Packages will be downloaded. ==="
-        echo "    To create the cache: cd 'gnas debian12' && bash scripts/bootstrap-debian12.sh debs"
+        echo "    To create the cache: cd 'gort debian12' && bash scripts/bootstrap-debian12.sh debs"
     fi
 
     lb config \
@@ -100,10 +100,10 @@ configure_live_image() {
         --debian-installer live \
         --debian-installer-distribution bookworm \
         --debian-installer-gui true \
-        --bootappend-live "boot=live components hostname=gnas locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us" \
-        --iso-application "GNAS Debian 12 Installer" \
-        --iso-publisher "GNAS Project" \
-        --iso-volume "GNAS_${SAFE_VERSION:0:20}" \
+        --bootappend-live "boot=live components hostname=gort locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us" \
+        --iso-application "GORT Debian 12 Installer" \
+        --iso-publisher "GORT Project" \
+        --iso-volume "GORT_${SAFE_VERSION:0:20}" \
         --uefi-secure-boot auto
 
     cp -a /workspace/eng/iso/config/. "${LIVE_ROOT}/config/"
@@ -130,15 +130,15 @@ configure_live_image() {
         # Stage 2: Mirror cache into the chroot at a known location
         # and register it as a local apt source. This lets apt satisfy
         # any remaining dependency edges without reaching the network.
-        mkdir -p "${LIVE_ROOT}/config/includes.chroot/var/cache/gnas-packages"
-        cp -a "${CACHE_DEBS}"/*.deb "${LIVE_ROOT}/config/includes.chroot/var/cache/gnas-packages/"
+        mkdir -p "${LIVE_ROOT}/config/includes.chroot/var/cache/gort-packages"
+        cp -a "${CACHE_DEBS}"/*.deb "${LIVE_ROOT}/config/includes.chroot/var/cache/gort-packages/"
         if [[ -f "${CACHE_DEBS}/Packages.gz" ]]; then
-            cp -a "${CACHE_DEBS}/Packages.gz" "${LIVE_ROOT}/config/includes.chroot/var/cache/gnas-packages/"
+            cp -a "${CACHE_DEBS}/Packages.gz" "${LIVE_ROOT}/config/includes.chroot/var/cache/gort-packages/"
         fi
         # Register the local repo inside the build chroot so apt picks it up.
         mkdir -p "${LIVE_ROOT}/config/archives"
-        cat > "${LIVE_ROOT}/config/archives/gnas-cache.list.chroot" << 'APTEOF'
-deb [trusted=yes] file:/var/cache/gnas-packages ./
+        cat > "${LIVE_ROOT}/config/archives/gort-cache.list.chroot" << 'APTEOF'
+deb [trusted=yes] file:/var/cache/gort-packages ./
 APTEOF
         echo "Local cache staged: packages.chroot + file:// apt source."
 
@@ -206,19 +206,19 @@ APTEOF
         )
     fi
 
-    mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/gnas"
-    cp -a "${PUBLISH_ROOT}/api" "${LIVE_ROOT}/config/includes.chroot/opt/gnas/"
-    cp -a "${PUBLISH_ROOT}/cli" "${LIVE_ROOT}/config/includes.chroot/opt/gnas/"
-    printf '%s\n' "${VERSION}" > "${LIVE_ROOT}/config/includes.chroot/etc/gnas/version"
+    mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/gort"
+    cp -a "${PUBLISH_ROOT}/api" "${LIVE_ROOT}/config/includes.chroot/opt/gort/"
+    cp -a "${PUBLISH_ROOT}/cli" "${LIVE_ROOT}/config/includes.chroot/opt/gort/"
+    printf '%s\n' "${VERSION}" > "${LIVE_ROOT}/config/includes.chroot/etc/gort/version"
 
     # Stage service trimming script — applies the enabled-services whitelist
-    # inside the chroot so only GNAS-required services start at boot.
-    local TRIM_SCRIPT="/workspace/gnas debian12/scripts/trim-services.sh"
+    # inside the chroot so only GORT-required services start at boot.
+    local TRIM_SCRIPT="/workspace/gort debian12/scripts/trim-services.sh"
     if [[ -f "${TRIM_SCRIPT}" ]]; then
         sed -i 's/\r$//' "${TRIM_SCRIPT}" 2>/dev/null || true
-        mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/gnas/scripts"
-        cp "${TRIM_SCRIPT}" "${LIVE_ROOT}/config/includes.chroot/opt/gnas/scripts/trim-services.sh"
-        chmod 0755 "${LIVE_ROOT}/config/includes.chroot/opt/gnas/scripts/trim-services.sh"
+        mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/gort/scripts"
+        cp "${TRIM_SCRIPT}" "${LIVE_ROOT}/config/includes.chroot/opt/gort/scripts/trim-services.sh"
+        chmod 0755 "${LIVE_ROOT}/config/includes.chroot/opt/gort/scripts/trim-services.sh"
     fi
 }
 
@@ -241,7 +241,7 @@ build_image() {
 
 install_builder_dependencies
 install_dotnet_sdk
-publish_gnas
+publish_gort
 configure_live_image
 build_image
 

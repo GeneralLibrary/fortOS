@@ -5,11 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>preview</LangVersion>
     <Version>1.0.0</Version>
-    <Authors>GNAS Team</Authors>
+    <Authors>GORT Team</Authors>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <!-- GNAS intentionally targets Linux only; this also enables platform-aware
+    <!-- GORT intentionally targets Linux only; this also enables platform-aware
          analyzers to validate every consuming assembly against that contract. -->
     <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
       <_Parameter1>linux</_Parameter1>

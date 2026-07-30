@@ -1,9 +1,9 @@
-# GNAS self-deployment reference (see docs/gnas-architecture.md §13.2)
+# GORT self-deployment reference (see docs/gort-architecture.md §13.2)
 services:
-  gnas-core:
-    image: gnas/core:latest
+  gort-core:
+    image: gort/core:latest
     build: .
-    container_name: gnas-core
+    container_name: gort-core
     restart: unless-stopped
     network_mode: host
     pid: host
@@ -15,14 +15,14 @@ services:
       - /sys:/host/sys:ro
       - /dev:/host/dev
     environment:
-      - GNAS_CONFIG_PATH=/srv/nas/config/nas.yaml
-      - GNAS_DATA_ROOT=/srv/nas
+      - GORT_CONFIG_PATH=/srv/nas/config/nas.yaml
+      - GORT_DATA_ROOT=/srv/nas
       - ASPNETCORE_URLS=http://0.0.0.0:5000
       - ASPNETCORE_ENVIRONMENT=Production
 
-  gnas-loki:
+  gort-loki:
     image: grafana/loki:latest
-    container_name: gnas-loki
+    container_name: gort-loki
     restart: unless-stopped
     volumes:
       - /srv/nas/logs/loki:/loki

@@ -1,0 +1,6 @@
+@GORT.Api_HostAddress = http://localhost:5248
+
+GET {{GORT.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
