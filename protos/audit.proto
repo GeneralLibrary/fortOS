@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-package gort.v1;
-option csharp_namespace = "GORT.Proto";
+package fortos.v1;
+option csharp_namespace = "FortOS.Proto";
 
 
 service AuditService {

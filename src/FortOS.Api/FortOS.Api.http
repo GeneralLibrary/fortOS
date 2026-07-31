@@ -1,0 +1,6 @@
+@FortOS.Api_HostAddress = http://localhost:5248
+
+GET {{FortOS.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

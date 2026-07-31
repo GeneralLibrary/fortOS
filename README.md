@@ -2,24 +2,24 @@
   <img src="https://img.shields.io/badge/platform-Linux%20x64%20%7C%20ARM64-blue" alt="Platform">
   <img src="https://img.shields.io/badge/runtime-.NET%2010-512BD4?logo=dotnet" alt=".NET 10">
   <img src="https://img.shields.io/badge/ubuntu-24.04%20runner-brightgreen?logo=githubactions" alt="CI">
-  <a href="https://github.com/GeneralLibrary/gort/actions/workflows/ci.yml"><img src="https://github.com/GeneralLibrary/gort/actions/workflows/ci.yml/badge.svg" alt="GORT CI"></a>
+  <a href="https://github.com/GeneralLibrary/fortos/actions/workflows/ci.yml"><img src="https://github.com/GeneralLibrary/fortos/actions/workflows/ci.yml/badge.svg" alt="FortOS CI"></a>
   <img src="https://img.shields.io/badge/docker-compose%20v2-2496ED?logo=docker" alt="Docker Compose v2">
-  <img src="https://img.shields.io/github/license/GeneralLibrary/gort" alt="License">
+  <img src="https://img.shields.io/github/license/GeneralLibrary/fortos" alt="License">
 </p>
 
 <p align="center">
-  <h1 align="center">GORT — General NAS</h1>
+  <h1 align="center">FortOS — General NAS</h1>
   <p align="center"><strong>A modern, security-first Linux NAS operating system.</strong></p>
   <p align="center">Built with .NET 10 · Container-native · Fully observable</p>
 </p>
 
 ---
 
-## What is GORT?
+## What is FortOS?
 
-GORT is an open-source NAS (Network Attached Storage) operating system designed for **home labs**, **SMB/studios**, and **edge deployments**. It runs bare-metal via a Debian 12 ISO or inside Docker for evaluation, exposing every management surface through a unified REST/gRPC API and a fast terminal CLI.
+FortOS is an open-source NAS (Network Attached Storage) operating system designed for **home labs**, **SMB/studios**, and **edge deployments**. It runs bare-metal via a Debian 12 ISO or inside Docker for evaluation, exposing every management surface through a unified REST/gRPC API and a fast terminal CLI.
 
-Unlike traditional NAS software, GORT treats **Docker containers as first-class citizens** — deploy, supervise, and audit agents with the same security model that governs native services (SMB, NFS, rsync backups, snapshots).
+Unlike traditional NAS software, FortOS treats **Docker containers as first-class citizens** — deploy, supervise, and audit agents with the same security model that governs native services (SMB, NFS, rsync backups, snapshots).
 
 <p align="center"><em>Inspired by HarmonyOS distributed security · Patterns from Unraid, TrueNAS SCALE, and Synology DSM</em></p>
 
@@ -83,7 +83,7 @@ Unlike traditional NAS software, GORT treats **Docker containers as first-class 
 
 | Interface | Description |
 |-----------|-------------|
-| `gort` CLI | Interactive TUI dashboard + batch/JSON mode — pipeline-friendly |
+| `fortos` CLI | Interactive TUI dashboard + batch/JSON mode — pipeline-friendly |
 | REST API | ASP.NET Core controllers at `http://localhost:5000/api/` |
 | gRPC | High-performance IPC for storage, share, agent, and audit services |
 | Web Dashboard | Optional static dashboard served at `/dashboard` |
@@ -104,8 +104,8 @@ Unlike traditional NAS software, GORT treats **Docker containers as first-class 
 ### Docker Compose (Evaluation)
 
 ```bash
-git clone https://github.com/GeneralLibrary/gort.git
-cd gort
+git clone https://github.com/GeneralLibrary/fortos.git
+cd fortos
 docker compose up -d --build
 ```
 
@@ -120,7 +120,7 @@ curl http://localhost:5000/api/health
 
 > **Note:** The Docker Compose file uses the host network and PID namespaces, mounts host procfs/sysfs read-only,
 > mounts `/srv/nas` as the data root, and binds the Docker socket so monitoring describes the NAS host rather
-> than the GORT container. For NFS kernel-server support, use the bare-metal ISO installation.
+> than the FortOS container. For NFS kernel-server support, use the bare-metal ISO installation.
 
 ```bash
 # Stop
@@ -138,20 +138,20 @@ VERSION=1.0.0 bash eng/iso/build.sh
 Artifacts are written to `artifacts/iso/`:
 
 ```
-gort-debian12-1.0.0-amd64.iso
-gort-debian12-1.0.0-amd64.iso.sha256
+fortos-debian12-1.0.0-amd64.iso
+fortos-debian12-1.0.0-amd64.iso.sha256
 ```
 
 Write to USB, boot, and follow the Debian installer:
 
 ```bash
-sha256sum --check gort-debian12-1.0.0-amd64.iso.sha256
-sudo dd if=gort-debian12-1.0.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sha256sum --check fortos-debian12-1.0.0-amd64.iso.sha256
+sudo dd if=fortos-debian12-1.0.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-GORT starts automatically via `gort.service` after installation, listening on `http://0.0.0.0:5000`.
+FortOS starts automatically via `fortos.service` after installation, listening on `http://0.0.0.0:5000`.
 
-> Pre-built ISOs are also available from the [GORT Debian ISO](https://github.com/GeneralLibrary/gort/actions/workflows/iso.yml) GitHub Actions workflow.
+> Pre-built ISOs are also available from the [FortOS Debian ISO](https://github.com/GeneralLibrary/fortos/actions/workflows/iso.yml) GitHub Actions workflow.
 
 ---
 
@@ -159,51 +159,51 @@ GORT starts automatically via `gort.service` after installation, listening on `h
 
 ```bash
 # System status dashboard (TUI)
-gort
+fortos
 
 # Health and metrics
-gort status
-gort status --watch --interval 5
+fortos status
+fortos status --watch --interval 5
 
 # Historical metric query
-curl -H "Authorization: Bearer $GORT_TOKEN" \
+curl -H "Authorization: Bearer $FortOS_TOKEN" \
   "http://localhost:5000/api/metrics/history?metric=system.cpu.usage.percent&limit=100"
 
 # Disk management
-gort disk list --output json
-gort disk format /dev/sdb --fs btrfs --label nas-pool
+fortos disk list --output json
+fortos disk format /dev/sdb --fs btrfs --label nas-pool
 
 # Create and manage shares
-gort share create media --path /srv/nas/media --protocols smb,nfs
-gort share list --output table
+fortos share create media --path /srv/nas/media --protocols smb,nfs
+fortos share list --output table
 
 # Deploy an Agent container
-gort agent deploy nginx-basic \
+fortos agent deploy nginx-basic \
   --image nginx:alpine \
   --agent-id web-nginx \
   --volume /srv/nas/www:/usr/share/nginx/html:ro
 
 # Backup workflows
-gort backup task set media-backup \
+fortos backup task set media-backup \
   --source /srv/nas/media \
   --target /srv/nas/backup/media \
   --cron interval:60
-gort backup task run media-backup
+fortos backup task run media-backup
 
 # Restore with dry-run
-gort recovery start /srv/nas/media \
+fortos recovery start /srv/nas/media \
   --source /srv/nas/backup/media \
   --mode rsync --dry-run --confirm
 
 # File operations
-gort file write /srv/nas/demo/hello.txt --content "hello gort" --overwrite
-gort file read /srv/nas/demo/hello.txt
+fortos file write /srv/nas/demo/hello.txt --content "hello fortos" --overwrite
+fortos file read /srv/nas/demo/hello.txt
 
 # Audit chain verification
-gort audit verify --output json
+fortos audit verify --output json
 
 # Remote server
-gort --server http://192.168.1.100:5000 --token "$GORT_TOKEN" service list
+fortos --server http://192.168.1.100:5000 --token "$FortOS_TOKEN" service list
 ```
 
 ---
@@ -212,7 +212,7 @@ gort --server http://192.168.1.100:5000 --token "$GORT_TOKEN" service list
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  PRESENTATION       gort CLI (TUI + Batch)  │  Web Dashboard │
+│  PRESENTATION       fortos CLI (TUI + Batch)  │  Web Dashboard │
 ├──────────────────────────────────────────────────────────────┤
 │  API GATEWAY        REST (ASP.NET Core)  │  gRPC (IPC)       │
 ├──────────────────────────────────────────────────────────────┤
@@ -242,17 +242,17 @@ gort --server http://192.168.1.100:5000 --token "$GORT_TOKEN" service list
 
 | Layer | Project | Responsibility |
 |-------|---------|----------------|
-| **Core** | `GORT.Core` | Models, abstractions, SQLite, configuration |
-| **Platform** | `GORT.Platform` | Linux disk, filesystem, process, network, user management |
-| **Security** | `GORT.Security` | Token issuance, identity, capabilities, key storage |
-| **Service Bus** | `GORT.ServiceBus` | Service registry, supervisor, event bus, health checks |
-| **Modules** | `GORT.Modules.*` | Storage, Share (SMB/NFS/FTP), Network, Agent, Backup, Update |
-| **Agent** | `GORT.Agent` | Agent catalog, token broker, Compose generator, log collector |
-| **Observability** | `GORT.Observability` | Log pipeline, audit chain, alert engine, Serilog, Prometheus |
-| **API** | `GORT.Api` | REST controllers, gRPC services, middleware (auth, rate-limit, audit, idempotency) |
-| **CLI** | `GORT.Cli` | Interactive TUI, batch commands, Spectre.Console rendering |
+| **Core** | `FortOS.Core` | Models, abstractions, SQLite, configuration |
+| **Platform** | `FortOS.Platform` | Linux disk, filesystem, process, network, user management |
+| **Security** | `FortOS.Security` | Token issuance, identity, capabilities, key storage |
+| **Service Bus** | `FortOS.ServiceBus` | Service registry, supervisor, event bus, health checks |
+| **Modules** | `FortOS.Modules.*` | Storage, Share (SMB/NFS/FTP), Network, Agent, Backup, Update |
+| **Agent** | `FortOS.Agent` | Agent catalog, token broker, Compose generator, log collector |
+| **Observability** | `FortOS.Observability` | Log pipeline, audit chain, alert engine, Serilog, Prometheus |
+| **API** | `FortOS.Api` | REST controllers, gRPC services, middleware (auth, rate-limit, audit, idempotency) |
+| **CLI** | `FortOS.Cli` | Interactive TUI, batch commands, Spectre.Console rendering |
 
-For a detailed architectural breakdown, see [docs/gort-architecture.md](docs/gort-architecture.md).
+For a detailed architectural breakdown, see [docs/fortos-architecture.md](docs/fortos-architecture.md).
 
 ---
 
@@ -260,30 +260,30 @@ For a detailed architectural breakdown, see [docs/gort-architecture.md](docs/gor
 
 ```bash
 # Clone and restore
-git clone https://github.com/GeneralLibrary/gort.git
-cd gort
-dotnet restore GORT.slnx
+git clone https://github.com/GeneralLibrary/fortos.git
+cd fortos
+dotnet restore FortOS.slnx
 
 # Build (warnings as errors)
-dotnet build GORT.slnx -c Release -warnaserror:CS
+dotnet build FortOS.slnx -c Release -warnaserror:CS
 
 # Run all tests
-dotnet test GORT.slnx -c Release
+dotnet test FortOS.slnx -c Release
 
 # Run only unit tests (no Docker required)
-dotnet test GORT.slnx -c Release --filter "Category!=Integration"
+dotnet test FortOS.slnx -c Release --filter "Category!=Integration"
 
 # Run integration suite (requires Docker)
-dotnet test tests/GORT.Tests.Integration -c Release --filter "Category=Integration"
+dotnet test tests/FortOS.Tests.Integration -c Release --filter "Category=Integration"
 ```
 
 ### Service Registration
 
 ```csharp
 // Typical startup order in Program.cs
-services.AddGortCore();
+services.AddFortOSCore();
 services.AddPlatformServices();
-services.AddGortSecurity(configuration);
+services.AddFortOSSecurity(configuration);
 services.AddServiceBus();
 services.AddModuleHost();
 services.AddAgentServices();
@@ -294,12 +294,12 @@ services.AddObservability(configuration);
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GORT_DATA_ROOT` | `/srv/nas` | Data root directory |
-| `GORT_CONFIG_PATH` | `/srv/nas/config/nas.yaml` | Configuration file path |
+| `FortOS_DATA_ROOT` | `/srv/nas` | Data root directory |
+| `FortOS_CONFIG_PATH` | `/srv/nas/config/nas.yaml` | Configuration file path |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:5000` | API listen address |
 | `ASPNETCORE_ENVIRONMENT` | `Production` | ASP.NET environment |
-| `GORT_TOKEN` | — | CLI authentication token |
-| `GORT_API_ENDPOINT` | `http://host.docker.internal:5000` | Agent API endpoint |
+| `FortOS_TOKEN` | — | CLI authentication token |
+| `FortOS_API_ENDPOINT` | `http://host.docker.internal:5000` | Agent API endpoint |
 
 Monitoring settings are read from `nas.yaml`: `monitoring:interval_seconds` (default `5`),
 `monitoring:history_interval_seconds` (default `60`), `monitoring:smart_interval_seconds` (default `60`),
@@ -312,25 +312,25 @@ Alert delivery uses `alerts:smtp:*` and `alerts:webhook:urls`.
 ## Project Structure
 
 ```
-GORT.slnx
+FortOS.slnx
 ├── src/
-│   ├── GORT.Core/                  Core models, abstractions, database, configuration
-│   ├── GORT.Platform/              Linux platform implementations
-│   ├── GORT.Security/              NasToken, identity, permissions, key store
-│   ├── GORT.ServiceBus/            Service registry, supervisor, event bus, health
-│   ├── GORT.Agent/                 Agent catalog, token broker, Compose generator
-│   ├── GORT.Modules/               Module host and base class
-│   ├── GORT.Modules.Storage/       Disk, RAID, filesystem modules
-│   ├── GORT.Modules.Share/         SMB, NFS, FTP, recycle bin, quotas
-│   ├── GORT.Modules.Network/       Network and firewall configuration
-│   ├── GORT.Modules.Agent/         Agent orchestration module
-│   ├── GORT.Modules.Backup/        Snapshots, rsync, cloud backup
-│   ├── GORT.Modules.Update/        OTA updates and version checks
-│   ├── GORT.Observability/         Logging, audit chain, alerts, Serilog
-│   ├── GORT.Api/                   ASP.NET Core REST/gRPC gateway
-│   └── GORT.Cli/                   Command line tool and TUI
+│   ├── FortOS.Core/                  Core models, abstractions, database, configuration
+│   ├── FortOS.Platform/              Linux platform implementations
+│   ├── FortOS.Security/              NasToken, identity, permissions, key store
+│   ├── FortOS.ServiceBus/            Service registry, supervisor, event bus, health
+│   ├── FortOS.Agent/                 Agent catalog, token broker, Compose generator
+│   ├── FortOS.Modules/               Module host and base class
+│   ├── FortOS.Modules.Storage/       Disk, RAID, filesystem modules
+│   ├── FortOS.Modules.Share/         SMB, NFS, FTP, recycle bin, quotas
+│   ├── FortOS.Modules.Network/       Network and firewall configuration
+│   ├── FortOS.Modules.Agent/         Agent orchestration module
+│   ├── FortOS.Modules.Backup/        Snapshots, rsync, cloud backup
+│   ├── FortOS.Modules.Update/        OTA updates and version checks
+│   ├── FortOS.Observability/         Logging, audit chain, alerts, Serilog
+│   ├── FortOS.Api/                   ASP.NET Core REST/gRPC gateway
+│   └── FortOS.Cli/                   Command line tool and TUI
 ├── tests/
-│   └── GORT.Tests.Integration/     Integration and E2E tests
+│   └── FortOS.Tests.Integration/     Integration and E2E tests
 ├── eng/iso/                        Debian ISO build scripts
 ├── docs/                           Architecture and design documentation
 ├── docker-compose.yml              Reference Compose deployment
@@ -356,15 +356,15 @@ GORT.slnx
 Contributions are welcome. Before submitting a PR, please:
 
 1. Open an issue to discuss the proposed change.
-2. Ensure `dotnet build GORT.slnx -c Release -warnaserror:CS` passes with zero warnings.
-3. Run `dotnet test GORT.slnx -c Release` and verify all tests pass.
+2. Ensure `dotnet build FortOS.slnx -c Release -warnaserror:CS` passes with zero warnings.
+3. Run `dotnet test FortOS.slnx -c Release` and verify all tests pass.
 4. Follow the existing code style and XML documentation conventions.
 
 ---
 
 ## License
 
-GORT is open-source software. See [LICENSE](LICENSE) for details.
+FortOS is open-source software. See [LICENSE](LICENSE) for details.
 
 ---
 

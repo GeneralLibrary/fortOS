@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FortOS.Agent/FortOS.Agent.csproj" />
+    <Project Path="src/FortOS.Api/FortOS.Api.csproj" />
+    <Project Path="src/FortOS.Cli/FortOS.Cli.csproj" />
+    <Project Path="src/FortOS.Core/FortOS.Core.csproj" />
+    <Project Path="src/FortOS.Modules.Agent/FortOS.Modules.Agent.csproj" />
+    <Project Path="src/FortOS.Modules.Backup/FortOS.Modules.Backup.csproj" />
+    <Project Path="src/FortOS.Modules.Network/FortOS.Modules.Network.csproj" />
+    <Project Path="src/FortOS.Modules.Share/FortOS.Modules.Share.csproj" />
+    <Project Path="src/FortOS.Modules.Storage/FortOS.Modules.Storage.csproj" />
+    <Project Path="src/FortOS.Modules.Update/FortOS.Modules.Update.csproj" />
+    <Project Path="src/FortOS.Modules/FortOS.Modules.csproj" />
+    <Project Path="src/FortOS.Observability/FortOS.Observability.csproj" />
+    <Project Path="src/FortOS.Platform/FortOS.Platform.csproj" />
+    <Project Path="src/FortOS.Security/FortOS.Security.csproj" />
+    <Project Path="src/FortOS.ServiceBus/FortOS.ServiceBus.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FortOS.Tests.Integration/FortOS.Tests.Integration.csproj" />
+  </Folder>
+</Solution>

@@ -1,6 +1,6 @@
-# GORT Integration Test Compose
+# FortOS Integration Test Compose
 services:
-  gort-test:
+  fortos-test:
     build: .
     privileged: true
     volumes:
@@ -8,7 +8,7 @@ services:
       - ./test-data:/srv/nas
     environment:
       - ASPNETCORE_ENVIRONMENT=Testing
-      - GORT_DATA_ROOT=/srv/nas
+      - FortOS_DATA_ROOT=/srv/nas
       - ASPNETCORE_URLS=http://0.0.0.0:5000
     ports:
       - "5001:5000"

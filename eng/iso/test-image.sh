@@ -38,18 +38,18 @@ xorriso -osirrox on -indev "${ISO_PATH}" \
     >/dev/null 2>&1
 
 required_paths=(
-    "opt/gort/api/GORT.Api"
-    "opt/gort/cli/GORT.Cli"
-    "etc/gort/gort.env"
-    "etc/gort/version"
-    "etc/systemd/system/gort.service"
-    "etc/systemd/system/multi-user.target.wants/gort.service"
+    "opt/fortos/api/FortOS.Api"
+    "opt/fortos/cli/FortOS.Cli"
+    "etc/fortos/fortos.env"
+    "etc/fortos/version"
+    "etc/systemd/system/fortos.service"
+    "etc/systemd/system/multi-user.target.wants/fortos.service"
     "etc/systemd/system/multi-user.target.wants/docker.service"
     "etc/apt/keyrings/docker.asc"
     "etc/apt/sources.list.d/docker.list"
     "usr/bin/docker"
     "usr/lib/systemd/system/docker.service"
-    "usr/local/bin/gort"
+    "usr/local/bin/fortos"
 )
 
 unsquashfs -f -d "${EXTRACTED_ROOT}" "${SQUASHFS_PATH}" "${required_paths[@]}" \
@@ -62,11 +62,11 @@ for path in "${required_paths[@]}"; do
     fi
 done
 
-file "${EXTRACTED_ROOT}/opt/gort/api/GORT.Api" | grep -q 'ELF 64-bit.*x86-64'
-file "${EXTRACTED_ROOT}/opt/gort/cli/GORT.Cli" | grep -q 'ELF 64-bit.*x86-64'
-grep -q '^ExecStart=/opt/gort/api/GORT.Api$' \
-    "${EXTRACTED_ROOT}/etc/systemd/system/gort.service"
-grep -q '^GORT_DATA_ROOT=/srv/nas$' \
-    "${EXTRACTED_ROOT}/etc/gort/gort.env"
+file "${EXTRACTED_ROOT}/opt/fortos/api/FortOS.Api" | grep -q 'ELF 64-bit.*x86-64'
+file "${EXTRACTED_ROOT}/opt/fortos/cli/FortOS.Cli" | grep -q 'ELF 64-bit.*x86-64'
+grep -q '^ExecStart=/opt/fortos/api/FortOS.Api$' \
+    "${EXTRACTED_ROOT}/etc/systemd/system/fortos.service"
+grep -q '^FortOS_DATA_ROOT=/srv/nas$' \
+    "${EXTRACTED_ROOT}/etc/fortos/fortos.env"
 
-echo "ISO boot catalog and installed GORT payload are valid."
+echo "ISO boot catalog and installed FortOS payload are valid."

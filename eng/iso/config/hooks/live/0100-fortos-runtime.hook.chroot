@@ -1,0 +1,50 @@
+#!/bin/sh
+set -eu
+
+# -------------------------------------------------------------------------
+# FortOS runtime hook — runs inside the live-build chroot after package
+# installation. Sets up FortOS binaries, systemd units, and trims non-
+# essential services.
+# -------------------------------------------------------------------------
+
+echo "=== FortOS Runtime Hook ==="
+
+# --- 1. FortOS binaries ---
+chmod 0755 /opt/fortos/api/FortOS.Api /opt/fortos/cli/FortOS.Cli
+ln -sf /opt/fortos/cli/FortOS.Cli /usr/local/bin/fortos
+
+# --- 2. Enable FortOS-required services ---
+echo "Enabling FortOS services..."
+systemctl enable docker.service
+systemctl enable containerd.service
+systemctl enable smbd.service
+systemctl enable nmbd.service
+systemctl enable nfs-server.service
+systemctl enable nfs-mountd.service
+systemctl enable rpcbind.service
+systemctl enable vsftpd.service
+systemctl enable ssh.service
+systemctl enable NetworkManager.service
+systemctl enable nut-monitor.service 2>/dev/null || true
+systemctl enable fortos.service
+
+# --- 3. FortOS tmpfiles ---
+systemd-tmpfiles --create /etc/tmpfiles.d/fortos.conf
+
+# --- 4. Trim non-essential services ---
+# Only keep what FortOS directly or indirectly needs.
+if [ -x /opt/fortos/scripts/trim-services.sh ]; then
+    echo "Running service trimming..."
+    /opt/fortos/scripts/trim-services.sh
+    rm /opt/fortos/scripts/trim-services.sh
+else
+    echo "WARNING: trim-services.sh not found. Services will not be trimmed."
+fi
+
+# --- 5. Disable graphical target ---
+# FortOS is headless — force multi-user.target.
+ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+rm -f /etc/systemd/system/default.target
+ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+
+echo "=== FortOS Runtime Hook Complete ==="

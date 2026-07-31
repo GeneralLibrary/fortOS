@@ -1,4 +1,4 @@
-name: GORT Debian ISO
+name: FortOS Debian ISO
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
       - name: Upload ISO and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: gort-debian12-amd64
+          name: fortos-debian12-amd64
           path: artifacts/iso/*
           if-no-files-found: error
           retention-days: 14
