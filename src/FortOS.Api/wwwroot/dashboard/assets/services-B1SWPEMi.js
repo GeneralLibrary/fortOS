@@ -1,1 +1,0 @@
-import{a2 as t,a3 as s}from"./index-CysYKSXN.js";function n(e){return t("/api/services",{},e)}function o(e){return s(`/api/services/${encodeURIComponent(e)}/start`)}function i(e){return s(`/api/services/${encodeURIComponent(e)}/stop`)}export{i as a,n as l,o as s};

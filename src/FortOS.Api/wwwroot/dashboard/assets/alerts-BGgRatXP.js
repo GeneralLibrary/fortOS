@@ -1,1 +1,0 @@
-import{a2 as r,a3 as a}from"./index-CysYKSXN.js";function s(t){return r("/api/alerts",{},t)}function l(t){return r("/api/alerts/rules",{},t)}function u(t){return a("/api/alerts/rules",t)}export{l as a,u as b,s as l};
