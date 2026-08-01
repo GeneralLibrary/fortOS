@@ -22,6 +22,11 @@ public sealed class RaidApiTests
     public async Task ListRaids_ReturnsOk()
     {
         using var factory = await RaidTestFactory.CreateAsync(nameof(ListRaids_ReturnsOk));
+        // The factory removes hosted services (including StartupOrchestrator) so the test
+        // host does not run background daemons; the module context must therefore be set up
+        // explicitly, otherwise StorageModule.RequiredService throws "Module has not been
+        // initialized." when the controller resolves IDiskManager.
+        await factory.InitializeModulesAsync();
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/api/disks/raids");
@@ -138,6 +143,17 @@ public sealed class RaidApiTests
         }
 
         public string DataRoot { get; }
+
+        /// <summary>
+        /// Initializes the module host (equivalent of what StartupOrchestrator does in a
+        /// production host). Required by endpoints that resolve services through a module
+        /// context; the factory deliberately keeps hosted services removed.
+        /// </summary>
+        public async Task InitializeModulesAsync()
+        {
+            var moduleHost = Services.GetRequiredService<IModuleHost>();
+            await moduleHost.DiscoverAndLoadAsync(CancellationToken.None);
+        }
 
         public static async Task<RaidTestFactory> CreateAsync(string testName)
         {
