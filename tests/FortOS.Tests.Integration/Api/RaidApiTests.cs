@@ -2,12 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FortOS.Core;
+using FortOS.Modules.Storage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace FortOS.Tests.Integration.Api;
 
@@ -145,14 +147,23 @@ public sealed class RaidApiTests
         public string DataRoot { get; }
 
         /// <summary>
-        /// Initializes the module host (equivalent of what StartupOrchestrator does in a
-        /// production host). Required by endpoints that resolve services through a module
-        /// context; the factory deliberately keeps hosted services removed.
+        /// Initializes just the storage module context (equivalent of what
+        /// StartupOrchestrator/ModuleHost do in a production host). Required by endpoints
+        /// that resolve services through a module context; the factory deliberately keeps
+        /// hosted services removed. Only StorageModule is initialized — the other built-in
+        /// modules (e.g. ShareModule) touch privileged host paths like /etc/samba that a
+        /// non-root CI runner cannot write, and they are not needed for the RAID endpoints.
         /// </summary>
         public async Task InitializeModulesAsync()
         {
-            var moduleHost = Services.GetRequiredService<IModuleHost>();
-            await moduleHost.DiscoverAndLoadAsync(CancellationToken.None);
+            var storage = Services.GetRequiredService<StorageModule>();
+            await storage.InitializeAsync(new ModuleContext
+            {
+                Services = Services,
+                EventBus = Services.GetRequiredService<IEventBus>(),
+                LoggerFactory = Services.GetRequiredService<ILoggerFactory>(),
+                DataDirectory = Path.Combine(DataRoot, "modules", "loaded", storage.ModuleId),
+            }, CancellationToken.None);
         }
 
         public static async Task<RaidTestFactory> CreateAsync(string testName)
