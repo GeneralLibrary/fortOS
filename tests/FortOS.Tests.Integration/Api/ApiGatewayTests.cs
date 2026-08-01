@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FortOS.Core;
 using FortOS.Security.KeyStore;
 using FortOS.Security.Services;
@@ -48,6 +49,123 @@ public sealed class ApiGatewayTests
         var response = await client.GetAsync("/api/files?path=/srv/nas");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task FilesEndpoint_WithoutToken_WhenAuthDisabled_Succeeds()
+    {
+        using var factory = await ApiTestFactory.CreateAsync(nameof(FilesEndpoint_WithoutToken_WhenAuthDisabled_Succeeds), createUser: false, requireAuth: false);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/api/files?path={Uri.EscapeDataString(factory.DataRoot)}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(JsonValueKind.Array, body.ValueKind);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task FilesEndpoint_WithAdminToken_Succeeds()
+    {
+        using var factory = await ApiTestFactory.CreateAsync(nameof(FilesEndpoint_WithAdminToken_Succeeds), createUser: true);
+        using var client = factory.CreateClient();
+
+        var token = await LoginAsync(client, "admin", "Admin12345");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/files?path={Uri.EscapeDataString(factory.DataRoot)}");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var response = await client.SendAsync(request);
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Fail($"Expected OK but got {response.StatusCode}: {body}");
+        }
+        var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(JsonValueKind.Array, json.ValueKind);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task FilesEndpoint_WithFileReadCapability_NonAdminUser_Succeeds()
+    {
+        // A non-admin user granted the fine-grained files:file:read capability must be able to list files.
+        // Regression for the CapabilityConvention defaulting unannotated actions to "admin:**",
+        // which previously short-circuited every /api/files request to 403 before the controller's
+        // own files:file:* check could run.
+        using var factory = await ApiTestFactory.CreateAsync(nameof(FilesEndpoint_WithFileReadCapability_NonAdminUser_Succeeds),
+            async f =>
+            {
+                // First user becomes admin; create a regular user and grant files:file:read via a custom role entry.
+                var database = new DatabaseProvider(f.DataRoot);
+                var tokens = new NasTokenManager(new NasKeyStore(), database);
+                var identity = new IdentityService(database, tokens);
+                var admin = await identity.CreateLocalUserAsync("admin", "Admin12345", "Admin", "admin@example.invalid", CancellationToken.None);
+                Assert.True(admin.Success, admin.ErrorMessage);
+                var created = await identity.CreateLocalUserAsync("bob", "Bob12345", "Bob", "bob@example.invalid", CancellationToken.None);
+                Assert.True(created.Success, created.ErrorMessage);
+                await database.InitializeAsync(CancellationToken.None);
+                await using var connection = await database.GetConnectionAsync(CancellationToken.None);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "UPDATE users SET roles_json = $roles WHERE username = $username;";
+                command.Parameters.AddWithValue("$roles", """["user","files:file:read"]""");
+                command.Parameters.AddWithValue("$username", "bob");
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            });
+        using var client = factory.CreateClient();
+
+        var token = await LoginAsync(client, "bob", "Bob12345");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/files?path={Uri.EscapeDataString(factory.DataRoot)}");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var response = await client.SendAsync(request);
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Fail($"Expected OK but got {response.StatusCode}: {body}");
+        }
+        var body2 = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(JsonValueKind.Array, body2.ValueKind);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task FilesWrite_WithAdminToken_Succeeds()
+    {
+        using var factory = await ApiTestFactory.CreateAsync(nameof(FilesWrite_WithAdminToken_Succeeds), createUser: true);
+        using var client = factory.CreateClient();
+
+        var token = await LoginAsync(client, "admin", "Admin12345");
+        var path = Path.Combine(factory.DataRoot, "api-test", "hello.txt");
+        using var write = new HttpRequestMessage(HttpMethod.Post, "/api/files/write")
+        {
+            Content = JsonContent.Create(new { path, content = "hello from api", encoding = "text", overwrite = true }),
+        };
+        write.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var writeResponse = await client.SendAsync(write);
+        Assert.Equal(HttpStatusCode.OK, writeResponse.StatusCode);
+
+        using var read = new HttpRequestMessage(HttpMethod.Get, $"/api/files/content?path={Uri.EscapeDataString(path)}");
+        read.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var readResponse = await client.SendAsync(read);
+        Assert.Equal(HttpStatusCode.OK, readResponse.StatusCode);
+        var content = await readResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("hello from api", content.GetProperty("content").GetString());
+
+        using var del = new HttpRequestMessage(HttpMethod.Delete, $"/api/files?path={Uri.EscapeDataString(path)}&hard=true");
+        del.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var delResponse = await client.SendAsync(del);
+        Assert.Equal(HttpStatusCode.OK, delResponse.StatusCode);
+        Assert.False(File.Exists(path));
+    }
+
+    private static async Task<string> LoginAsync(HttpClient client, string username, string password)
+    {
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { username, password });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var body = await login.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return body.GetProperty("token").GetString() ?? throw new Xunit.Sdk.XunitException("Login did not return a token.");
     }
 
     [Fact]
@@ -191,37 +309,44 @@ public sealed class ApiGatewayTests
     private sealed class ApiTestFactory : WebApplicationFactory<Program>
     {
         private readonly string? previousDataRoot;
+        private readonly bool requireAuth;
 
-        private ApiTestFactory(string dataRoot)
+        private ApiTestFactory(string dataRoot, bool requireAuth)
         {
             DataRoot = dataRoot;
+            this.requireAuth = requireAuth;
             previousDataRoot = Environment.GetEnvironmentVariable("FortOS_DATA_ROOT");
             Environment.SetEnvironmentVariable("FortOS_DATA_ROOT", DataRoot);
         }
 
         public string DataRoot { get; }
 
-        public static async Task<ApiTestFactory> CreateAsync(string testName, bool createUser = false)
+        public static Task<ApiTestFactory> CreateAsync(string testName, bool createUser = false, bool requireAuth = true)
+            => CreateAsync(testName, async factory =>
+            {
+                if (createUser)
+                {
+                    var database = new DatabaseProvider(factory.DataRoot);
+                    var tokens = new NasTokenManager(new NasKeyStore(), database);
+                    var identity = new IdentityService(database, tokens);
+                    var created = await identity.CreateLocalUserAsync("admin", "Admin12345", "Admin", "admin@example.invalid", CancellationToken.None);
+                    Assert.True(created.Success, created.ErrorMessage);
+                }
+            }, requireAuth);
+
+        public static async Task<ApiTestFactory> CreateAsync(string testName, Func<ApiTestFactory, Task> initialize, bool requireAuth = true)
         {
             var root = Path.GetFullPath(Path.Combine("TestArtifacts", "Api", testName, Guid.CreateVersion7().ToString()));
             Directory.CreateDirectory(root);
-            var factory = new ApiTestFactory(root);
-            if (createUser)
-            {
-                var database = new DatabaseProvider(root);
-                var tokens = new NasTokenManager(new NasKeyStore(), database);
-                var identity = new IdentityService(database, tokens);
-                var created = await identity.CreateLocalUserAsync("admin", "Admin12345", "Admin", "admin@example.invalid", CancellationToken.None);
-                Assert.True(created.Success, created.ErrorMessage);
-            }
-
+            var factory = new ApiTestFactory(root, requireAuth);
+            await initialize(factory).ConfigureAwait(false);
             return factory;
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
-            builder.UseSetting("security:require_auth", "true");
+            builder.UseSetting("security:require_auth", requireAuth ? "true" : "false");
             builder.UseSetting("rateLimit:loginPerMinute", "5");
             builder.UseSetting("dashboard:enabled", "false");
             builder.ConfigureTestServices(services => services.RemoveAll<IHostedService>());

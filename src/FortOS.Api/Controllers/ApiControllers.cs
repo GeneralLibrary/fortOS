@@ -1,7 +1,10 @@
 using System.Text;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using FortOS.Agent.Collector;
 using FortOS.Api.Authorization;
+using FortOS.Api.Configuration;
+using FortOS.Platform;
 using Microsoft.AspNetCore.Authorization;
 using FortOS.Core;
 using FortOS.Modules.Agent;
@@ -13,6 +16,7 @@ using FortOS.Observability.Logging;
 using FortOS.Security.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace FortOS.Api.Controllers;
@@ -66,6 +70,36 @@ public sealed class DisksController : FortOSControllerBase
     /// <summary>Execute SMART check.</summary>
     [HttpPost("smart-check")]
     public async Task<SmartData> Smart([FromBody] PathRequest request, [FromServices] IDiskManager disks, CancellationToken ct) => await disks.GetSmartDataAsync(request.Path, ct).ConfigureAwait(false);
+
+    /// <summary>List active MD RAID arrays.</summary>
+    [HttpGet("raids")]
+    public Task<IReadOnlyList<RaidMetrics>> Raids(CancellationToken ct) => storage.ListRaidsAsync(ct);
+
+    /// <summary>
+    /// Whether the RAID tooling (mdadm) is installed on this host. The dashboard
+    /// uses this to guide the user through installation when it is missing.
+    /// </summary>
+    [HttpGet("raid-capability")]
+    public object RaidCapability() => new
+    {
+        available = PlatformCapabilities.SupportsHardwareRaid,
+        tool = "mdadm",
+    };
+
+    /// <summary>
+    /// Create a RAID array from the selected disks. Destructive: <see cref="CreateRaidRequest.Confirm"/>
+    /// must be true, otherwise the request is rejected.
+    /// </summary>
+    [HttpPost("raids")]
+    public async Task<object> CreateRaid([FromBody] CreateRaidRequest request, CancellationToken ct)
+    {
+        if (!request.Confirm)
+        {
+            throw new ArgumentException("Creating a RAID array erases disk data; explicit confirmation is required.", nameof(request));
+        }
+
+        return await storage.CreateRaidAsync(request.Level, request.DiskPaths, ct).ConfigureAwait(false);
+    }
 
     private static string DecodePath(string value)
     {
@@ -142,28 +176,76 @@ public sealed class RecycleController : FortOSControllerBase
     /// <summary>Restore recycle bin file (compatible with old routes).</summary>
     [HttpPost("restore/{id}")]
     public object RestoreLegacy(string id, [FromBody] RestoreRecycleRequest? request)
-        => RestoreCore(id, request?.TargetPath);
+    {
+        // Legacy route carries no share segment; derive the share root from the
+        // ".recycle" marker inside the encoded source path, then apply the same
+        // safety checks as the parameterized route.
+        var share = InferShareRoot(DecodeRecyclePath(id));
+        return RestoreCore(id, share, request?.TargetPath);
+    }
 
     /// <summary>Restore recycle bin file.</summary>
     [HttpPost("{share}/restore/{id}")]
     public object Restore(string share, string id, [FromBody] RestoreRecycleRequest? request)
+        => RestoreCore(id, Path.GetFullPath(share), request?.TargetPath);
+
+    private static object RestoreCore(string id, string shareRoot, string? targetPath)
     {
-        var source = Encoding.UTF8.GetString(Convert.FromBase64String(id));
-        if (!source.StartsWith(Path.GetFullPath(share), StringComparison.OrdinalIgnoreCase))
+        // Security: both source and destination are attacker-influenced strings, so every
+        // restore is constrained to the share directory. All paths must be normalized via
+        // Path.GetFullPath before the boundary check — otherwise a raw string prefix test
+        // can be bypassed with ".." segments (e.g. "<share>/.recycle/../../etc/passwd").
+        var source = Path.GetFullPath(DecodeRecyclePath(id));
+        if (!IsPathUnderRoot(source, Path.Combine(shareRoot, ".recycle")))
         {
             throw new ArgumentException("Recycle bin item does not belong to the specified share path.", nameof(id));
         }
 
-        return RestoreCore(id, request?.TargetPath);
-    }
+        if (!System.IO.File.Exists(source))
+        {
+            throw new FileNotFoundException("Recycle bin item no longer exists.", source);
+        }
 
-    private static object RestoreCore(string id, string? targetPath)
-    {
-        var source = Encoding.UTF8.GetString(Convert.FromBase64String(id));
-        var destination = string.IsNullOrWhiteSpace(targetPath) ? InferOriginalPath(source) : targetPath;
+        var destination = string.IsNullOrWhiteSpace(targetPath) ? InferOriginalPath(source) : Path.GetFullPath(targetPath);
+        if (!IsPathUnderRoot(destination, shareRoot))
+        {
+            throw new ArgumentException("Restore target must stay within the share directory.", nameof(targetPath));
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         System.IO.File.Move(source, destination, overwrite: true);
         return new { success = true };
+    }
+
+    /// <summary>Decodes a recycle-bin item id (base64 of the full source path).</summary>
+    private static string DecodeRecyclePath(string id)
+    {
+        try
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(id));
+        }
+        catch (FormatException)
+        {
+            throw new ArgumentException("Recycle bin item id is not a valid reference.", nameof(id));
+        }
+    }
+
+    /// <summary>Returns whether <paramref name="path"/> is <paramref name="root"/> itself or nested inside it.</summary>
+    /// <remarks>
+    /// Both inputs are normalized with <see cref="Path.GetFullPath"/> before comparison so
+    /// that ".." segments or redundant separators cannot smuggle a path outside the root.
+    /// </remarks>
+    private static bool IsPathUnderRoot(string path, string root)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var fullRoot = Path.GetFullPath(root);
+        if (string.Equals(fullPath, fullRoot, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var boundary = fullRoot.EndsWith(Path.DirectorySeparatorChar) ? fullRoot : fullRoot + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(boundary, StringComparison.Ordinal);
     }
 
     /// <summary>Empty recycle bin.</summary>
@@ -175,6 +257,19 @@ public sealed class RecycleController : FortOSControllerBase
     [HttpDelete("{share}/empty")]
     public object EmptyRecycleByRoute(string share, [FromQuery] int retentionDays = 0)
         => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
+
+    /// <summary>Extracts the share root from a recycle bin path (the part before "/.recycle/").</summary>
+    private static string InferShareRoot(string recyclePath)
+    {
+        var marker = $"{Path.DirectorySeparatorChar}.recycle{Path.DirectorySeparatorChar}";
+        var index = recyclePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index <= 0)
+        {
+            throw new ArgumentException("Invalid recycle bin path format, missing share root.", nameof(recyclePath));
+        }
+
+        return recyclePath[..index];
+    }
 
     private static string InferOriginalPath(string recyclePath)
     {
@@ -201,6 +296,9 @@ public sealed class RecycleController : FortOSControllerBase
 [Route("api/agents")]
 public sealed class AgentsController : FortOSControllerBase
 {
+    /// <summary>In-process deployment task states; agent pulls can take minutes, so deploys run in the background.</summary>
+    private static readonly ConcurrentDictionary<string, AgentDeploymentStatus> Deployments = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly AgentModule agents;
 
     /// <summary>Initializes the Agent controller.</summary>
@@ -211,9 +309,74 @@ public sealed class AgentsController : FortOSControllerBase
     public Task<ServiceDefinition> DeployLegacy([FromBody] LegacyDeployAgentRequest request, CancellationToken ct)
         => agents.DeployAgentAsync(request.Template, BuildLegacyConfig(request), OwnerToken, ct);
 
-    /// <summary>Deploy agent.</summary>
+    /// <summary>
+    /// Deploy agent asynchronously: the image pull and compose bring-up run in the
+    /// background so large agents do not time out the request; poll the deploy status
+    /// endpoint (or GET /api/agents) until the service appears.
+    /// </summary>
     [HttpPost("deploy")]
-    public Task<ServiceDefinition> Deploy([FromBody] DeployAgentRequest request, CancellationToken ct) => agents.DeployAgentAsync(request.TemplateId, request.Config, OwnerToken, ct);
+    public async Task<object> Deploy([FromBody] DeployAgentRequest request, [FromServices] IProcessManager process, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Config);
+        var agentId = request.Config.AgentId;
+        var ownerToken = OwnerToken; // capture inside the request context for the background task
+        var status = new AgentDeploymentStatus("deploying", null, DateTimeOffset.UtcNow, Stage: "queued", Message: "准备部署…");
+        Deployments[agentId] = status;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Stage 1: image availability. If already pulled locally the deploy is near-instant.
+                status = status with { Stage = "pulling", Message = $"检查镜像 {request.Config.ImageName}…" };
+                Deployments[agentId] = status;
+                var imageExists = await ImageExistsAsync(process, request.Config.ImageName).ConfigureAwait(false);
+                if (!imageExists)
+                {
+                    status = status with { Message = $"拉取镜像 {request.Config.ImageName}…(首次可能需要 10-30 分钟,取决于网络)" };
+                    Deployments[agentId] = status;
+                }
+
+                // Stage 2: compose generation + container start (preflight pulls the image if missing).
+                status = status with { Stage = "deploying", Message = "生成配置并启动容器…" };
+                Deployments[agentId] = status;
+                var service = await agents.DeployAgentAsync(request.TemplateId, request.Config, ownerToken, CancellationToken.None).ConfigureAwait(false);
+                Deployments[agentId] = status with { Status = "success", Stage = "success", Message = "部署完成", ServiceId = service.ServiceId, FinishedAt = DateTimeOffset.UtcNow };
+            }
+            catch (OperationCanceledException)
+            {
+                Deployments[agentId] = status with { Status = "failed", Stage = "failed", Error = "Deployment was cancelled.", FinishedAt = DateTimeOffset.UtcNow };
+            }
+            catch (Exception ex)
+            {
+                Deployments[agentId] = status with { Status = "failed", Stage = "failed", Error = ex.Message, FinishedAt = DateTimeOffset.UtcNow };
+            }
+        }, CancellationToken.None);
+        return Accepted(new { agentId, status = status.Status });
+    }
+
+    private static async Task<bool> ImageExistsAsync(IProcessManager process, string imageName)
+    {
+        var result = await process.ExecuteCommandAsync(new ProcessStartConfig
+        {
+            ExecutablePath = "docker",
+            Arguments = $"image inspect {QuoteShell(imageName)}",
+            TimeoutSeconds = 30,
+        }, CancellationToken.None).ConfigureAwait(false);
+        return result.ExitCode == 0;
+    }
+
+    private static string QuoteShell(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    /// <summary>Query the status of an asynchronous agent deployment.</summary>
+    [HttpGet("{id}/deploy-status")]
+    public object DeployStatus(string id)
+    {
+        var agentId = id.StartsWith("agent-", StringComparison.OrdinalIgnoreCase) ? id[6..] : id;
+        return Deployments.TryGetValue(agentId, out var status)
+            ? status
+            : new AgentDeploymentStatus("unknown", null, null);
+    }
 
     /// <summary>List agents.</summary>
     [HttpGet]
@@ -235,6 +398,31 @@ public sealed class AgentsController : FortOSControllerBase
     [HttpGet("{id}/logs")]
     public Task<IReadOnlyList<LogEntry>> Logs(string id, [FromServices] MemoryLogStore logs, CancellationToken ct, [FromQuery] int tail = 100)
         => logs.QueryAsync(new LogQuery { AgentId = id, Limit = tail }, ct);
+
+    /// <summary>
+    /// External access info for a deployed agent: published ports, environment
+    /// variable names to wire chat channels / clients, and integration notes.
+    /// </summary>
+    [HttpGet("{id}/access")]
+    public async Task<object> Access(string id, [FromServices] AgentModule agents, [FromServices] IConfiguration configuration, CancellationToken ct)
+    {
+        var info = await agents.GetAgentAccessAsync(id, ct).ConfigureAwait(false);
+        var publicHost = configuration.GetValue("agent:public_host", string.Empty);
+        var urls = string.IsNullOrWhiteSpace(publicHost)
+            ? info.Ports.Select(p => new { name = $":{p.HostPort}", url = (string?)null }).ToArray()
+            : info.Ports.Select(p => new { name = $"http://{publicHost}:{p.HostPort}", url = (string?)$"http://{publicHost}:{p.HostPort}" }).ToArray();
+        return new
+        {
+            info.AgentId,
+            info.TemplateId,
+            info.DisplayName,
+            info.ImageName,
+            info.Ports,
+            info.Env,
+            info.AccessNotes,
+            urls,
+        };
+    }
 
     /// <summary>List agent template catalog.</summary>
     [HttpGet("catalog")]
@@ -599,30 +787,57 @@ public sealed class ConfigController : FortOSControllerBase
     /// <summary>Return non-sensitive flat configuration.</summary>
     [HttpGet]
     public object Get([FromServices] IConfiguration configuration) => configuration.AsEnumerable()
-        .Where(p => p.Value is not null && !IsSensitive(p.Key))
+        .Where(p => p.Value is not null && !ConfigMetaRegistry.IsSensitive(p.Key))
         .ToDictionary(p => p.Key, p => p.Value);
+
+    /// <summary>
+    /// Return metadata describing whitelisted, user-editable configuration:
+    /// semantic categories, control types, options and validation hints.
+    /// The dashboard renders its settings UI from this shape.
+    /// </summary>
+    [HttpGet("meta")]
+    public object Meta() => new
+    {
+        categories = ConfigMetaRegistry.Categories,
+        entries = ConfigMetaRegistry.Entries.Select(e => new
+        {
+            e.Key,
+            e.Category,
+            type = e.TypeName,
+            e.Label,
+            e.Description,
+            e.Options,
+            e.Min,
+            e.Max,
+            e.Step,
+            e.DefaultValue,
+            e.Order,
+        }),
+    };
 
     /// <summary>Write runtime configuration override value.</summary>
     [HttpPut("{key}")]
     public async Task<object> Put(string key, [FromBody] ConfigValue value, [FromServices] IDatabaseProvider database, CancellationToken ct)
     {
-        if (IsSensitive(key)) throw new ArgumentException("Writing sensitive configuration through this endpoint is prohibited.", nameof(key));
+        if (ConfigMetaRegistry.IsSensitive(key)) throw new ArgumentException("Writing sensitive configuration through this endpoint is prohibited.", nameof(key));
         await database.InitializeAsync(ct).ConfigureAwait(false);
         await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
-        command.CommandText = "CREATE TABLE IF NOT EXISTS api_config(key TEXT PRIMARY KEY, value TEXT, updated_at TEXT); INSERT OR REPLACE INTO api_config(key, value, updated_at) VALUES($key, $value, $updated);";
+        // Column names must match the schema created by DatabaseProvider migration 2
+        // (config_key / value_ref / updated_at); the previous mismatch surfaced as 500.
+        command.CommandText = "CREATE TABLE IF NOT EXISTS api_config(config_key TEXT PRIMARY KEY, value_ref TEXT NOT NULL, updated_at TEXT NOT NULL); INSERT OR REPLACE INTO api_config(config_key, value_ref, updated_at) VALUES($key, $value, $updated);";
         command.Parameters.AddWithValue("$key", key);
         command.Parameters.AddWithValue("$value", value.Value ?? string.Empty);
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         return new { success = true, key };
     }
-
-    private static bool IsSensitive(string key) => key.Contains("password", StringComparison.OrdinalIgnoreCase) || key.Contains("secret", StringComparison.OrdinalIgnoreCase) || key.Contains("token", StringComparison.OrdinalIgnoreCase) || key.Contains("key", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>Path request.</summary>
 public sealed record PathRequest(string Path);
+/// <summary>Create RAID request. <see cref="Confirm"/> acknowledges that disk data is erased.</summary>
+public sealed record CreateRaidRequest(RaidLevel Level, string[] DiskPaths, bool Confirm);
 /// <summary>Snapshot request.</summary>
 public sealed record SnapshotRequest(string Target, string? Name);
 /// <summary>Restore snapshot request.</summary>
@@ -631,6 +846,15 @@ public sealed record RestoreSnapshotRequest(string Target);
 public sealed record RestoreRecycleRequest(string TargetPath);
 /// <summary>Deploy agent request.</summary>
 public sealed record DeployAgentRequest(string TemplateId, AgentConfig Config);
+/// <summary>Asynchronous agent deployment status.</summary>
+public sealed record AgentDeploymentStatus(
+    string Status,
+    string? Error,
+    DateTimeOffset? StartedAt,
+    string? ServiceId = null,
+    DateTimeOffset? FinishedAt = null,
+    string Stage = "queued",
+    string? Message = null);
 /// <summary>Deploy request compatible with legacy CLI.</summary>
 public sealed record LegacyDeployAgentRequest(string Template, Dictionary<string, string>? Parameters);
 /// <summary>Install agent template request.</summary>

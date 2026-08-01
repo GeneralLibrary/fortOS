@@ -218,8 +218,11 @@ export interface AgentTemplate {
   name: string
   version: string
   description?: string | null
+  /** Logo: emoji or image URL (http/https). */
+  logo?: string | null
   capabilitiesRequired: string[]
   parameters: AgentTemplateParameter[]
+  accessNotes: string[]
   composeTemplate: string
 }
 
@@ -238,6 +241,43 @@ export interface AgentConfig {
   volumeMapping: VolumeMapping[]
   portMapping: PortMapping[]
   resourceQuota?: ResourceQuota | null
+  /** Extra environment variables merged over template defaults. */
+  environment?: Record<string, string>
+}
+
+/** External access info for a deployed agent (from GET /api/agents/{id}/access). */
+export interface AgentAccessInfo {
+  agentId: string
+  templateId: string
+  displayName: string
+  imageName: string
+  ports: AgentPortInfo[]
+  env: AgentEnvInfo[]
+  accessNotes: string[]
+  urls: { name: string; url: string | null }[]
+}
+
+/** Asynchronous deployment acceptance/status. */
+export interface AgentDeploymentStatus {
+  status: 'deploying' | 'success' | 'failed' | 'unknown'
+  error?: string | null
+  startedAt?: string | null
+  serviceId?: string | null
+  finishedAt?: string | null
+  /** Fine-grained stage: queued → pulling → deploying → success/failed. */
+  stage?: string
+  message?: string | null
+}
+
+export interface AgentPortInfo {
+  hostPort: number
+  containerPort: number
+  protocol: string
+}
+
+export interface AgentEnvInfo {
+  name: string
+  set: boolean
 }
 
 export interface VolumeMapping {
@@ -495,6 +535,7 @@ export interface CpuMetrics {
   userPercent: number
   systemPercent: number
   ioWaitPercent: number
+  temperatureCelsius?: number | null
 }
 
 export interface MemoryMetrics {
@@ -562,6 +603,30 @@ export interface RaidMetrics {
   totalDevices: number
   operation?: string | null
   progressPercent?: number | null
+}
+
+/** RAID levels supported by the storage backend (mirrors FortOS.Core.RaidLevel). */
+export enum RaidLevel {
+  Unknown = 'Unknown',
+  Raid0 = 'Raid0',
+  Raid1 = 'Raid1',
+  Raid5 = 'Raid5',
+  Raid6 = 'Raid6',
+  Raid10 = 'Raid10',
+}
+
+/** RAID creation response (mirrors FortOS.Core.RaidResult). */
+export interface RaidResult {
+  success: boolean
+  poolId?: string | null
+  message?: string | null
+  errorCode?: string | null
+}
+
+/** Whether RAID tooling is available on the host (mirrors GET /api/disks/raid-capability). */
+export interface RaidCapability {
+  available: boolean
+  tool: string
 }
 
 export interface ServiceRuntimeMetrics {
@@ -655,6 +720,41 @@ export interface RecoveryRequest {
 
 export interface ConfigValue {
   value?: string | null
+}
+
+// ---- Config metadata (GET /api/config/meta) ----
+
+/** Control type the dashboard renders for a config entry. */
+export type ConfigEntryType = 'boolean' | 'number' | 'select' | 'string' | 'text'
+
+/** Semantic category grouping config entries in the settings page. */
+export interface ConfigCategoryMeta {
+  id: string
+  name: string
+  icon: string
+  description?: string | null
+  order: number
+}
+
+/** Metadata for one whitelisted, user-editable configuration entry. */
+export interface ConfigEntryMeta {
+  key: string
+  category: string
+  type: ConfigEntryType
+  label?: string | null
+  description?: string | null
+  options?: string[] | null
+  min?: number | null
+  max?: number | null
+  step?: number | null
+  defaultValue?: string | null
+  order: number
+}
+
+/** Full metadata payload served by GET /api/config/meta. */
+export interface ConfigMeta {
+  categories: ConfigCategoryMeta[]
+  entries: ConfigEntryMeta[]
 }
 
 export interface RestoreBackupRequest {

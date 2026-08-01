@@ -14,15 +14,17 @@ public sealed class TokenBroker : ITokenBroker
     private readonly ITokenManager _tokenManager;
     private readonly ILogPipeline _logPipeline;
     private readonly AgentTokenRegistry _registry;
+    private readonly ILogger<TokenBroker>? _logger;
 
     /// <summary>
     /// Initialize the Agent token broker.
     /// </summary>
-    public TokenBroker(ITokenManager tokenManager, ILogPipeline logPipeline, AgentTokenRegistry? registry = null)
+    public TokenBroker(ITokenManager tokenManager, ILogPipeline logPipeline, AgentTokenRegistry? registry = null, ILogger<TokenBroker>? logger = null)
     {
         _tokenManager = tokenManager;
         _logPipeline = logPipeline;
         _registry = registry ?? new AgentTokenRegistry();
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -58,7 +60,9 @@ public sealed class TokenBroker : ITokenBroker
         }
         finally
         {
-            await WriteAuditAsync("agent.token.issue", config.AgentId, granted, ct).ConfigureAwait(false);
+            // Audit best-effort: a failing audit sink must never replace the original
+            // outcome (success or thrown exception) of the token operation.
+            await TryWriteAuditAsync("agent.token.issue", config.AgentId, granted).ConfigureAwait(false);
         }
     }
 
@@ -68,6 +72,15 @@ public sealed class TokenBroker : ITokenBroker
         var granted = false;
         try
         {
+            // Bind the renewal to the token this process actually issued for the agent:
+            // accepting an arbitrary caller-supplied token would let any holder of a valid
+            // token refresh a session it does not own.
+            var known = _registry.Snapshot().FirstOrDefault(s => string.Equals(s.AgentId, agentId, StringComparison.OrdinalIgnoreCase));
+            if (known is null || !string.Equals(known.Token, token, StringComparison.Ordinal))
+            {
+                throw new TokenValidationException($"Agent {agentId} has no matching registered token to renew.");
+            }
+
             var renewed = await _tokenManager.RenewTokenAsync(token, ct).ConfigureAwait(false);
             var validation = await _tokenManager.ValidateTokenAsync(renewed, ct).ConfigureAwait(false);
             if (!validation.IsValid)
@@ -90,7 +103,7 @@ public sealed class TokenBroker : ITokenBroker
         }
         finally
         {
-            await WriteAuditAsync("agent.token.renew", agentId, granted, ct).ConfigureAwait(false);
+            await TryWriteAuditAsync("agent.token.renew", agentId, granted).ConfigureAwait(false);
         }
     }
 
@@ -110,7 +123,7 @@ public sealed class TokenBroker : ITokenBroker
         }
         finally
         {
-            await WriteAuditAsync("agent.token.revoke", agentId, granted, ct).ConfigureAwait(false);
+            await TryWriteAuditAsync("agent.token.revoke", agentId, granted).ConfigureAwait(false);
         }
     }
 
@@ -146,22 +159,41 @@ public sealed class TokenBroker : ITokenBroker
     private static int GetTrustLevel(TokenValidationResult validation)
         => validation.Payload is NasTokenPayload payload ? payload.TrustLevel : 0;
 
-    private Task WriteAuditAsync(string action, string agentId, bool granted, CancellationToken ct)
-        => _logPipeline.ProcessAsync(new LogEntry
+    /// <summary>
+    /// Writes an audit entry with a short timeout, swallowing failures. Used from finally
+    /// blocks so that audit plumbing issues never mask the outcome (success or exception)
+    /// of the token operation itself, and never block shutdown on the business token.
+    /// </summary>
+    private async Task TryWriteAuditAsync(string action, string agentId, bool granted)
+    {
+        try
         {
-            Category = LogCategory.Audit,
-            Level = granted ? LogLevel.Information : LogLevel.Warning,
-            SourceComponent = "FortOS.Agent.TokenBroker",
-            AgentId = agentId,
-            Message = granted ? $"Agent token operation completed: {action} for {agentId}." : $"Agent token operation denied: {action} for {agentId}.",
-            Audit = new AuditDetail
+            using var auditCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await _logPipeline.ProcessAsync(new LogEntry
             {
-                Action = action,
-                Resource = agentId,
-                ResourceType = "agent-token",
-                Granted = granted,
-                CurrentHash = string.Empty,
-                ChainSignature = string.Empty,
-            },
-        }, ct);
+                Category = LogCategory.Audit,
+                Level = granted ? LogLevel.Information : LogLevel.Warning,
+                SourceComponent = "FortOS.Agent.TokenBroker",
+                AgentId = agentId,
+                Message = granted ? $"Agent token operation completed: {action} for {agentId}." : $"Agent token operation denied: {action} for {agentId}.",
+                Audit = new AuditDetail
+                {
+                    Action = action,
+                    Resource = agentId,
+                    ResourceType = "agent-token",
+                    Granted = granted,
+                    CurrentHash = string.Empty,
+                    ChainSignature = string.Empty,
+                },
+            }, auditCts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Failed to write token audit for {Action} of {AgentId}.", action, agentId);
+        }
+        catch (OperationCanceledException)
+        {
+            // Audit timed out; the operation outcome is still delivered to the caller.
+        }
+    }
 }

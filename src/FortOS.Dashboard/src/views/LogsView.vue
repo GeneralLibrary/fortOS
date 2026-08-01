@@ -90,6 +90,23 @@ const levelOptions = [
   { label: 'Critical', value: 'Critical' },
 ]
 
+/** Compact abbreviations for log levels so the column never overflows. */
+const LEVEL_ABBR: Record<string, string> = {
+  Trace: 'TRC',
+  Verbose: 'VRB',
+  Debug: 'DBG',
+  Information: 'INFO',
+  Warning: 'WARN',
+  Error: 'ERR',
+  Critical: 'CRIT',
+  Fatal: 'FATL',
+  None: '—',
+}
+
+function levelAbbr(level: string): string {
+  return LEVEL_ABBR[level] ?? level.slice(0, 4).toUpperCase()
+}
+
 const categoryOptions = [
   { label: t('common.all'), value: undefined },
   { label: t('logs.categorySystem'), value: 'System' },
@@ -103,11 +120,12 @@ const categoryOptions = [
 const logColumns: DataTableColumns<LogEntry> = [
   { title: () => t('logs.time'), key: 'timestamp', width: 170, render: (r) => formatDateTime(r.timestamp) },
   {
-    title: () => t('logs.level'), key: 'level', width: 80,
+    title: () => t('logs.level'), key: 'level', width: 70,
     render: (r) => h(NTag, {
-      type: r.level === 'Error' || r.level === 'Critical' ? 'error' : r.level === 'Warning' ? 'warning' : r.level === 'Information' ? 'info' : 'default',
+      type: r.level === 'Error' || r.level === 'Critical' || r.level === 'Fatal' ? 'error' : r.level === 'Warning' ? 'warning' : r.level === 'Information' ? 'info' : 'default',
       size: 'tiny',
-    }, { default: () => r.level }),
+      title: r.level,
+    }, { default: () => levelAbbr(r.level) }),
   },
   { title: () => t('logs.category'), key: 'category', width: 70 },
   { title: () => t('logs.source'), key: 'sourceComponent', width: 140, ellipsis: { tooltip: true } },

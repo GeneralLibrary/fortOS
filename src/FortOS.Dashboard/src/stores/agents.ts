@@ -6,16 +6,17 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
 import {
-  listAgents, deployAgent, startAgent, stopAgent, deleteAgent,
-  getAgentLogs, listAgentCatalog, searchAgentCatalog,
+  listAgents, deployAgent, getDeployStatus, startAgent, stopAgent, deleteAgent,
+  getAgentLogs, getAgentAccess, listAgentCatalog, searchAgentCatalog,
 } from '@/api/agents'
-import type { ServiceDefinition, AgentTemplate, LogEntry, AgentConfig, DeployAgentRequest } from '@/types'
+import type { ServiceDefinition, AgentTemplate, LogEntry, AgentConfig, AgentAccessInfo, AgentDeploymentStatus, DeployAgentRequest } from '@/types'
 import { ApiError } from '@/api/client'
 
 export const useAgentsStore = defineStore('agents', () => {
   const agents = shallowRef<ServiceDefinition[]>([])
   const catalog = shallowRef<AgentTemplate[]>([])
   const selectedAgentLogs = shallowRef<LogEntry[]>([])
+  const deployStatus = ref<AgentDeploymentStatus | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -31,13 +32,28 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
-  async function deploy(templateId: string, config: AgentConfig): Promise<ServiceDefinition> {
+  async function deploy(templateId: string, config: AgentConfig): Promise<ServiceDefinition | null> {
     loading.value = true
     error.value = null
+    deployStatus.value = null
     try {
-      const deployed = await deployAgent({ templateId, config } satisfies DeployAgentRequest)
-      await fetchAgents()
-      return deployed
+      const accepted = await deployAgent({ templateId, config } satisfies DeployAgentRequest)
+      // Deployment is asynchronous — image pulls can take minutes. Poll until done.
+      for (let i = 0; i < 600; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        const status = await getDeployStatus(accepted.agentId)
+        deployStatus.value = status
+        if (status.status === 'success') {
+          await fetchAgents()
+          return agents.value.find(a => a.serviceId === `agent-${accepted.agentId}`) ?? null
+        }
+        if (status.status === 'failed') {
+          error.value = status.error ?? '部署失败'
+          throw new ApiError(error.value, 500)
+        }
+      }
+      error.value = '部署超时，请稍后在 Agent 列表查看状态'
+      throw new ApiError(error.value, 500)
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : '部署 Agent 失败'
       error.value = msg
@@ -85,6 +101,16 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
+  /** Fetch the deployed agent's external access info (ports, env names, notes). */
+  async function fetchAccess(agentId: string): Promise<AgentAccessInfo | null> {
+    try {
+      return await getAgentAccess(agentId)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '获取 Agent 访问信息失败'
+      return null
+    }
+  }
+
   async function fetchCatalog(signal?: AbortSignal): Promise<void> {
     try {
       catalog.value = await listAgentCatalog(signal)
@@ -98,7 +124,7 @@ export const useAgentsStore = defineStore('agents', () => {
   }
 
   return {
-    agents, catalog, selectedAgentLogs, loading, error,
-    fetchAgents, deploy, start, stop, remove, fetchLogs, fetchCatalog, searchCatalog,
+    agents, catalog, selectedAgentLogs, deployStatus, loading, error,
+    fetchAgents, deploy, start, stop, remove, fetchLogs, fetchAccess, fetchCatalog, searchCatalog,
   }
 })

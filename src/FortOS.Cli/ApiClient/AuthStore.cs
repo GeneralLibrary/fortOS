@@ -36,7 +36,12 @@ public sealed class AuthStore
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var json = JsonSerializer.Serialize(new AuthStore { Server = server, Token = token }, ApiJson.Options);
         File.WriteAllText(path, json + Environment.NewLine);
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        // Linux-only API; on Windows (local dev) the file is written with default ACLs,
+        // which is acceptable — the CLI deploy target is Linux.
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
     }
 
     /// <summary>Clears saved token but preserves server URL.</summary>

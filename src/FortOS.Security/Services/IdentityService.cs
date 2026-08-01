@@ -17,6 +17,11 @@ public sealed class IdentityService : IIdentityService
 {
     private static readonly Regex UsernamePattern = new("^[a-z_][a-z0-9_-]{0,31}$", RegexOptions.Compiled);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    // Fixed BCrypt hash used to equalize the response time of the "unknown user" login path
+    // with the real verification path, preventing username enumeration via timing. The hash
+    // itself is never used to authenticate anyone; it just costs the same bcrypt work factor
+    // as real password hashes (cost 12, matching CreateUserAsync below).
+    private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("fortos-dummy-password", 12);
     private readonly IDatabaseProvider _database;
     private readonly ITokenManager _tokenManager;
     private readonly IFortOSConfiguration? _configuration;
@@ -48,6 +53,10 @@ public sealed class IdentityService : IIdentityService
         var user = await GetUserAsync(connection, username, ct).ConfigureAwait(false);
         if (user is null)
         {
+            // Run a dummy BCrypt verification against a fixed hash so that the time spent
+            // here is indistinguishable from the "user exists" path; returning immediately
+            // would let an attacker enumerate valid usernames via response timing.
+            BCrypt.Net.BCrypt.Verify(password, DummyPasswordHash);
             return Failure("Incorrect username or password.");
         }
 

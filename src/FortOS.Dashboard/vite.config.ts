@@ -8,6 +8,9 @@ import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 // FortOS Dashboard — Vite build configuration.
 // Output goes into the API project's wwwroot so ASP.NET serves the SPA directly.
 export default defineConfig({
+  // The SPA is hosted by ASP.NET Core under the /dashboard prefix; use a
+  // relative base so index.html references /dashboard/assets/... correctly.
+  base: '/dashboard/',
   plugins: [
     vue(),
     // Auto-import Vue APIs (ref, computed, watch, etc.) — eliminates repetitive imports.

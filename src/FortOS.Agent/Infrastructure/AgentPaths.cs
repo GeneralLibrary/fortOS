@@ -3,7 +3,7 @@ namespace FortOS.Agent.Infrastructure;
 /// <summary>
 /// Provides data directory paths used by the Agent integration layer.
 /// </summary>
-internal static class AgentPaths
+public static class AgentPaths
 {
     private const string DefaultDataRoot = "/srv/nas";
 

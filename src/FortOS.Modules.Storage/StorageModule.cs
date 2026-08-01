@@ -47,9 +47,22 @@ public sealed class StorageModule : NasModuleBase
             throw new ArgumentException("RAID level cannot be empty.", nameof(level));
         }
 
+        ArgumentNullException.ThrowIfNull(diskPaths);
         if (diskPaths.Length == 0)
         {
             throw new ArgumentException("At least one disk is required.", nameof(diskPaths));
+        }
+
+        var minimum = level switch
+        {
+            RaidLevel.Raid0 or RaidLevel.Raid1 => 2,
+            RaidLevel.Raid5 => 3,
+            RaidLevel.Raid6 or RaidLevel.Raid10 => 4,
+            _ => 0,
+        };
+        if (diskPaths.Length < minimum)
+        {
+            throw new ArgumentException($"RAID {level} requires at least {minimum} disks.", nameof(diskPaths));
         }
 
         foreach (var diskPath in diskPaths)
@@ -61,6 +74,9 @@ public sealed class StorageModule : NasModuleBase
         await PublishAsync("storage.raid.created", "storage.raid.created", new { level, diskPaths, result.Success, result.PoolId }, ct).ConfigureAwait(false);
         return result;
     }
+
+    /// <summary>List MD RAID arrays.</summary>
+    public Task<IReadOnlyList<RaidMetrics>> ListRaidsAsync(CancellationToken ct) => RequiredService<IDiskManager>().ListRaidsAsync(ct);
 
     /// <summary>Mount filesystem.</summary>
     public async Task MountAsync(string device, string mountPoint, string fsType, CancellationToken ct)

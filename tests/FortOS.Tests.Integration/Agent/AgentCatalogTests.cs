@@ -11,16 +11,16 @@ public class AgentCatalogTests
         using var root = new AgentTestDataRoot(nameof(ListGetAndSearchTemplatesFromCatalogDirectory));
         var catalogDir = Path.Combine(root.Root, "agents", "catalog");
         Directory.CreateDirectory(catalogDir);
-        await File.WriteAllTextAsync(Path.Combine(catalogDir, "openclaw.template.yaml"), ValidTemplateYaml("openclaw", "OpenClaw Agent", "media automation"));
+        await File.WriteAllTextAsync(Path.Combine(catalogDir, "custom-template.template.yaml"), ValidTemplateYaml("custom-template", "Custom Agent", "media automation"));
         var catalog = new AgentCatalog();
 
         var templates = await catalog.ListTemplatesAsync(CancellationToken.None);
-        var template = await catalog.GetTemplateAsync("openclaw", CancellationToken.None);
+        var template = await catalog.GetTemplateAsync("custom-template", CancellationToken.None);
         var search = await catalog.SearchTemplatesAsync("MEDIA", CancellationToken.None);
 
-        Assert.Single(templates);
+        Assert.Contains(templates, t => t.Id == "custom-template");
         Assert.NotNull(template);
-        Assert.Equal("openclaw", template.Id);
+        Assert.Equal("custom-template", template.Id);
         Assert.Contains("image", template.ComposeTemplate);
         Assert.Single(search);
     }
@@ -48,6 +48,33 @@ public class AgentCatalogTests
 
         Assert.Contains(templates, t => t.Id == "nginx-basic");
         Assert.Contains(templates, t => t.Id == "alpine-worker");
+        // Market templates ship with the catalog.
+        Assert.Contains(templates, t => t.Id == "openclaw");
+        Assert.Contains(templates, t => t.Id == "open-webui");
+        Assert.Contains(templates, t => t.Id == "ollama");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task MarketTemplates_CarryPortParametersAndAccessNotes()
+    {
+        using var root = new AgentTestDataRoot(nameof(MarketTemplates_CarryPortParametersAndAccessNotes));
+        var catalog = new AgentCatalog();
+
+        var templates = await catalog.ListTemplatesAsync(CancellationToken.None);
+
+        var openclaw = Assert.Single(templates, t => t.Id == "openclaw");
+        Assert.NotEmpty(openclaw.AccessNotes);
+        Assert.Contains(openclaw.Parameters, p => p.Name == "HOST_PORT" && p.Default == "18789");
+        Assert.Contains(openclaw.Parameters, p => p.Name == "TELEGRAM_BOT_TOKEN");
+        Assert.Contains(openclaw.Parameters, p => p.Name == "data_dir" && p.Default == "/home/node/.openclaw");
+        Assert.Contains(openclaw.Parameters, p => p.Name == "data_uid" && p.Default == "1000");
+        Assert.Contains(openclaw.Parameters, p => p.Name == "config_file" && p.Default == "openclaw.json");
+
+        var webui = Assert.Single(templates, t => t.Id == "open-webui");
+        Assert.Contains(webui.Parameters, p => p.Name == "HOST_PORT" && p.Default == "3000");
+        Assert.Contains(webui.Parameters, p => p.Name == "CONTAINER_PORT" && p.Default == "8080");
+        Assert.NotEmpty(webui.AccessNotes);
     }
 
     private static string ValidTemplateYaml(string id, string name, string description) => $@"id: {id}

@@ -449,13 +449,27 @@ public sealed partial class FileManagerService
 
         if (_shareModule is not null)
         {
-            foreach (var share in await _shareModule.ListSharesAsync(ct).ConfigureAwait(false))
+            foreach (var share in await SafeListSharesAsync(ct).ConfigureAwait(false))
             {
                 roots.Add(NormalizePath(Path.GetFullPath(share.Path)));
             }
         }
 
         return roots.ToArray();
+    }
+
+    private async Task<IReadOnlyList<ShareDefinition>> SafeListSharesAsync(CancellationToken ct)
+    {
+        try
+        {
+            return await _shareModule!.ListSharesAsync(ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // Share module has not been initialized yet (module host not started / degraded mode);
+            // there are no shares to include, file operations must keep working regardless.
+            return [];
+        }
     }
 
     private string[] ReadConfiguredRoots()
@@ -517,7 +531,7 @@ public sealed partial class FileManagerService
         var candidates = new List<string>();
         if (_shareModule is not null)
         {
-            candidates.AddRange((await _shareModule.ListSharesAsync(ct).ConfigureAwait(false)).Select(s => Path.GetFullPath(s.Path)));
+            candidates.AddRange((await SafeListSharesAsync(ct).ConfigureAwait(false)).Select(s => Path.GetFullPath(s.Path)));
         }
 
         candidates.Add(GetDataRoot());

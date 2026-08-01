@@ -41,7 +41,16 @@ public sealed partial class LinuxProcessManager : IProcessManager
         }
 
         var process = Process.Start(info) ?? throw new PlatformException($"Failed to start process: {config.ExecutablePath}");
-        return Task.FromResult(ToInfo(process));
+        try
+        {
+            return Task.FromResult(ToInfo(process));
+        }
+        finally
+        {
+            // The Process object is only a handle wrapper once the child is started;
+            // disposing it does not kill the child but releases the OS handle.
+            process.Dispose();
+        }
     }
 
     /// <inheritdoc />
@@ -67,7 +76,8 @@ public sealed partial class LinuxProcessManager : IProcessManager
     {
         try
         {
-            return Task.FromResult<ProcessInfo?>(ToInfo(Process.GetProcessById(pid)));
+            using var process = Process.GetProcessById(pid);
+            return Task.FromResult<ProcessInfo?>(ToInfo(process));
         }
         catch (ArgumentException)
         {

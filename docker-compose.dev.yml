@@ -1,0 +1,17 @@
+# FortOS 评估部署 — 适配 Docker Desktop (Windows/WSL2)
+# 非特权、bridge 网络，仅暴露 API 与 Dashboard；磁盘/SMART/容器监控等需宿主能力的功能为降级模式
+services:
+  fortos-core:
+    image: fortos/core:latest
+    build: .
+    container_name: fortos-core
+    restart: unless-stopped
+    ports:
+      - "5000:5000"   # REST API + Web Dashboard
+      - "5001:5001"   # gRPC (HTTP/2)
+    volumes:
+      - ./data:/srv/nas            # 数据根目录（替代 /srv/nas 宿主路径）
+    environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+      - ASPNETCORE_ENVIRONMENT=Development   # 启用 Dashboard + 关闭鉴权
+      - FortOS_DATA_ROOT=/srv/nas

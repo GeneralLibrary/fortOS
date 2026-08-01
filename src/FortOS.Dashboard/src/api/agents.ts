@@ -1,15 +1,20 @@
 import { get, post, del } from './client'
 import type {
-  ServiceDefinition, AgentTemplate, LogEntry, DeployAgentRequest,
-  InstallAgentTemplateRequest, ActionSuccessResponse,
+  ServiceDefinition, AgentTemplate, LogEntry, DeployAgentRequest, AgentAccessInfo,
+  AgentDeploymentStatus, InstallAgentTemplateRequest, ActionSuccessResponse,
 } from '@/types'
 
 export function listAgents(signal?: AbortSignal): Promise<ServiceDefinition[]> {
   return get<ServiceDefinition[]>('/api/agents', {}, signal)
 }
 
-export function deployAgent(request: DeployAgentRequest): Promise<ServiceDefinition> {
-  return post<ServiceDefinition>('/api/agents/deploy', request)
+/** Starts an asynchronous deployment; poll getDeployStatus until it finishes. */
+export function deployAgent(request: DeployAgentRequest): Promise<{ agentId: string; status: string }> {
+  return post<{ agentId: string; status: string }>('/api/agents/deploy', request)
+}
+
+export function getDeployStatus(agentId: string, signal?: AbortSignal): Promise<AgentDeploymentStatus> {
+  return get<AgentDeploymentStatus>(`/api/agents/${encodeURIComponent(agentId)}/deploy-status`, {}, signal)
 }
 
 export function startAgent(agentId: string): Promise<ActionSuccessResponse> {
@@ -26,6 +31,11 @@ export function deleteAgent(agentId: string): Promise<ActionSuccessResponse> {
 
 export function getAgentLogs(agentId: string, tail = 100): Promise<LogEntry[]> {
   return get<LogEntry[]>(`/api/agents/${encodeURIComponent(agentId)}/logs`, { tail })
+}
+
+/** External access info: ports, environment variable names, integration notes. */
+export function getAgentAccess(agentId: string, signal?: AbortSignal): Promise<AgentAccessInfo> {
+  return get<AgentAccessInfo>(`/api/agents/${encodeURIComponent(agentId)}/access`, {}, signal)
 }
 
 export function listAgentCatalog(signal?: AbortSignal): Promise<AgentTemplate[]> {

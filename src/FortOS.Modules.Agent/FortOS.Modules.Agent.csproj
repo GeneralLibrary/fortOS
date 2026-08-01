@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FortOS.Core\FortOS.Core.csproj" />
     <ProjectReference Include="..\FortOS.Modules\FortOS.Modules.csproj" />
+    <ProjectReference Include="..\FortOS.Agent\FortOS.Agent.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

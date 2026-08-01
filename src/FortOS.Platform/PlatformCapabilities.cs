@@ -9,7 +9,7 @@ public static class PlatformCapabilities
 {
     private static readonly Lazy<bool> SupportsDockerValue = new(() => HasBinary("docker") && Probe("docker", "--version"));
     private static readonly Lazy<bool> SupportsSmartMonitoringValue = new(() => HasBinary("smartctl") || File.Exists("/usr/sbin/smartctl") || File.Exists("/sbin/smartctl"));
-    private static readonly Lazy<bool> SupportsHardwareRaidValue = new(() => HasBinary("mdadm"));
+    private static readonly Lazy<bool> SupportsHardwareRaidValue = new(() => HasBinary("mdadm") || File.Exists("/usr/sbin/mdadm") || File.Exists("/sbin/mdadm"));
     private static readonly Lazy<bool> SupportsTpmValue = new(() => File.Exists("/dev/tpm0") || File.Exists("/dev/tpmrm0"));
     private static readonly Lazy<bool> SupportsZfsValue = new(() => HasBinary("zfs"));
     private static readonly Lazy<long> TotalMemoryBytesValue = new(GetTotalMemoryBytesSafe);

@@ -49,14 +49,63 @@ public sealed class AgentLogCollector : BackgroundService
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Each collector loop runs as an independent task. They are long-lived infinite loops,
+        // so a single failure must not kill the other three channels: Task.WhenAll would hold
+        // the failed task's exception until every loop exits — which never happens — silently
+        // swallowing the failure and leaving the remaining channels alive but the loop dead.
+        // RunGuardedAsync observes each loop so a terminated channel is at least logged.
         var tasks = new[]
         {
-            Task.Run(() => RunDockerEventsAsync(stoppingToken), CancellationToken.None),
-            Task.Run(() => RunDockerLogsAsync(stoppingToken), CancellationToken.None),
-            Task.Run(() => RunVolumeTailAsync(stoppingToken), CancellationToken.None),
-            Task.Run(() => FlushLoopAsync(stoppingToken), CancellationToken.None),
+            RunGuardedAsync(RunDockerEventsAsync, "Docker events", stoppingToken),
+            RunGuardedAsync(RunDockerLogsAsync, "Docker logs", stoppingToken),
+            RunGuardedAsync(RunVolumeTailAsync, "Volume log tail", stoppingToken),
+            RunGuardedAsync(FlushLoopAsync, "Log flush loop", stoppingToken),
         };
         await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs one collector loop and records an unexpected termination instead of letting the
+    /// exception escape unobserved. Loops are expected to catch transient per-iteration
+    /// failures themselves (see <see cref="RunVolumeTailAsync"/>) so this only fires on
+    /// unrecoverable errors; cancellation is a normal shutdown path.
+    /// </summary>
+    private async Task RunGuardedAsync(Func<CancellationToken, Task> run, string channelName, CancellationToken ct)
+    {
+        try
+        {
+            await run(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Normal shutdown, no action needed.
+        }
+        catch (Exception ex)
+        {
+            // Best effort: log the termination, but the recording path must itself be
+            // failure-isolated — an exception inside it must not escape and kill the whole
+            // BackgroundService (which is exactly what RunGuardedAsync is meant to prevent).
+            _logger?.LogError(ex, "Agent log collector channel '{Channel}' terminated unexpectedly.", channelName);
+            try
+            {
+                await _logPipeline.ProcessAsync(new LogEntry
+                {
+                    Category = LogCategory.System,
+                    Level = LogLevel.Error,
+                    SourceComponent = "FortOS.Agent.AgentLogCollector",
+                    Message = $"Collector channel '{channelName}' terminated unexpectedly: {ex.Message}",
+                }, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Shutting down, nothing more to record.
+            }
+            catch (Exception pipelineEx)
+            {
+                // The pipeline itself is broken; there is nothing left to report through it.
+                _logger?.LogError(pipelineEx, "Failed to record collector channel '{Channel}' termination.", channelName);
+            }
+        }
     }
 
     private async Task RunDockerEventsAsync(CancellationToken ct)
@@ -126,18 +175,28 @@ public sealed class AgentLogCollector : BackgroundService
     {
         while (!ct.IsCancellationRequested)
         {
-            foreach (var agentId in GetKnownAgentIds())
+            try
             {
-                var logDir = Path.Combine(AgentPaths.AgentsRoot, agentId, "logs");
-                if (!Directory.Exists(logDir))
+                foreach (var agentId in GetKnownAgentIds())
                 {
-                    continue;
-                }
+                    var logDir = Path.Combine(AgentPaths.AgentsRoot, agentId, "logs");
+                    if (!Directory.Exists(logDir))
+                    {
+                        continue;
+                    }
 
-                foreach (var path in Directory.EnumerateFiles(logDir, "*.jsonl"))
-                {
-                    await TailFileAsync(agentId, path, ct).ConfigureAwait(false);
+                    foreach (var path in Directory.EnumerateFiles(logDir, "*.jsonl"))
+                    {
+                        await TailFileAsync(agentId, path, ct).ConfigureAwait(false);
+                    }
                 }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Log files can be rotated, renamed or deleted between enumeration and open;
+                // a transient IO failure must not kill the whole tail loop (the outer
+                // RunGuardedAsync would then leave this channel dead until restart).
+                _logger?.LogDebug(ex, "Volume log tail iteration failed; retrying on next pass.");
             }
 
             await DelayAsync(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
@@ -160,9 +219,18 @@ public sealed class AgentLogCollector : BackgroundService
 
             if (batch.Count > 0)
             {
-                foreach (var entry in batch)
+                try
                 {
-                    await _logPipeline.ProcessAsync(entry, ct).ConfigureAwait(false);
+                    foreach (var entry in batch)
+                    {
+                        await _logPipeline.ProcessAsync(entry, ct).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // A failing log sink (e.g. disk full or downstream outage) must not kill
+                    // the flush loop; keep the pipeline running and drop the current batch.
+                    _logger?.LogError(ex, "Log pipeline flush failed; dropping {Count} entries.", batch.Count);
                 }
 
                 batch.Clear();
@@ -241,22 +309,32 @@ public sealed class AgentLogCollector : BackgroundService
 
     private async Task TailFileAsync(string agentId, string path, CancellationToken ct)
     {
-        await using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var offset = _fileOffsets.GetValueOrDefault(path);
-        if (offset > stream.Length)
+        try
         {
-            offset = 0;
-        }
+            await using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var offset = _fileOffsets.GetValueOrDefault(path);
+            if (offset > stream.Length)
+            {
+                // The file was truncated or rotated; restart from the beginning.
+                offset = 0;
+            }
 
-        stream.Seek(offset, SeekOrigin.Begin);
-        using var reader = new StreamReader(stream, leaveOpen: true);
-        string? line;
-        while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
+            stream.Seek(offset, SeekOrigin.Begin);
+            using var reader = new StreamReader(stream, leaveOpen: true);
+            string? line;
+            while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
+            {
+                await _channel.Writer.WriteAsync(ParseLogLine(line, agentId, "agent-volume"), ct).ConfigureAwait(false);
+            }
+
+            _fileOffsets[path] = stream.Position;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _channel.Writer.WriteAsync(ParseLogLine(line, agentId, "agent-volume"), ct).ConfigureAwait(false);
+            // File may have been rotated/deleted between enumeration and open; treat as
+            // transient and drop this pass — the next scan picks the file up again.
+            _logger?.LogDebug(ex, "Skipping unreadable log file: {Path}", path);
         }
-
-        _fileOffsets[path] = stream.Position;
     }
 
     private LogEntry ParseLogLine(string line, string agentId, string source)
@@ -401,7 +479,10 @@ public sealed class AgentLogCollector : BackgroundService
 
         if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("fortos-", StringComparison.OrdinalIgnoreCase))
         {
-            return (name[5..], name);
+            // "fortos-" is 7 characters; strip exactly the prefix length so the agent id
+            // is parsed from e.g. "fortos-nginx" as "nginx" (a fixed slice like name[5..]
+            // would wrongly keep a "s-" remnant for shorter prefixes).
+            return (name["fortos-".Length..], name);
         }
 
         return (null, name);

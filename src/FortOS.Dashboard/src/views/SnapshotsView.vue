@@ -10,9 +10,10 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { CommandResult } from '@/types'
 import type { DataTableColumns } from 'naive-ui'
-import { useMessage, NButton } from 'naive-ui'
+import { useMessage, useDialog, NButton } from 'naive-ui'
 
 const message = useMessage()
+const dialog = useDialog()
 const { t } = useI18n()
 
 const target = ref('')
@@ -56,7 +57,7 @@ async function handleCreate() {
 }
 
 function confirmRestore(snapshotId: string) {
-  useDialog().warning({
+  dialog.warning({
     title: t('common.confirm'),
     content: t('snapshots.restoreConfirm', { id: snapshotId }),
     positiveText: t('snapshots.restore'), negativeText: t('common.cancel'),
@@ -141,10 +142,6 @@ const columns: DataTableColumns<SnapshotRow> = [
     </NModal>
   </div>
 </template>
-
-<script lang="ts">
-import { useDialog } from 'naive-ui'
-</script>
 
 <style scoped>
 .snapshots-page { max-width: 1000px; margin: 0 auto; }

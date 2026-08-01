@@ -9,6 +9,8 @@ public interface IServiceSupervisor
     Task StopAsync(string serviceId, CancellationToken ct);
     /// <summary>Restart a service.</summary>
     Task RestartAsync(string serviceId, CancellationToken ct);
+    /// <summary>Remove a service and release all supervisor-held resources (hosts, status, health checks).</summary>
+    Task RemoveAsync(string serviceId, CancellationToken ct);
     /// <summary>Start all automatic services.</summary>
     Task StartAllAutomaticAsync(CancellationToken ct);
     /// <summary>Shut down all services.</summary>

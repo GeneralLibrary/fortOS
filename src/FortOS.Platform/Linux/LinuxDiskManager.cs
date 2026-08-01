@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using FortOS.Core;
 using FortOS.Platform.Execution;
+using FortOS.Platform.Linux.Monitoring;
 using Microsoft.Extensions.Logging;
 
 namespace FortOS.Platform.Linux;
@@ -33,7 +34,44 @@ public sealed partial class LinuxDiskManager : IDiskManager
             AddDisk(block, disks);
         }
 
-        return disks;
+        // lsblk reports no temperature/health; enrich each disk from SMART in parallel.
+        return await EnrichWithSmartAsync(disks, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Overlay SMART temperature and health onto disks (parallel, best-effort —
+    /// disks without SMART support keep their lsblk defaults).
+    /// </summary>
+    private async Task<IReadOnlyList<DiskInfo>> EnrichWithSmartAsync(IReadOnlyList<DiskInfo> disks, CancellationToken ct)
+    {
+        if (disks.Count == 0) return disks;
+
+        var enriched = await Task.WhenAll(disks.Select(async disk =>
+        {
+            try
+            {
+                var smart = await GetSmartDataAsync(disk.Path, ct).ConfigureAwait(false);
+                var temperature = smart.TemperatureCelsius ?? disk.TemperatureCelsius;
+                if (temperature <= 0 && string.Equals(smart.Health, "Unsupported", StringComparison.OrdinalIgnoreCase))
+                {
+                    return disk;
+                }
+
+                return disk with
+                {
+                    TemperatureCelsius = temperature,
+                    SmartStatus = string.IsNullOrWhiteSpace(smart.Health) || string.Equals(smart.Health, "Unknown", StringComparison.OrdinalIgnoreCase)
+                        ? disk.SmartStatus
+                        : smart.Health,
+                };
+            }
+            catch (Exception ex) when (ex is PlatformException or CommandExecutionException or JsonException or OperationCanceledException)
+            {
+                return disk;
+            }
+        })).ConfigureAwait(false);
+
+        return enriched;
     }
 
     /// <inheritdoc />
@@ -80,8 +118,28 @@ public sealed partial class LinuxDiskManager : IDiskManager
         };
 
         var devices = string.Join(' ', diskPaths.Select(Quote));
-        var result = await _executor.ExecuteAsync("mdadm", $"--create /dev/md0 --level={raidLevel} --raid-devices={diskPaths.Length} {devices}", ct).ConfigureAwait(false);
-        return new RaidResult { Success = true, PoolId = "/dev/md0", Message = result.Stdout };
+        try
+        {
+            var result = await _executor.ExecuteAsync("mdadm", $"--create /dev/md0 --level={raidLevel} --raid-devices={diskPaths.Length} {devices}", ct).ConfigureAwait(false);
+            return new RaidResult { Success = true, PoolId = "/dev/md0", Message = result.Stdout };
+        }
+        catch (Exception ex) when (ex is PlatformException or CommandExecutionException)
+        {
+            // Surface execution failures as a structured result instead of a 500.
+            return new RaidResult { Success = false, ErrorCode = "RAID_CREATE_FAILED", Message = ex.Message };
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RaidMetrics>> ListRaidsAsync(CancellationToken ct)
+    {
+        var result = await _executor.ExecuteAsync("cat", "/proc/mdstat", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
+        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.Stdout))
+        {
+            return [];
+        }
+
+        return LinuxProcParsers.ParseRaid(result.Stdout);
     }
 
     /// <inheritdoc />

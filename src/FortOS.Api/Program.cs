@@ -88,8 +88,13 @@ app.UseCors();
 
 if (app.Configuration.GetValue("dashboard:enabled", false))
 {
-    app.UseDefaultFiles(new DefaultFilesOptions { RequestPath = "/dashboard" });
-    app.UseStaticFiles(new StaticFileOptions { RequestPath = "/dashboard" });
+    // Serve the SPA from wwwroot/dashboard/. Note: do NOT set a RequestPath here —
+    // StaticFileOptions.RequestPath strips the prefix before mapping to the web root,
+    // so /dashboard/index.html would be looked up as wwwroot/index.html and 404.
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+    // Friendly entry point: visiting the host root lands on the dashboard.
+    app.MapGet("/", () => Results.Redirect("/dashboard/"));
 }
 
 app.MapControllers();

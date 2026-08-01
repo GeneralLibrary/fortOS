@@ -81,7 +81,10 @@ public sealed class LinuxSystemMetricsCollector : ISystemMetricsCollector
             {
                 CollectedAt = now,
                 Host = runtime,
-                Cpu = LinuxProcParsers.CalculateCpuMetrics(_previousCpu, cpuCounters),
+                Cpu = LinuxProcParsers.CalculateCpuMetrics(_previousCpu, cpuCounters) with
+                {
+                    TemperatureCelsius = ReadCpuTemperature(),
+                },
                 Memory = memory,
                 Disks = LinuxProcParsers.CalculateDiskMetrics(_previousDisks, diskCounters, elapsed, _smart),
                 Networks = LinuxProcParsers.CalculateNetworkMetrics(_previousNetworks, networkCounters, elapsed, sysRoot),
@@ -311,6 +314,52 @@ public sealed class LinuxSystemMetricsCollector : ISystemMetricsCollector
         => int.TryParse(_configuration.GetValue(key), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value > 0
             ? value
             : fallback;
+
+    /// <summary>
+    /// Reads the CPU package temperature from the Linux thermal framework
+    /// (/sys/class/thermal). Prefers x86_pkg_temp / coretemp / cpu zones,
+    /// otherwise the first valid zone; null when no sensor is present.
+    /// </summary>
+    private static double? ReadCpuTemperature()
+    {
+        try
+        {
+            const string thermalRoot = "/sys/class/thermal";
+            if (!Directory.Exists(thermalRoot)) return null;
+
+            double? fallback = null;
+            foreach (var zone in Directory.EnumerateDirectories(thermalRoot, "thermal_zone*"))
+            {
+                var type = ReadThermalFile(Path.Combine(zone, "type"));
+                var raw = ReadThermalFile(Path.Combine(zone, "temp"));
+                if (raw is null || !double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var milli) || milli <= 0)
+                {
+                    continue;
+                }
+
+                var celsius = milli / 1000.0;
+                if (type is not null && (type.Contains("x86_pkg_temp", StringComparison.OrdinalIgnoreCase)
+                    || type.Contains("coretemp", StringComparison.OrdinalIgnoreCase)
+                    || type.Contains("cpu", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return celsius;
+                }
+                fallback ??= celsius;
+            }
+            return fallback;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadThermalFile(string path)
+    {
+        try { return File.ReadAllText(path).Trim(); }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
 
     private string ResolveRoot(string configurationKey, string containerHostRoot, string nativeRoot)
     {

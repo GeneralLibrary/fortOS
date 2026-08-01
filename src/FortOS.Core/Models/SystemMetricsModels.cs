@@ -77,6 +77,9 @@ public sealed record CpuMetrics
     /// <summary>Total non-idle CPU utilization percentage.</summary>
     public double UsagePercent { get; init; }
 
+    /// <summary>CPU package temperature in Celsius, when a thermal sensor is present.</summary>
+    public double? TemperatureCelsius { get; init; }
+
     /// <summary>User-space CPU utilization percentage.</summary>
     public double UserPercent { get; init; }
 

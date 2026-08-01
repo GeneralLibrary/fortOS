@@ -1,0 +1,448 @@
+<!--
+  FortOS Dashboard — Disk & Storage Settings Panel
+  Rendered inside the Settings page for the "storage" category:
+  disk inventory + RAID pool creation (modes mirror the NAS convention:
+  RAID0/1/5/6/10 — levels the backend actually supports).
+-->
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useMessage } from 'naive-ui'
+import { listDisks, listRaids, createRaid, getRaidCapability } from '@/api/disks'
+import { formatBytes, formatTemperature } from '@/utils/format'
+import EmptyState from '@/components/common/EmptyState.vue'
+import type { DiskInfo, RaidMetrics, RaidCapability } from '@/types'
+import { RaidLevel } from '@/types'
+
+const { t } = useI18n()
+const message = useMessage()
+
+const disks = ref<DiskInfo[]>([])
+const raids = ref<RaidMetrics[]>([])
+const loading = ref(false)
+const creating = ref(false)
+/** null = capability not yet loaded; available=false = mdadm missing on host. */
+const capability = ref<RaidCapability | null>(null)
+
+const selectedLevel = ref<RaidLevel | null>(null)
+const selectedDisks = ref<string[]>([])
+
+/** RAID modes the backend supports, with their minimum disk counts. */
+const RAID_MODES: { level: RaidLevel; minDisks: number }[] = [
+  { level: RaidLevel.Raid0, minDisks: 2 },
+  { level: RaidLevel.Raid1, minDisks: 2 },
+  { level: RaidLevel.Raid5, minDisks: 3 },
+  { level: RaidLevel.Raid6, minDisks: 4 },
+  { level: RaidLevel.Raid10, minDisks: 4 },
+]
+
+async function load(): Promise<void> {
+  loading.value = true
+  try {
+    const [diskList, raidList, cap] = await Promise.all([listDisks(), listRaids(), getRaidCapability()])
+    disks.value = diskList
+    raids.value = raidList
+    capability.value = cap
+  } catch {
+    message.error(t('settings.storage.loadFailed'))
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
+
+const selectedMode = computed(() => RAID_MODES.find(m => m.level === selectedLevel.value))
+
+const needMore = computed(() => {
+  const mode = selectedMode.value
+  if (!mode) return 0
+  return Math.max(0, mode.minDisks - selectedDisks.value.length)
+})
+
+const canCreate = computed(() => selectedLevel.value !== null && needMore.value === 0)
+
+function toggleDisk(path: string): void {
+  if (selectedDisks.value.includes(path)) {
+    selectedDisks.value = selectedDisks.value.filter(p => p !== path)
+  } else {
+    selectedDisks.value = [...selectedDisks.value, path]
+  }
+}
+
+async function handleCreate(): Promise<void> {
+  if (!selectedLevel.value) return
+  creating.value = true
+  try {
+    const result = await createRaid(selectedLevel.value, selectedDisks.value, true)
+    if (result.success) {
+      message.success(t('settings.storage.raidCreated', { pool: result.poolId ?? '' }))
+      selectedLevel.value = null
+      selectedDisks.value = []
+      await load()
+    } else {
+      message.error(result.message ?? t('settings.storage.raidFailed'))
+    }
+  } catch {
+    message.error(t('settings.storage.raidFailed'))
+  } finally {
+    creating.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="storage-panel">
+    <!-- Existing RAID arrays -->
+    <section class="storage-block">
+      <h4 class="storage-block-title">{{ t('settings.storage.existingRaids') }}</h4>
+      <div v-if="raids.length" class="raid-list">
+        <div v-for="raid in raids" :key="raid.name" class="raid-item">
+          <div class="raid-item-info">
+            <div class="raid-item-head">
+              <code class="raid-name">{{ raid.name }}</code>
+              <NTag size="small" :type="raid.healthy ? 'success' : 'warning'" round>
+                {{ raid.healthy ? t('settings.storage.healthy') : t('settings.storage.degraded') }}
+              </NTag>
+            </div>
+            <div class="raid-item-meta">
+              <span>{{ t('settings.storage.raidLevel') }}: {{ raid.level }}</span>
+              <span>{{ t('settings.storage.members') }}: {{ raid.activeDevices }}/{{ raid.totalDevices }}</span>
+            </div>
+            <NProgress
+              v-if="raid.operation && raid.progressPercent != null"
+              type="line" :percentage="Math.round(raid.progressPercent)"
+              indicator-placement="inside" :height="6"
+            >
+              {{ raid.operation }} {{ Math.round(raid.progressPercent) }}%
+            </NProgress>
+          </div>
+        </div>
+      </div>
+      <EmptyState v-else :message="t('settings.storage.noRaids')" />
+    </section>
+
+    <!-- Create RAID (only when mdadm is available on the host) -->
+    <section v-if="capability?.available" class="storage-block">
+      <h4 class="storage-block-title">{{ t('settings.storage.createRaid') }}</h4>
+
+      <!-- Mode picker -->
+      <div class="raid-modes">
+        <button
+          v-for="mode in RAID_MODES"
+          :key="mode.level"
+          type="button"
+          class="raid-mode"
+          :class="{ active: selectedLevel === mode.level }"
+          @click="selectedLevel = mode.level"
+        >
+          <span class="raid-mode-name">{{ t(`settings.storage.modes.${mode.level}.name`) }}</span>
+          <span class="raid-mode-tags">
+            <NTag size="tiny" :bordered="false">{{ t('settings.storage.minDisks', { count: mode.minDisks }) }}</NTag>
+            <NTag size="tiny" :bordered="false">{{ t(`settings.storage.modes.${mode.level}.capacity`) }}</NTag>
+          </span>
+          <span class="raid-mode-desc">{{ t(`settings.storage.modes.${mode.level}.desc`) }}</span>
+        </button>
+      </div>
+
+      <!-- Disk picker -->
+      <div class="disk-picker-head">
+        <span>{{ t('settings.storage.selectDisks') }}</span>
+        <span v-if="selectedLevel" class="disk-picker-count">
+          {{ selectedDisks.length }}/{{ selectedMode?.minDisks }}
+        </span>
+      </div>
+      <div class="disk-grid">
+        <button
+          v-for="disk in disks"
+          :key="disk.path"
+          type="button"
+          class="disk-card"
+          :class="{ selected: selectedDisks.includes(disk.path) }"
+          @click="toggleDisk(disk.path)"
+        >
+          <div class="disk-card-head">
+            <code>{{ disk.path }}</code>
+            <NTag size="tiny" :bordered="false" :type="disk.isSsd ? 'info' : 'default'">
+              {{ disk.isSsd ? t('settings.storage.ssd') : t('settings.storage.hdd') }}
+            </NTag>
+          </div>
+          <div class="disk-card-model">{{ disk.model || t('common.unknown') }}</div>
+          <div class="disk-card-meta">
+            <span>{{ formatBytes(disk.sizeBytes) }}</span>
+            <span v-if="disk.temperatureCelsius > 0">{{ formatTemperature(disk.temperatureCelsius) }}</span>
+          </div>
+        </button>
+      </div>
+      <EmptyState v-if="!disks.length && !loading" :message="t('settings.storage.noDisks')" />
+
+      <!-- Create action -->
+      <div class="raid-create-bar">
+        <span class="raid-create-hint">
+          <template v-if="selectedLevel && needMore > 0">{{ t('settings.storage.needMore', { count: needMore }) }}</template>
+          <template v-else-if="!selectedLevel">{{ t('settings.storage.chooseModeHint') }}</template>
+          <template v-else>{{ t('settings.storage.readyHint') }}</template>
+        </span>
+        <NPopconfirm
+          :positive-text="t('settings.storage.confirmOk')"
+          :negative-text="t('common.cancel')"
+          @positive-click="handleCreate"
+        >
+          <template #trigger>
+            <NButton type="error" size="small" :disabled="!canCreate" :loading="creating">
+              {{ t('settings.storage.createRaid') }}
+            </NButton>
+          </template>
+          {{ t('settings.storage.confirmDesc') }}
+        </NPopconfirm>
+      </div>
+    </section>
+
+    <!-- mdadm missing: guide the user through installation -->
+    <section v-else-if="capability" class="storage-block tool-missing">
+      <h4 class="storage-block-title">{{ t('settings.storage.toolMissing') }}</h4>
+      <p class="tool-missing-desc">
+        {{ t('settings.storage.toolMissingDesc', { tool: capability.tool }) }}
+      </p>
+      <div class="tool-cmd">
+        <code>sudo apt-get install -y {{ capability.tool }}</code>
+      </div>
+      <p class="tool-missing-hint">{{ t('settings.storage.toolMissingHint') }}</p>
+    </section>
+  </div>
+</template>
+
+<style scoped>
+.storage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.storage-block {
+  background: var(--zs-bg-card);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius-lg);
+  padding: 18px;
+}
+
+.storage-block-title {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--zs-text-primary);
+}
+
+/* ---- Existing RAID arrays ---- */
+.raid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.raid-item {
+  padding: 12px 14px;
+  background: var(--zs-bg-input);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius);
+}
+
+.raid-item-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.raid-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--zs-text-primary);
+}
+
+.raid-item-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+}
+
+.raid-item .n-progress {
+  margin-top: 8px;
+}
+
+/* ---- RAID mode picker ---- */
+.raid-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.raid-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--zs-bg-input);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius);
+  cursor: pointer;
+  transition: all var(--zs-transition);
+}
+
+.raid-mode:hover {
+  border-color: var(--zs-border-light);
+}
+
+.raid-mode.active {
+  border-color: var(--zs-primary);
+  background: var(--zs-primary-bg);
+}
+
+.raid-mode-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--zs-text-primary);
+}
+
+.raid-mode-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.raid-mode-tags :deep(.n-tag) {
+  max-width: 100%;
+}
+
+.raid-mode-tags :deep(.n-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.raid-mode-desc {
+  font-size: 11px;
+  color: var(--zs-text-tertiary);
+  line-height: 1.5;
+}
+
+/* ---- Disk picker ---- */
+.disk-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--zs-text-secondary);
+}
+
+.disk-picker-count {
+  color: var(--zs-primary);
+  font-weight: 600;
+}
+
+.disk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.disk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--zs-bg-input);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius);
+  cursor: pointer;
+  transition: all var(--zs-transition);
+}
+
+.disk-card:hover {
+  border-color: var(--zs-border-light);
+}
+
+.disk-card.selected {
+  border-color: var(--zs-primary);
+  background: var(--zs-primary-bg);
+  box-shadow: var(--zs-shadow-sm);
+}
+
+.disk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.disk-card-head code {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--zs-text-primary);
+}
+
+.disk-card-model {
+  font-size: 11px;
+  color: var(--zs-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-card-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--zs-text-tertiary);
+}
+
+/* ---- Create bar ---- */
+.raid-create-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--zs-border);
+}
+
+.raid-create-hint {
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+}
+
+/* ---- mdadm missing banner ---- */
+.tool-missing-desc {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--zs-text-secondary);
+  line-height: 1.6;
+}
+
+.tool-cmd {
+  display: inline-block;
+  padding: 10px 14px;
+  background: var(--zs-bg-input);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius);
+  margin-bottom: 10px;
+}
+
+.tool-cmd code {
+  font-size: 13px;
+  color: var(--zs-primary);
+  user-select: all;
+}
+
+.tool-missing-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+}
+</style>

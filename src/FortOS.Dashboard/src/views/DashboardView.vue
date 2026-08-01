@@ -9,7 +9,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   ServerOutline, PulseOutline, SaveOutline,
-  WifiOutline, AlertCircleOutline,
+  WifiOutline, AlertCircleOutline, ThermometerOutline,
 } from '@vicons/ionicons5'
 import StatCard from '@/components/common/StatCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -35,6 +35,16 @@ onUnmounted(() => dashboard.stopPolling())
 const metrics = computed(() => dashboard.systemMetrics)
 
 const cpuPct = computed(() => metrics.value ? Math.round(metrics.value.cpu.usagePercent) : 0)
+/** CPU gauge caption: logical cores · usage. Temperature shows separately as a badge. */
+const cpuDetail = computed(() => {
+  if (!metrics.value) return '—'
+  return `${metrics.value.cpu.logicalProcessorCount} ${t('dashboard.logicalCores')} · ${cpuPct.value}%`
+})
+
+/** CPU temperature, rendered independently from the gauge caption (0 when no sensor). */
+const cpuTempText = computed(() =>
+  metrics.value ? formatTemperature(metrics.value.cpu.temperatureCelsius) : '—',
+)
 const memUsed = computed(() => metrics.value ? metrics.value.memory.usedBytes : 0)
 const memTotal = computed(() => metrics.value ? metrics.value.memory.totalBytes : 1)
 const memPct = computed(() => Math.round(memUsed.value / memTotal.value * 100))
@@ -161,7 +171,7 @@ const filesystemColumns: DataTableColumns<FileSystemCapacityMetrics> = [
   { title: () => t('dashboard.capacity'), key: 'totalBytes', width: 100, render: (r) => formatBytes(r.totalBytes) },
   { title: () => t('dashboard.used'), key: 'usedBytes', width: 100, render: (r) => formatBytes(r.usedBytes) },
   { title: () => t('dashboard.usage'), key: 'usedPercent', width: 80,
-    render: (r) => h(NProgress, { type: r.usedPercent > 90 ? 'error' : r.usedPercent > 75 ? 'warning' : 'success', percentage: Math.round(r.usedPercent), showIndicator: false, height: 18, borderRadius: '4px' }),
+    render: (r) => h(NProgress, { type: 'line', color: r.usedPercent > 90 ? '#d03050' : r.usedPercent > 75 ? '#f0a020' : '#18a058', percentage: Math.round(r.usedPercent), showIndicator: false, height: 18, borderRadius: '4px' }),
   },
 ]
 
@@ -178,13 +188,20 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
   <div class="zs-dashboard">
     <!-- Gauges row: CPU / Memory / Storage -->
     <div class="zs-gauges-row">
-      <component :is="renderGauge(cpuPct, 'CPU', metrics ? `${metrics.cpu.logicalProcessorCount} ${t('dashboard.logicalCores')} · ${cpuPct}%` : '—')" />
+      <component :is="renderGauge(cpuPct, 'CPU', cpuDetail)" />
       <component :is="renderGauge(memPct, 'RAM', `${formatBytes(memUsed)} / ${formatBytes(memTotal)}`)" />
       <component :is="renderGauge(storagePct, t('nav.storage'), `${formatBytes(storageUsed)} / ${formatBytes(storageTotal)}`)" />
     </div>
 
     <!-- Stat pills row -->
     <div class="zs-stats-row">
+      <StatCard
+        :label="t('dashboard.cpuTemperature')"
+        :value="cpuTempText"
+        :icon="ThermometerOutline"
+        color="#f59e0b"
+        :subtitle="`${t('dashboard.cpuUsage')} ${cpuPct}%`"
+      />
       <StatCard
         :label="t('dashboard.hostUptime')"
         :value="metrics ? formatUptime(metrics.host.uptime) : '—'"
@@ -274,6 +291,7 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
             :columns="serviceColumns" :data="dashboard.services"
             :bordered="false" size="small" :max-height="280" striped
           />
+          <EmptyState v-else-if="dashboard.failedEndpoints.has('services')" :message="t('dashboard.loadFailed')" :description="t('dashboard.loadFailedHint')" />
           <EmptyState v-else :message="t('dashboard.noServices')" />
         </NCard>
 
@@ -286,6 +304,7 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
             :columns="agentColumns" :data="dashboard.agents"
             :bordered="false" size="small" :max-height="180" striped
           />
+          <EmptyState v-else-if="dashboard.failedEndpoints.has('agents')" :message="t('dashboard.loadFailed')" :description="t('dashboard.loadFailedHint')" />
           <EmptyState v-else :message="t('dashboard.noAgents')" />
         </NCard>
 
@@ -306,7 +325,6 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
 </template>
 
 <script lang="ts">
-import { h } from 'vue'
 import { NTag, NProgress } from 'naive-ui'
 </script>
 

@@ -111,7 +111,8 @@ export function formatUptime(duration: string | undefined | null): string {
  * Formats a temperature in Celsius with unit.
  */
 export function formatTemperature(celsius: number | undefined | null): string {
-  if (celsius == null) return '—'
+  // No sensor / unsupported disks show 0 instead of hiding the value.
+  if (celsius == null || celsius <= 0) return '0°C'
   return `${celsius}°C`
 }
 

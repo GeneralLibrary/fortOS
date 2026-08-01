@@ -24,6 +24,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const services = shallowRef<ServiceStatusInfo[]>([])
   const agents = shallowRef<ServiceDefinition[]>([])
   const disks = shallowRef<DiskInfo[]>([])
+  /** Endpoints that failed during the last poll, so the UI can show errors instead of silent empty states. */
+  const failedEndpoints = shallowRef<Set<string>>(new Set())
   const loading = ref(false)
   const error = ref<string | null>(null)
   const lastUpdated = ref<Date | null>(null)
@@ -49,12 +51,18 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
       // Use allSettled so one failing endpoint doesn't crash the whole page.
       const [metricsResult, alertsResult, servicesResult, agentsResult, disksResult] = results
-
+      const failed = new Set<string>()
       if (metricsResult.status === 'fulfilled') systemMetrics.value = metricsResult.value
+      else failed.add('metrics')
       if (alertsResult.status === 'fulfilled') activeAlerts.value = alertsResult.value
+      else failed.add('alerts')
       if (servicesResult.status === 'fulfilled') services.value = servicesResult.value
+      else failed.add('services')
       if (agentsResult.status === 'fulfilled') agents.value = agentsResult.value
+      else failed.add('agents')
       if (disksResult.status === 'fulfilled') disks.value = disksResult.value
+      else failed.add('disks')
+      failedEndpoints.value = failed
 
       lastUpdated.value = new Date()
     } catch (e) {
@@ -89,6 +97,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     services,
     agents,
     disks,
+    failedEndpoints,
     loading,
     error,
     lastUpdated,

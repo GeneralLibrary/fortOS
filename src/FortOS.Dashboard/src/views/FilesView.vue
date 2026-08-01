@@ -6,10 +6,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, h } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useMessage, NTag, NButton, NIcon as NIconComp, NSpin } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton, NIcon as NIconComp, NSpin } from 'naive-ui'
 import {
   listFiles, readFileContent, createDirectory,
-  writeFile, updateFile, moveFile, deleteFile, createUpload, abortUpload,
+  writeFile, updateFile, moveFile, deleteFile,
+  createUpload, appendUpload, finalizeUpload, abortUpload,
+  downloadBlob,
 } from '@/api/files'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { formatBytes, formatDateTime } from '@/utils/format'
@@ -18,23 +20,31 @@ import type { DataTableColumns } from 'naive-ui'
 
 const { t } = useI18n()
 const message = useMessage()
+// useDialog/useMessage must be resolved inside setup; calling useDialog() inside
+// an event handler returns undefined (no inject context) and crashes on .warning.
+const dialog = useDialog()
 
 // ---- View mode ----
 type ViewMode = 'list' | 'grid'
 const viewMode = ref<ViewMode>('list')
 
 // ---- Directory navigation state ----
-const currentPath = ref('/')
+// Data root must match the backend FileManagerService default (FortOS_DATA_ROOT or /srv/nas).
+// The backend permission engine only allows operations under this root, so the UI
+// must treat it as the top-level browseable path instead of the filesystem root `/`.
+const DATA_ROOT = '/srv/nas'
+const currentPath = ref(DATA_ROOT)
 const entries = ref<ManagedFileEntry[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
+const downloading = ref(false)
 
 // ---- Breadcrumbs ----
 const breadcrumbs = computed(() => {
-  if (currentPath.value === '/') return [{ label: t('files.rootPath'), path: '/' }]
-  const segments = currentPath.value.split('/').filter(Boolean)
-  const crumbs = [{ label: t('files.rootPath'), path: '/' }]
-  let acc = ''
+  if (currentPath.value === DATA_ROOT) return [{ label: t('files.rootPath'), path: DATA_ROOT }]
+  const segments = currentPath.value.slice(DATA_ROOT.length).split('/').filter(Boolean)
+  const crumbs = [{ label: t('files.rootPath'), path: DATA_ROOT }]
+  let acc = DATA_ROOT
   for (const seg of segments) {
     acc += '/' + seg
     crumbs.push({ label: seg, path: acc })
@@ -43,9 +53,10 @@ const breadcrumbs = computed(() => {
 })
 
 const parentPath = computed(() => {
-  if (currentPath.value === '/') return null
+  if (currentPath.value === DATA_ROOT) return null
   const idx = currentPath.value.lastIndexOf('/')
-  return idx === 0 ? '/' : currentPath.value.slice(0, idx)
+  // Never navigate above the data root.
+  return idx <= DATA_ROOT.length - 1 ? DATA_ROOT : currentPath.value.slice(0, idx)
 })
 
 // ---- File type helpers ----
@@ -87,8 +98,26 @@ function fileIconBg(name: string, isDir: boolean): string {
   return 'bg-gray'
 }
 
-function downloadUrl(path: string): string {
-  return `/api/files/download?path=${encodeURIComponent(path)}`
+async function openExternalDownload(entry: ManagedFileEntry | null) {
+  if (!entry) return
+  downloading.value = true
+  try {
+    // Download through the authenticated fetch layer: a plain window.open cannot
+    // attach the Bearer token, so downloads would 401 under require_auth.
+    const blob = await downloadBlob(entry.path)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = entry.name
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    message.error((e as Error).message || t('files.downloadFailed'))
+  } finally {
+    downloading.value = false
+  }
 }
 
 // ---- Fetch directory ----
@@ -134,9 +163,7 @@ const creatingFolder = ref(false)
 async function handleCreateFolder() {
   if (!newFolderName.value.trim()) return
   creatingFolder.value = true
-  const fullPath = currentPath.value === '/'
-    ? `/${newFolderName.value.trim()}`
-    : `${currentPath.value}/${newFolderName.value.trim()}`
+  const fullPath = `${currentPath.value}/${newFolderName.value.trim()}`
   try {
     await createDirectory(fullPath)
     message.success(t('files.createFolderSuccess'))
@@ -158,9 +185,7 @@ const creatingFile = ref(false)
 async function handleCreateFile() {
   if (!newFileName.value.trim()) return
   creatingFile.value = true
-  const fullPath = currentPath.value === '/'
-    ? `/${newFileName.value.trim()}`
-    : `${currentPath.value}/${newFileName.value.trim()}`
+  const fullPath = `${currentPath.value}/${newFileName.value.trim()}`
   try {
     await writeFile(fullPath, '', false)
     message.success(t('files.createFileSuccess'))
@@ -176,7 +201,7 @@ async function handleCreateFile() {
 
 // ---- Delete ----
 function confirmDelete(entry: ManagedFileEntry) {
-  useDialog().warning({
+  dialog.warning({
     title: t('common.confirm'),
     content: t('files.deleteConfirm', { name: entry.name }),
     positiveText: t('common.delete'),
@@ -264,24 +289,42 @@ async function handleFileSelected(e: Event) {
   uploadFileName.value = file.name
   uploading.value = true
 
-  const fullPath = currentPath.value === '/'
-    ? `/${file.name}`
-    : `${currentPath.value}/${file.name}`
+  const fullPath = `${currentPath.value}/${file.name}`
+
+  // Use the resumable upload protocol for all files.
+  // The legacy writeFile (JSON/base64) interface is capped at ~1MB server-side,
+  // so even moderate files fail with 500. Chunked streaming handles any size.
+  const CHUNK_SIZE = 4 * 1024 * 1024 // 4 MiB per chunk
+  let sessionId: string | null = null
 
   try {
+    // 1. Create an upload session; server allocates a temp file.
     const session = await createUpload(fullPath, file.size)
-    const reader = new FileReader()
-    const content = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-    await writeFile(fullPath, content, true, 'base64')
-    try { await abortUpload(session.sessionId) } catch { /* ignore */ }
+    sessionId = session.sessionId
+
+    // 2. Stream the file in chunks via PUT with Content-Range.
+    let offset = session.receivedBytes || 0
+    while (offset < file.size) {
+      const end = Math.min(offset + CHUNK_SIZE, file.size)
+      const chunk = file.slice(offset, end)
+      const updated = await appendUpload(sessionId, chunk, offset, file.size)
+      offset = updated.receivedBytes
+    }
+
+    // 3. Finalize — atomically moves the temp file to the target path.
+    await finalizeUpload(sessionId)
+    sessionId = null // session consumed; no abort needed
+
     message.success(t('files.uploadSuccess'))
     fetchDir()
-  } catch {
+  } catch (err) {
+    // Abort the session on failure so the server reclaims the temp file.
+    if (sessionId) {
+      try { await abortUpload(sessionId) } catch { /* ignore */ }
+    }
     message.error(t('files.uploadFailed'))
+    // eslint-disable-next-line no-console
+    console.error('Upload failed:', err)
   } finally {
     uploading.value = false
     uploadFileName.value = ''
@@ -317,7 +360,18 @@ async function openPreview(entry: ManagedFileEntry) {
     } catch { previewContent.value = '' }
     finally { previewLoading.value = false }
   } else if (isVideo(entry.name)) {
-    previewDataUrl.value = downloadUrl(entry.path)
+    // Browsers cannot attach a JWT to a raw <video src>. Fetch the blob with
+    // an Authorization header and create an object URL so <video> can play it.
+    // The server returns Content-Type: application/octet-stream for downloads,
+    // so we must re-wrap the blob with the correct video MIME type, otherwise
+    // <video> refuses to play an octet-stream blob.
+    previewLoading.value = true
+    try {
+      const raw = await downloadBlob(entry.path)
+      const blob = new Blob([raw], { type: videoMimeType(entry.name) })
+      previewDataUrl.value = URL.createObjectURL(blob)
+    } catch { previewDataUrl.value = '' }
+    finally { previewLoading.value = false }
   }
 }
 
@@ -331,10 +385,29 @@ function mimeType(name: string): string {
   return map[e] ?? 'application/octet-stream'
 }
 
+function videoMimeType(name: string): string {
+  const e = ext(name)
+  const map: Record<string, string> = {
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.ogv': 'video/ogg',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+    '.avi': 'video/x-msvideo',
+    '.m4v': 'video/mp4',
+    '.ts': 'video/mp2t',
+  }
+  return map[e] ?? 'video/mp4'
+}
+
 function closePreview() {
   showPreview.value = false
   previewEntry.value = null
   previewContent.value = ''
+  // Revoke object URLs created for video preview to free memory.
+  if (previewDataUrl.value && previewDataUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(previewDataUrl.value)
+  }
   previewDataUrl.value = ''
 }
 
@@ -394,7 +467,7 @@ const columns: DataTableColumns<ManagedFileEntry> = [
       h(NButton, { size: 'tiny', onClick: () => openMove(r) }, { default: () => t('files.moveFile') }),
       h(NButton, {
         size: 'tiny', disabled: r.isDirectory,
-        onClick: () => window.open(downloadUrl(r.path), '_blank'),
+        onClick: () => openExternalDownload(r),
       }, { default: () => t('files.download') }),
       h(NButton, { size: 'tiny', type: 'error', secondary: true, onClick: () => confirmDelete(r) }, { default: () => t('common.delete') }),
     ]),
@@ -551,7 +624,7 @@ const columns: DataTableColumns<ManagedFileEntry> = [
     <NModal
       v-model:show="showPreview"
       preset="card"
-      style="width: 900px; max-width: 95vw"
+      style="width: 1100px; max-width: 96vw"
       :title="previewEntry?.name ?? ''"
       @update:show="!$event && closePreview()"
     >
@@ -562,7 +635,7 @@ const columns: DataTableColumns<ManagedFileEntry> = [
           v-else-if="previewDataUrl"
           :src="previewDataUrl"
           :alt="previewEntry.name"
-          style="max-width:100%;max-height:70vh;object-fit:contain"
+          style="max-width:100%;max-height:80vh;object-fit:contain"
           @error="($event.target as HTMLImageElement).style.display='none'"
         />
         <EmptyState v-else :message="t('common.loading')" />
@@ -570,9 +643,17 @@ const columns: DataTableColumns<ManagedFileEntry> = [
 
       <!-- Video preview -->
       <div v-else-if="previewEntry && isVideo(previewEntry.name)" class="preview-media">
-        <video :src="previewDataUrl" controls autoplay style="max-width:100%;max-height:70vh">
+        <NSpin v-if="previewLoading" />
+        <video
+          v-else-if="previewDataUrl"
+          :src="previewDataUrl"
+          controls
+          autoplay
+          style="width:100%;max-height:80vh"
+        >
           {{ t('files.unsupportedPreview') }}
         </video>
+        <EmptyState v-else :message="t('common.loading')" />
       </div>
 
       <!-- Text editor -->
@@ -596,7 +677,7 @@ const columns: DataTableColumns<ManagedFileEntry> = [
       <!-- Unsupported preview -->
       <div v-else style="text-align:center;padding:40px;color:var(--zs-text-tertiary)">
         <p>{{ t('files.unsupportedPreview') }}</p>
-        <NButton type="primary" style="margin-top: 12px" @click="window.open(downloadUrl(previewEntry?.path ?? ''), '_blank')">
+        <NButton type="primary" :loading="downloading" style="margin-top: 12px" @click="openExternalDownload(previewEntry)">
           {{ t('files.download') }}
         </NButton>
       </div>
@@ -605,7 +686,7 @@ const columns: DataTableColumns<ManagedFileEntry> = [
 </template>
 
 <script lang="ts">
-import { useDialog, NForm, NFormItem, NInput, NSpace, NModal } from 'naive-ui'
+import { NForm, NFormItem, NInput, NSpace, NModal } from 'naive-ui'
 import {
   ArrowUpOutline, CreateOutline, DocumentTextOutline, CloudUploadOutline,
   RefreshOutline, ListOutline, GridOutline,

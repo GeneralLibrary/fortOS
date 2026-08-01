@@ -14,7 +14,7 @@ import { listAlerts } from '@/api/alerts'
 import { formatBytes, formatUptime } from '@/utils/format'
 import type { SystemMetricsSnapshot } from '@/types'
 import {
-  LogOutOutline, PersonOutline,
+  LogOutOutline,
   SunnyOutline, MoonOutline, LanguageOutline,
   PulseOutline, ServerOutline, SaveOutline, WifiOutline,
 } from '@vicons/ionicons5'
@@ -94,6 +94,16 @@ const langOptions = [
   { label: 'English', key: 'en-US' },
 ]
 
+/** Friendly display name: strip the "user:" subject prefix. */
+const displayName = computed(() => {
+  const sub = auth.username
+  if (!sub) return 'Admin'
+  return sub.startsWith('user:') ? sub.slice(5) : sub
+})
+
+/** Avatar letter — first character of the display name, uppercased. */
+const avatarText = computed(() => displayName.value.charAt(0).toUpperCase() || 'A')
+
 function handleUserSelect(key: string) {
   if (key === 'logout') {
     auth.logout()
@@ -165,16 +175,16 @@ function handleLangSelect(key: string) {
       </button>
 
       <NDropdown trigger="click" :options="langOptions" @select="handleLangSelect">
-        <button class="zs-icon-btn">
-          <NIcon size="18"><LanguageOutline /></NIcon>
-          <span style="font-size:11px;margin-left:4px;font-weight:500">{{ locale === 'zh-CN' ? '中' : 'EN' }}</span>
+        <button class="zs-header-btn">
+          <NIcon size="16"><LanguageOutline /></NIcon>
+          <span class="zs-header-btn-text">{{ locale === 'zh-CN' ? '中文' : 'EN' }}</span>
         </button>
       </NDropdown>
 
       <NDropdown trigger="click" :options="userOptions" @select="handleUserSelect">
-        <button class="zs-icon-btn">
-          <NIcon size="18"><PersonOutline /></NIcon>
-          <span style="font-size:11px;margin-left:4px;font-weight:500">{{ auth.username ?? 'Admin' }}</span>
+        <button class="zs-user-btn" :title="displayName">
+          <span class="zs-user-avatar">{{ avatarText }}</span>
+          <span class="zs-user-name">{{ displayName }}</span>
         </button>
       </NDropdown>
     </div>
@@ -224,8 +234,75 @@ import { NIcon, NDropdown } from 'naive-ui'
 .zs-header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+/* Generic adaptive header button (language etc.) — no fixed width so content never overflows. */
+.zs-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--zs-radius);
+  border: 1px solid var(--zs-border);
+  background: var(--zs-bg-input);
+  color: var(--zs-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--zs-transition);
+}
+.zs-header-btn:hover {
+  background: var(--zs-bg-card-hover);
+  border-color: var(--zs-border-light);
+  color: var(--zs-text-primary);
+}
+.zs-header-btn-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* User profile pill: avatar + name, width adapts to content, name truncates when too long. */
+.zs-user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  max-width: 220px;
+  padding: 0 12px 0 5px;
+  border-radius: 20px;
+  border: 1px solid var(--zs-border);
+  background: var(--zs-bg-input);
+  color: var(--zs-text-primary);
+  cursor: pointer;
+  transition: all var(--zs-transition);
+}
+.zs-user-btn:hover {
+  background: var(--zs-bg-card-hover);
+  border-color: var(--zs-border-light);
+}
+.zs-user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--zs-primary-gradient);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.zs-user-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 900px) {

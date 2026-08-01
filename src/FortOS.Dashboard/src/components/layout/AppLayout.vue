@@ -77,6 +77,9 @@ watch(pageTitle, (title) => {
 .zs-shell {
   display: flex;
   height: 100vh;
+  /* Dynamic viewport height: tracks browser UI (address bar, DevTools) resizing
+     so the sidebar always stretches to the visible area. */
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
 }

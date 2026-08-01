@@ -11,6 +11,8 @@ public interface IDiskManager
     Task<PartitionResult> CreatePartitionAsync(string diskPath, PartitionSpec spec, CancellationToken ct);
     /// <summary>Create a RAID array.</summary>
     Task<RaidResult> CreateRaidAsync(RaidLevel level, string[] diskPaths, CancellationToken ct);
+    /// <summary>List active MD RAID arrays.</summary>
+    Task<IReadOnlyList<RaidMetrics>> ListRaidsAsync(CancellationToken ct);
     /// <summary>Read SMART data.</summary>
     Task<SmartData> GetSmartDataAsync(string diskPath, CancellationToken ct);
     /// <summary>Wipe a disk.</summary>

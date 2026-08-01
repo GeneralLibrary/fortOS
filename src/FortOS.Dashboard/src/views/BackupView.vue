@@ -12,10 +12,11 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import { formatBytes, formatDateTime, formatSchedule, backupRunStateLabel, backupRunStateType } from '@/utils/format'
 import type { BackupTask, BackupRunRecord, BackupTargetType, BackupMethod } from '@/types'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
-import { useMessage, NTag, NButton } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton } from 'naive-ui'
 
 const store = useBackupStore()
 const message = useMessage()
+const dialog = useDialog()
 const { t, locale } = useI18n()
 
 /** Locale-aware format helpers that pass the current language. */
@@ -122,7 +123,7 @@ async function handleSave() {
 }
 
 function confirmDelete(task: BackupTask) {
-  useDialog().warning({
+  dialog.warning({
     title: t('common.confirm'),
     content: t('backup.deleteConfirm', { name: task.name }),
     positiveText: t('common.delete'), negativeText: t('common.cancel'),
@@ -321,10 +322,6 @@ const runColumns: DataTableColumns<BackupRunRecord> = [
     </NDrawer>
   </div>
 </template>
-
-<script lang="ts">
-import { useDialog } from 'naive-ui'
-</script>
 
 <style scoped>
 .backup-page { max-width: 1200px; margin: 0 auto; }

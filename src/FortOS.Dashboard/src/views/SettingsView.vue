@@ -1,109 +1,563 @@
 <!--
   FortOS Dashboard — System Settings View
-  Displays current configuration and allows editing non-sensitive values.
+  Categorized, semantically-labelled settings with graphical controls.
+  The category + entry metadata comes from GET /api/config/meta; only
+  whitelisted keys present in the live config are rendered.
 -->
 <script setup lang="ts">
-import { onMounted, ref, reactive, h } from 'vue'
+import { computed, onMounted, reactive, ref, type Component } from 'vue'
+import {
+  NIcon,
+  NTag,
+  NInput,
+  NInputNumber,
+  NSelect,
+  NSwitch,
+} from 'naive-ui'
+import {
+  ShieldCheckmarkOutline,
+  SpeedometerOutline,
+  PulseOutline,
+  OptionsOutline,
+  SearchOutline,
+  CheckmarkOutline,
+  ArrowUndoOutline,
+  RefreshOutline,
+  ServerOutline,
+} from '@vicons/ionicons5'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
+import { useMessage } from 'naive-ui'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { useMessage, NButton } from 'naive-ui'
-import type { DataTableColumns, FormInst } from 'naive-ui'
+import StorageSettingsPanel from '@/components/settings/StorageSettingsPanel.vue'
+import type { ConfigCategoryMeta, ConfigEntryMeta } from '@/types'
 
 const store = useSettingsStore()
 const message = useMessage()
 const { t } = useI18n()
 
-const showEdit = ref(false)
-const editingKey = ref('')
-const editingValue = ref('')
-const formRef = ref<FormInst | null>(null)
+const activeCategory = ref('')
+const search = ref('')
 const saving = ref(false)
 
-onMounted(() => store.fetchConfig())
+/** Pending edits keyed by config key, in the string form the API stores. */
+const drafts = reactive<Record<string, string>>({})
 
-function openEdit(key: string, value: string) {
-  editingKey.value = key
-  editingValue.value = value
-  showEdit.value = true
+/** Icon lookup for backend category `icon` identifiers. */
+const categoryIcons: Record<string, Component> = {
+  security: ShieldCheckmarkOutline,
+  access: SpeedometerOutline,
+  observability: PulseOutline,
+  storage: ServerOutline,
+  advanced: OptionsOutline,
 }
 
-async function handleSave() {
+onMounted(async () => {
+  await store.load()
+  if (!activeCategory.value && store.categories.length) {
+    activeCategory.value = store.categories[0].id
+  }
+})
+
+const categories = computed(() =>
+  [...store.categories].sort((a, b) => a.order - b.order),
+)
+
+const activeCat = computed<ConfigCategoryMeta | undefined>(() =>
+  categories.value.find(c => c.id === activeCategory.value),
+)
+
+/** Number of config keys rendered for a category (whitelist ∩ live config). */
+function countFor(categoryId: string): number {
+  return store.entries.filter(e => e.category === categoryId && e.key in store.config).length
+}
+
+/** All whitelisted entries of the active category (drives save/reset/dirty state). */
+const categoryEntries = computed<ConfigEntryMeta[]>(() =>
+  store.entries
+    .filter(e => e.category === activeCategory.value)
+    .sort((a, b) => a.order - b.order),
+)
+
+/** Entries of the active category that exist in the live config, search-filtered. */
+const activeEntries = computed<ConfigEntryMeta[]>(() => {
+  const query = search.value.trim().toLowerCase()
+  return categoryEntries.value
+    .filter(e => e.key in store.config)
+    .filter(e => !query || matches(e, query))
+})
+
+/** Match by label, description, raw key or the current (draft) value. */
+function matches(entry: ConfigEntryMeta, query: string): boolean {
+  return labelFor(entry).toLowerCase().includes(query)
+    || descriptionFor(entry).toLowerCase().includes(query)
+    || entry.key.toLowerCase().includes(query)
+    || draftValue(entry).toLowerCase().includes(query)
+}
+
+// ---- i18n with backend-metadata fallback ----
+
+function labelFor(entry: ConfigEntryMeta): string {
+  const key = `settings.meta.${entry.key}.label`
+  const localized = t(key)
+  return localized === key ? (entry.label ?? entry.key) : localized
+}
+
+function descriptionFor(entry: ConfigEntryMeta): string {
+  const key = `settings.meta.${entry.key}.description`
+  const localized = t(key)
+  return localized === key ? (entry.description ?? '') : localized
+}
+
+function categoryName(cat: ConfigCategoryMeta): string {
+  const key = `settings.categories.${cat.id}.name`
+  const localized = t(key)
+  return localized === key ? cat.name : localized
+}
+
+function categoryDescription(cat: ConfigCategoryMeta): string {
+  const key = `settings.categories.${cat.id}.description`
+  const localized = t(key)
+  return localized === key ? (cat.description ?? '') : localized
+}
+
+// ---- Draft / dirty tracking ----
+
+function originalValue(key: string): string {
+  return store.config[key] ?? ''
+}
+
+function draftValue(entry: ConfigEntryMeta): string {
+  return entry.key in drafts ? drafts[entry.key] : originalValue(entry.key)
+}
+
+function isDirty(entry: ConfigEntryMeta): boolean {
+  return entry.key in drafts && drafts[entry.key] !== originalValue(entry.key)
+}
+
+function categoryDirty(entries: ConfigEntryMeta[]): boolean {
+  return entries.some(isDirty)
+}
+
+function dirtyCount(categoryId: string): number {
+  return store.entries.filter(e => e.category === categoryId && isDirty(e)).length
+}
+
+function setDraft(entry: ConfigEntryMeta, value: string): void {
+  if (value === originalValue(entry.key)) delete drafts[entry.key]
+  else drafts[entry.key] = value
+}
+
+function resetEntry(entry: ConfigEntryMeta): void {
+  delete drafts[entry.key]
+}
+
+function resetCategory(): void {
+  categoryEntries.value.forEach(e => delete drafts[e.key])
+}
+
+// ---- Control helpers ----
+
+function boolValue(entry: ConfigEntryMeta): boolean {
+  return ['true', '1', 'yes', 'on'].includes(draftValue(entry).toLowerCase())
+}
+
+function numValue(entry: ConfigEntryMeta): number | null {
+  const raw = draftValue(entry)
+  const n = Number.parseFloat(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+function selectOptions(entry: ConfigEntryMeta) {
+  return (entry.options ?? []).map(o => ({ label: o, value: o }))
+}
+
+// ---- Save ----
+
+async function saveCategory(): Promise<void> {
+  const dirty = categoryEntries.value.filter(isDirty)
+  if (!dirty.length) return
   saving.value = true
   try {
-    await store.setConfig(editingKey.value, editingValue.value)
+    await store.setConfigs(dirty.map(e => ({ key: e.key, value: drafts[e.key] })))
+    dirty.forEach(e => delete drafts[e.key])
     message.success(t('settings.updateSuccess'))
-    showEdit.value = false
   } catch {
     message.error(store.error ?? t('settings.updateFailed'))
   } finally {
     saving.value = false
   }
 }
-
-interface ConfigEntry {
-  key: string
-  value: string
-}
-
-const configEntries = computed<ConfigEntry[]>(() =>
-  Object.entries(store.config)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => ({ key, value })),
-)
-
-const columns: DataTableColumns<ConfigEntry> = [
-  { title: () => t('settings.key'), key: 'key', ellipsis: { tooltip: true }, width: 300 },
-  { title: () => t('settings.value'), key: 'value', ellipsis: { tooltip: true },
-    render: (r) => r.value.length > 80 ? r.value.slice(0, 80) + '…' : r.value,
-  },
-  {
-    title: () => t('common.actions'), key: 'actions', width: 80,
-    render: (r) => h(NButton, { size: 'tiny', onClick: () => openEdit(r.key, r.value) }, { default: () => t('common.edit') }),
-  },
-]
 </script>
 
 <template>
   <div class="settings-page">
     <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')">
       <template #actions>
-        <NButton size="small" :loading="store.loading" @click="store.fetchConfig()">{{ t('common.refresh') }}</NButton>
+        <NButton size="small" :loading="store.loading" @click="store.load()">
+          <template #icon><NIcon><RefreshOutline /></NIcon></template>
+          {{ t('common.refresh') }}
+        </NButton>
       </template>
     </PageHeader>
 
-    <NCard :title="t('settings.configList')" :bordered="false" size="small">
-      <NDataTable
-        v-if="configEntries.length"
-        :columns="columns" :data="configEntries"
-        :bordered="false" size="small" striped :loading="store.loading"
-      />
-      <EmptyState v-else :message="t('settings.noConfig')" />
-    </NCard>
+    <div v-if="store.categories.length" class="settings-layout">
+      <!-- Semantic category navigation -->
+      <aside class="settings-nav">
+        <button
+          v-for="cat in categories"
+          :key="cat.id"
+          type="button"
+          class="settings-nav-item"
+          :class="{ active: cat.id === activeCategory }"
+          @click="activeCategory = cat.id"
+        >
+          <NIcon class="settings-nav-icon">
+            <component :is="categoryIcons[cat.icon] ?? OptionsOutline" />
+          </NIcon>
+          <span class="settings-nav-name">{{ categoryName(cat) }}</span>
+          <span v-if="dirtyCount(cat.id)" class="settings-nav-badge">{{ dirtyCount(cat.id) }}</span>
+          <span v-else-if="cat.id !== 'storage'" class="settings-nav-count">{{ countFor(cat.id) }}</span>
+        </button>
+      </aside>
 
-    <!-- Edit dialog -->
-    <NModal v-model:show="showEdit" preset="card" :title="t('settings.editConfig')" style="width: 520px" :mask-closable="false">
-      <NForm ref="formRef" label-placement="left" label-width="60">
-        <NFormItem :label="t('settings.key')">
-          <NInput :value="editingKey" disabled />
-        </NFormItem>
-        <NFormItem :label="t('settings.value')" required>
-          <NInput v-model:value="editingValue" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" />
-        </NFormItem>
-      </NForm>
-      <template #footer>
-        <NButton @click="showEdit = false">{{ t('common.cancel') }}</NButton>
-        <NButton type="primary" :loading="saving" @click="handleSave" style="margin-left: 12px">{{ t('common.save') }}</NButton>
-      </template>
-    </NModal>
+      <!-- Category content -->
+      <section v-if="activeCat" class="settings-content">
+        <div class="settings-content-head">
+          <div>
+            <h3 class="settings-content-title">{{ categoryName(activeCat) }}</h3>
+            <p class="settings-content-desc">{{ categoryDescription(activeCat) }}</p>
+          </div>
+          <div class="settings-content-actions" v-if="activeCategory !== 'storage'">
+            <NTag v-if="dirtyCount(activeCategory)" size="small" type="warning" round>
+              {{ t('settings.unsavedCount', { count: dirtyCount(activeCategory) }) }}
+            </NTag>
+            <NButton size="small" :disabled="!categoryDirty(categoryEntries)" @click="resetCategory">
+              <template #icon><NIcon><ArrowUndoOutline /></NIcon></template>
+              {{ t('settings.resetAll') }}
+            </NButton>
+            <NButton
+              size="small" type="primary" :loading="saving"
+              :disabled="!categoryDirty(categoryEntries)"
+              @click="saveCategory"
+            >
+              <template #icon><NIcon><CheckmarkOutline /></NIcon></template>
+              {{ t('settings.saveChanges') }}
+            </NButton>
+          </div>
+        </div>
+
+        <!-- Disk & storage management (special category: operations, not config keys) -->
+        <StorageSettingsPanel v-if="activeCategory === 'storage'" />
+
+        <!-- Config entries with graphical controls -->
+        <template v-else>
+          <div class="settings-search">
+            <NInput v-model:value="search" :placeholder="t('settings.searchPlaceholder')" clearable>
+              <template #prefix><NIcon><SearchOutline /></NIcon></template>
+            </NInput>
+          </div>
+
+          <div v-if="activeEntries.length" class="settings-list">
+            <div
+            v-for="entry in activeEntries"
+            :key="entry.key"
+            class="settings-item"
+            :class="{ dirty: isDirty(entry) }"
+          >
+            <div class="settings-item-info">
+              <div class="settings-item-label-row">
+                <span class="settings-item-label">{{ labelFor(entry) }}</span>
+                <NTag v-if="isDirty(entry)" size="tiny" type="warning" round>
+                  {{ t('settings.unsaved') }}
+                </NTag>
+              </div>
+              <p v-if="descriptionFor(entry)" class="settings-item-desc">{{ descriptionFor(entry) }}</p>
+              <div class="settings-item-meta">
+                <code>{{ entry.key }}</code>
+                <span v-if="entry.defaultValue" class="settings-item-default">
+                  {{ t('settings.defaultLabel') }} {{ entry.defaultValue }}
+                </span>
+              </div>
+            </div>
+
+            <div class="settings-item-control">
+              <NSwitch
+                v-if="entry.type === 'boolean'"
+                :value="boolValue(entry)"
+                @update:value="(v: boolean) => setDraft(entry, String(v))"
+              />
+              <NInputNumber
+                v-else-if="entry.type === 'number'"
+                :value="numValue(entry)"
+                :min="entry.min ?? undefined"
+                :max="entry.max ?? undefined"
+                :step="entry.step ?? undefined"
+                :show-button="false"
+                style="width: 180px"
+                @update:value="(v: number | null) => setDraft(entry, v === null ? '' : String(v))"
+              />
+              <NSelect
+                v-else-if="entry.type === 'select'"
+                :value="draftValue(entry)"
+                :options="selectOptions(entry)"
+                style="width: 180px"
+                @update:value="(v: string | number | null) => setDraft(entry, String(v ?? ''))"
+              />
+              <NInput
+                v-else-if="entry.type === 'string'"
+                :value="draftValue(entry)"
+                :placeholder="entry.defaultValue ?? ''"
+                style="width: 280px"
+                @update:value="(v: string) => setDraft(entry, v)"
+              />
+              <NInput
+                v-else
+                :value="draftValue(entry)"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 5 }"
+                style="width: 320px"
+                @update:value="(v: string) => setDraft(entry, v)"
+              />
+              <NButton
+                v-if="isDirty(entry)"
+                size="tiny" quaternary
+                :title="t('settings.reset')"
+                @click="resetEntry(entry)"
+              >
+                <template #icon><NIcon><ArrowUndoOutline /></NIcon></template>
+              </NButton>
+            </div>
+          </div>
+        </div>
+
+        <EmptyState
+          v-else-if="!store.loading"
+          :message="search ? t('settings.noSearchResults') : t('settings.noMeta')"
+        />
+        </template>
+      </section>
+    </div>
+
+    <EmptyState v-else-if="!store.loading" :message="t('settings.noConfig')" />
   </div>
 </template>
 
-<script lang="ts">
-import { computed } from 'vue'
-</script>
-
 <style scoped>
-.settings-page { max-width: 1000px; margin: 0 auto; }
+.settings-page {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+/* ---- Layout ---- */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* ---- Category navigation ---- */
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--zs-bg-card);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius-lg);
+  position: sticky;
+  top: calc(var(--zs-header-height) + 16px);
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--zs-radius);
+  background: transparent;
+  color: var(--zs-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--zs-transition);
+}
+
+.settings-nav-item:hover {
+  background: var(--zs-bg-card-hover);
+  color: var(--zs-text-primary);
+}
+
+.settings-nav-item.active {
+  background: var(--zs-primary-bg);
+  color: var(--zs-primary);
+}
+
+.settings-nav-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.settings-nav-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-count {
+  font-size: 11px;
+  color: var(--zs-text-tertiary);
+  background: var(--zs-bg-input);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.settings-nav-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--zs-orange);
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+/* ---- Content ---- */
+.settings-content-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.settings-content-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--zs-text-primary);
+}
+
+.settings-content-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+}
+
+.settings-content-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.settings-search {
+  margin-bottom: 14px;
+  max-width: 320px;
+}
+
+/* ---- Config entry rows (group card, divider-separated, ZSpace style) ---- */
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--zs-bg-card);
+  border: 1px solid var(--zs-border);
+  border-radius: var(--zs-radius-lg);
+  overflow: hidden;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--zs-border);
+  transition: background var(--zs-transition), box-shadow var(--zs-transition);
+}
+
+.settings-item:last-child {
+  border-bottom: none;
+}
+
+.settings-item:hover {
+  background: var(--zs-bg-card-hover);
+}
+
+.settings-item.dirty {
+  background: rgba(245, 158, 11, 0.06);
+  box-shadow: inset 3px 0 0 var(--zs-orange);
+}
+
+.settings-item-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-item-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--zs-text-primary);
+}
+
+.settings-item-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+  line-height: 1.5;
+}
+
+.settings-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.settings-item-meta code {
+  color: var(--zs-text-tertiary);
+  background: var(--zs-bg-input);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.settings-item-default {
+  color: var(--zs-text-tertiary);
+}
+
+.settings-item-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 860px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .settings-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .settings-item-control {
+    justify-content: flex-end;
+  }
+}
 </style>

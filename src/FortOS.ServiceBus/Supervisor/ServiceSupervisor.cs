@@ -168,6 +168,39 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         => Task.FromResult<IReadOnlyList<ServiceStatusInfo>>(_statuses.Values.OrderBy(s => s.ServiceId, StringComparer.Ordinal).ToArray());
 
     /// <inheritdoc />
+    public async Task RemoveAsync(string serviceId, CancellationToken ct)
+    {
+        var gate = GetLock(serviceId);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // Stop the container/compose stack first, then release every in-memory resource
+            // this supervisor holds for the service so it disappears from service listings.
+            if (_hosts.TryRemove(serviceId, out var host))
+            {
+                try
+                {
+                    await host.StopAsync(ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error stopping container host while removing service {ServiceId}.", serviceId);
+                }
+            }
+
+            _statuses.TryRemove(serviceId, out _);
+            _startedAt.TryRemove(serviceId, out _);
+            _backoffAttempts.TryRemove(serviceId, out _);
+            await _healthMonitor.UnregisterAsync(serviceId, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+            _locks.TryRemove(serviceId, out _);
+        }
+    }
+
+    /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try

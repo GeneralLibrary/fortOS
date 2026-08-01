@@ -24,6 +24,27 @@ public sealed class AgentTokenRegistry
     /// Enumerate token snapshot.
     /// </summary>
     public IReadOnlyList<AgentTokenState> Snapshot() => [.. _tokens.Values];
+
+    /// <summary>
+    /// Removes entries whose tokens have already expired. Expired tokens can no longer be
+    /// renewed, so keeping them only wastes memory and makes the renewal loop repeatedly
+    /// attempt (and fail) renewals for them.
+    /// </summary>
+    /// <returns>The number of entries pruned.</returns>
+    public int PruneExpired()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var pruned = 0;
+        foreach (var pair in _tokens)
+        {
+            if (pair.Value.ExpiresAt <= now && _tokens.TryRemove(pair.Key, out _))
+            {
+                pruned++;
+            }
+        }
+
+        return pruned;
+    }
 }
 
 /// <summary>

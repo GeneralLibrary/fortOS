@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using FortOS.Agent.Infrastructure;
 using FortOS.Core;
 using Scriban;
@@ -48,7 +49,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         var composePath = Path.Combine(agentDir, "docker-compose.yml");
         var envPath = Path.Combine(agentDir, ".env");
         await File.WriteAllTextAsync(composePath, composeText, ct).ConfigureAwait(false);
-        await File.WriteAllTextAsync(envPath, BuildEnvFile(tokenResult, apiEndpoint), ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(envPath, BuildEnvFile(template, config, tokenResult, apiEndpoint), ct).ConfigureAwait(false);
         SetFileMode(composePath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         SetFileMode(envPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         return new ComposeGenerationResult
@@ -247,8 +248,61 @@ public sealed class ComposeGenerator : IComposeGenerator
         return sequence;
     }
 
-    private static string BuildEnvFile(AgentTokenResult tokenResult, string apiEndpoint)
-        => $"NAS_TOKEN={tokenResult.Token}{Environment.NewLine}NAS_API_ENDPOINT={apiEndpoint}{Environment.NewLine}AGENT_CAPABILITIES={string.Join(',', tokenResult.Capabilities)}{Environment.NewLine}TZ={Environment.GetEnvironmentVariable("TZ") ?? "UTC"}{Environment.NewLine}";
+    private static readonly HashSet<string> ReservedEnvNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image", "data_dir", "NAS_TOKEN", "NAS_API_ENDPOINT", "AGENT_CAPABILITIES", "TZ",
+    };
+
+    // Environment variable names must be POSIX-safe identifiers; anything else (whitespace,
+    // '=', newlines, '.' …) could break out of a single .env entry and inject arbitrary lines
+    // into the compose environment.
+    private static readonly System.Text.RegularExpressions.Regex EnvNamePattern = new("^[A-Za-z_][A-Za-z0-9_]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string BuildEnvFile(AgentTemplate template, AgentConfig config, AgentTokenResult tokenResult, string apiEndpoint)
+    {
+        var sb = new StringBuilder();
+        sb.Append("NAS_TOKEN=").Append(tokenResult.Token).Append(Environment.NewLine);
+        sb.Append("NAS_API_ENDPOINT=").Append(apiEndpoint).Append(Environment.NewLine);
+        sb.Append("AGENT_CAPABILITIES=").Append(string.Join(',', tokenResult.Capabilities)).Append(Environment.NewLine);
+        sb.Append("TZ=").Append(Environment.GetEnvironmentVariable("TZ") ?? "UTC").Append(Environment.NewLine);
+
+        // Template parameter defaults (except reserved names) become .env entries so the
+        // rendered compose can reference them via ${NAME} — e.g. host ports, API keys.
+        foreach (var parameter in template.Parameters)
+        {
+            if (ReservedEnvNames.Contains(parameter.Name) || string.IsNullOrWhiteSpace(parameter.Default))
+            {
+                continue;
+            }
+
+            if (!EnvNamePattern.IsMatch(parameter.Name))
+            {
+                // Same exception type as the user-env validation below so both paths are
+                // mapped to 400 by FortOSExceptionFilter (InvalidDataException would 500).
+                throw new ArgumentException($"Template parameter '{parameter.Name}' is not a valid environment variable name.", nameof(template));
+            }
+
+            sb.Append(parameter.Name).Append('=').Append(SanitizeEnvValue(parameter.Default)).Append(Environment.NewLine);
+        }
+
+        // User-provided environment overrides win over template defaults.
+        foreach (var pair in config.Environment)
+        {
+            if (ReservedEnvNames.Contains(pair.Key) || !EnvNamePattern.IsMatch(pair.Key))
+            {
+                // Reject, rather than silently drop, malformed names: a name with a newline
+                // or '=' would otherwise inject arbitrary content into the generated .env.
+                throw new ArgumentException($"Invalid environment variable name '{pair.Key}'.", nameof(config));
+            }
+
+            sb.Append(pair.Key).Append('=').Append(SanitizeEnvValue(pair.Value)).Append(Environment.NewLine);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string SanitizeEnvValue(string value)
+        => value.ReplaceLineEndings(" ").Replace("\0", "");
 
     private static string FormatMemory(long bytes)
     {
@@ -257,5 +311,15 @@ public sealed class ComposeGenerator : IComposeGenerator
     }
 
     private static void SetFileMode(string path, UnixFileMode mode)
-        => File.SetUnixFileMode(path, mode);
+    {
+        // File.SetUnixFileMode is Linux-only; on Windows (local dev, CI) the compose file
+        // is still written successfully but the restrictive permission cannot be applied.
+        // Deployment targets are Linux, where this always runs.
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        File.SetUnixFileMode(path, mode);
+    }
 }

@@ -121,11 +121,20 @@ internal sealed class CommandExecutor
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
+            // Timeout (not caller cancellation): the linked token fired first. Kill the
+            // child so it does not outlive the request, then surface a typed exception.
             TryKill(process);
             var stdout = await SafeReadAsync(stdoutTask).ConfigureAwait(false);
             var stderr = await SafeReadAsync(stderrTask).ConfigureAwait(false);
             _logger.LogError(ex, "Command timed out: {FileName} {Arguments}", fileName, safeArguments);
             throw new CommandExecutionException($"Command execution timed out: {fileName}", -1, stdout, stderr, innerException: ex);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Caller cancelled: terminate the child process so it does not keep running
+            // (or leak pipe handles) after the caller has given up on it, then propagate.
+            TryKill(process);
+            throw;
         }
     }
 

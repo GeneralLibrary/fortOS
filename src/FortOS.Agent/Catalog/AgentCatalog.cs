@@ -18,10 +18,11 @@ public sealed partial class AgentCatalog : IAgentCatalog
         ["nginx-basic"] = """
 id: nginx-basic
 name: Nginx Basic
+logo: /logos/nginx.svg
 version: 1.0.0
 description: Minimal nginx static server template.
 capabilities_required:
-  - agent:deploy
+  - storage:share:media:read
 parameters:
   - name: image
     type: string
@@ -29,7 +30,7 @@ parameters:
     default: nginx:alpine
 compose:
   services:
-    {{.AgentId}}:
+    "{{.AgentId}}":
       image: "{{.ImageName}}"
       restart: unless-stopped
       tmpfs:
@@ -40,10 +41,11 @@ compose:
         ["alpine-worker"] = """
 id: alpine-worker
 name: Alpine Worker
+logo: /logos/alpine.svg
 version: 1.0.0
 description: Minimal long-running worker template.
 capabilities_required:
-  - agent:deploy
+  - storage:share:media:read
 parameters:
   - name: image
     type: string
@@ -51,12 +53,376 @@ parameters:
     default: alpine:3.20
 compose:
   services:
-    {{.AgentId}}:
+    "{{.AgentId}}":
       image: "{{.ImageName}}"
       command: ["/bin/sh", "-c", "while true; do sleep 3600; done"]
       restart: unless-stopped
       labels:
         fortos.template: alpine-worker
+""",
+        ["openclaw"] = """
+id: openclaw
+name: OpenClaw
+logo: /logos/openclaw.svg
+version: 1.0.0
+description: OpenClaw — 开源通用 AI Agent 平台,支持 Telegram / Discord / API / Web 聊天接入,可连接主流 LLM。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: ghcr.io/openclaw/openclaw:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /home/node/.openclaw
+  - name: data_uid
+    type: int
+    required: false
+    default: "1000"
+  - name: config_file
+    type: string
+    required: false
+    default: openclaw.json
+  - name: config_content
+    type: text
+    required: false
+    default: |
+      {
+        gateway: { mode: "local" },
+      }
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "18789"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "18789"
+  - name: OPENAI_API_KEY
+    type: string
+    required: false
+    default: ""
+  - name: ANTHROPIC_API_KEY
+    type: string
+    required: false
+    default: ""
+  - name: TELEGRAM_BOT_TOKEN
+    type: string
+    required: false
+    default: ""
+  - name: DISCORD_BOT_TOKEN
+    type: string
+    required: false
+    default: ""
+  - name: OPENCLAW_GATEWAY_TOKEN
+    type: string
+    required: false
+    default: fortos
+access:
+  - "Web/API 地址: http://<fortos-ip>:18789"
+  - "网关访问 Token: 默认 fortos(WebUI 登录用),可在部署表单中修改"
+  - "Telegram 接入: BotFather 创建 bot 后把 token 填入 TELEGRAM_BOT_TOKEN,编辑 /srv/nas/agents/<agent>/settings 重启生效"
+  - "Discord 接入: 创建应用后填入 DISCORD_BOT_TOKEN"
+  - "详细文档: https://openclaw.ai/docs"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        OPENAI_API_KEY: "${OPENAI_API_KEY}"
+        ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+        TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+        DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN}"
+        OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN}"
+""",
+        ["open-webui"] = """
+id: open-webui
+name: Open WebUI
+logo: /logos/open-webui.png
+version: 1.0.0
+description: Open WebUI — 自托管的 LLM 聊天界面(兼容 Ollama / OpenAI 兼容 API),支持多人、RAG、插件。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: ghcr.io/open-webui/open-webui:main
+  - name: data_dir
+    type: string
+    required: false
+    default: /app/backend/data
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "3000"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "8080"
+  - name: OPENAI_API_BASE_URL
+    type: string
+    required: false
+    default: ""
+  - name: OPENAI_API_KEY
+    type: string
+    required: false
+    default: ""
+  - name: WEBUI_SECRET_KEY
+    type: string
+    required: false
+    default: ""
+access:
+  - "Web 界面: http://<fortos-ip>:3000"
+  - "对接 Ollama: 部署 Ollama 后,在 WebUI 设置中填入 Ollama API 地址 http://<fortos-ip>:11434"
+  - "对接 OpenAI 兼容 API: 设置 OPENAI_API_BASE_URL 与 OPENAI_API_KEY 后重启"
+  - "文档: https://docs.openwebui.com"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        OPENAI_API_BASE_URL: "${OPENAI_API_BASE_URL}"
+        OPENAI_API_KEY: "${OPENAI_API_KEY}"
+        WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY}"
+""",
+        ["lobe-chat"] = """
+id: lobe-chat
+name: LobeChat
+logo: /logos/lobe-chat.ico
+version: 1.0.0
+description: LobeChat — 现代化 AI 聊天框架,多模型提供商(OpenAI / Anthropic / Google / Ollama),支持插件与知识库。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: docker.io/lobehub/lobe-chat:latest
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "3210"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "3210"
+  - name: OPENAI_API_KEY
+    type: string
+    required: false
+    default: ""
+  - name: ACCESS_CODE
+    type: string
+    required: false
+    default: ""
+access:
+  - "Web 界面: http://<fortos-ip>:3210"
+  - "访问口令: 设置 ACCESS_CODE 后需输入口令才能进入"
+  - "OpenAI 兼容 API: 在设置中填入 OPENAI_API_KEY,或配置 OPENAI_PROXY_URL 指向代理"
+  - "文档: https://lobehub.com/docs"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        OPENAI_API_KEY: "${OPENAI_API_KEY}"
+        ACCESS_CODE: "${ACCESS_CODE}"
+""",
+        ["n8n"] = """
+id: n8n
+name: n8n
+logo: /logos/n8n.ico
+version: 1.0.0
+description: n8n — 工作流自动化平台,支持 400+ 集成,可接入 Telegram / Slack / Webhook 构建聊天机器人。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: docker.n8n.io/n8nio/n8n:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /home/node/.n8n
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "5678"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "5678"
+  - name: GENERIC_TIMEZONE
+    type: string
+    required: false
+    default: Asia/Shanghai
+  - name: N8N_SECURE_COOKIE
+    type: string
+    required: false
+    default: "false"
+access:
+  - "Web 界面: http://<fortos-ip>:5678"
+  - "Telegram 接入: 在 n8n 中新建 Telegram Trigger 节点并粘贴 BotFather token"
+  - "Webhook 接入: 工作流添加 Webhook 节点,地址为 http://<fortos-ip>:5678/webhook/<path>"
+  - "文档: https://docs.n8n.io"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        GENERIC_TIMEZONE: "${GENERIC_TIMEZONE}"
+        N8N_SECURE_COOKIE: "${N8N_SECURE_COOKIE}"
+""",
+        ["anythingllm"] = """
+id: anythingllm
+name: AnythingLLM
+logo: /logos/anythingllm.svg
+version: 1.0.0
+description: AnythingLLM — 全栈 LLM 应用,内置知识库(RAG),可对接多种模型与工作区,适合团队知识问答。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: mintplexlabs/anythingllm:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /app/server/storage
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "3001"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "3001"
+  - name: STORAGE_DIR
+    type: string
+    required: false
+    default: /app/server/storage
+  - name: SERVER_PORT
+    type: int
+    required: false
+    default: "3001"
+access:
+  - "Web 界面: http://<fortos-ip>:3001"
+  - "首次访问创建管理员账号"
+  - "模型接入: 设置页选择 OpenAI / Ollama / 本地模型等并填入 API Key"
+  - "文档: https://docs.anythingllm.com"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        STORAGE_DIR: "${STORAGE_DIR}"
+        SERVER_PORT: "${SERVER_PORT}"
+""",
+        ["ollama"] = """
+id: ollama
+name: Ollama
+logo: /logos/ollama.png
+version: 1.0.0
+description: Ollama — 本地大模型运行时,一条命令运行 Llama / Qwen / DeepSeek 等开源模型,提供 OpenAI 兼容 API。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: ollama/ollama:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /root/.ollama
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "11434"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "11434"
+  - name: OLLAMA_HOST
+    type: string
+    required: false
+    default: 0.0.0.0
+  - name: OLLAMA_MODELS
+    type: string
+    required: false
+    default: /root/.ollama/models
+access:
+  - "API 地址: http://<fortos-ip>:11434 (OpenAI 兼容: /v1)"
+  - "拉取模型: ssh 到宿主执行 docker exec <agent> ollama pull qwen2.5:7b"
+  - "对接 Open WebUI / LobeChat: 填入 API 地址 http://<fortos-ip>:11434"
+  - "文档: https://ollama.com/library"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        OLLAMA_HOST: "${OLLAMA_HOST}"
+        OLLAMA_MODELS: "${OLLAMA_MODELS}"
+""",
+        ["langflow"] = """
+id: langflow
+name: Langflow
+logo: /logos/langflow.ico
+version: 1.0.0
+description: Langflow — 可视化 LLM 工作流搭建平台(拖拽式 Agent / RAG / 多模型编排),支持导出 API。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: langflowai/langflow:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /app/langflow
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "7860"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "7860"
+access:
+  - "Web 界面: http://<fortos-ip>:7860"
+  - "首次访问创建管理员账号"
+  - "API 接入: 在项目中开启 API,获得 /api/v1/run/<flow-id> 端点,可对接外部聊天工具"
+  - "文档: https://docs.langflow.org"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
 """,
     };
     private readonly HttpClient _httpClient;
@@ -139,13 +505,18 @@ compose:
         }
 
         var source = (await File.ReadAllTextAsync(sourcePath, ct).ConfigureAwait(false)).Trim();
-        var template = await InstallTemplateAsync(source, ct).ConfigureAwait(false);
+
+        // Validate the template (including identifier match) BEFORE writing anything:
+        // InstallTemplateAsync overwrites both the .template.yaml and .source files, so an
+        // id mismatch discovered afterwards would leave the catalog in a dirty state with no
+        // way to roll back.
+        var template = ParseAndValidate(source, sourcePath);
         if (!string.Equals(template.Id, templateId, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"Source template identifier {template.Id} does not match the requested identifier {templateId}.");
         }
 
-        return template;
+        return await InstallTemplateAsync(source, ct).ConfigureAwait(false);
     }
 
     private async Task<AgentTemplate> LoadTemplateAsync(string path, CancellationToken ct)
@@ -190,6 +561,7 @@ compose:
                 Name = dto.Name ?? string.Empty,
                 Version = dto.Version ?? string.Empty,
                 Description = dto.Description,
+                Logo = dto.Logo,
                 CapabilitiesRequired = dto.CapabilitiesRequired ?? [],
                 Parameters = dto.Parameters?.Select(static p => new AgentTemplateParameter
                 {
@@ -198,6 +570,7 @@ compose:
                     Required = p.Required,
                     Default = p.Default,
                 }).ToArray() ?? [],
+                AccessNotes = dto.Access ?? [],
                 ComposeTemplate = compose,
             };
 
@@ -260,11 +633,13 @@ compose:
             }
 
             Directory.CreateDirectory(AgentPaths.CatalogRoot);
-            if (!Directory.EnumerateFiles(AgentPaths.CatalogRoot, "*.template.yaml", SearchOption.TopDirectoryOnly).Any())
+            // Seed any missing built-in templates individually so new templates ship to
+            // existing installations without overwriting user-installed ones.
+            foreach (var pair in BuiltInTemplates)
             {
-                foreach (var pair in BuiltInTemplates)
+                var destination = Path.Combine(AgentPaths.CatalogRoot, pair.Key + ".template.yaml");
+                if (!File.Exists(destination))
                 {
-                    var destination = Path.Combine(AgentPaths.CatalogRoot, pair.Key + ".template.yaml");
                     await File.WriteAllTextAsync(destination, pair.Value, ct).ConfigureAwait(false);
                 }
             }
@@ -286,8 +661,10 @@ compose:
         public string? Name { get; set; }
         public string? Version { get; set; }
         public string? Description { get; set; }
+        public string? Logo { get; set; }
         public string[]? CapabilitiesRequired { get; set; }
         public ParameterDto[]? Parameters { get; set; }
+        public string[]? Access { get; set; }
         public object? Compose { get; set; }
     }
 

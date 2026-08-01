@@ -164,10 +164,18 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
         {
             EnsureDirectory();
             var oldKey = await GetMasterKeyCoreAsync(ct).ConfigureAwait(false);
-            var replacements = new List<(string Target, string Temporary)>();
+            var newKey = RandomNumberGenerator.GetBytes(32);
+            var masterPath = Path.Combine(_keyStoreDirectory, "master.key");
+            var masterBackup = masterPath + ".rotate-bak-" + Guid.CreateVersion7().ToString("N");
+            // (Target, Temporary, Plaintext) of every entry staged for the new key; the
+            // temporary path is needed to commit the swap and the plaintext to roll back.
+            var staged = new List<(string Target, string Temporary, byte[] Plaintext)>();
+            var stagedTemps = new List<string>();
+            var masterSwapped = false;
             try
             {
-                var newKey = RandomNumberGenerator.GetBytes(32);
+                // Phase 1 — stage: re-encrypt every entry under the new key into temp files,
+                // leaving all originals untouched so a failure here is trivially harmless.
                 foreach (var path in Directory.EnumerateFiles(_keyStoreDirectory, "*.key"))
                 {
                     if (string.Equals(Path.GetFileName(path), "master.key", StringComparison.OrdinalIgnoreCase)) continue;
@@ -175,20 +183,72 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
                     var temporary = path + ".rotate-" + Guid.CreateVersion7().ToString("N");
                     await File.WriteAllBytesAsync(temporary, EncryptWithMaster(newKey, plaintext), ct).ConfigureAwait(false);
                     SetFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                    replacements.Add((path, temporary));
+                    staged.Add((path, temporary, plaintext));
+                    stagedTemps.Add(temporary);
                 }
-                var masterPath = Path.Combine(_keyStoreDirectory, "master.key");
+
                 var masterTemporary = masterPath + ".rotate-" + Guid.CreateVersion7().ToString("N");
                 await File.WriteAllTextAsync(masterTemporary, Convert.ToBase64String(newKey), ct).ConfigureAwait(false);
                 SetFileMode(masterTemporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                foreach (var replacement in replacements) File.Move(replacement.Temporary, replacement.Target, overwrite: true);
+                stagedTemps.Add(masterTemporary);
+
+                // Phase 2 — commit window: keep a copy of the old master key so that a crash
+                // or exception between the entry swaps and the master swap is recoverable.
+                File.Copy(masterPath, masterBackup, overwrite: true);
+                foreach (var (target, temporary, _) in staged)
+                {
+                    File.Move(temporary, target, overwrite: true);
+                }
+
                 File.Move(masterTemporary, masterPath, overwrite: true);
+                // Update the in-memory cache BEFORE the (best-effort) backup cleanup: the
+                // on-disk state is now fully consistent under the new key, so the cache must
+                // match even if deleting the backup throws below.
                 _masterKey = newKey;
+                masterSwapped = true;
+                try
+                {
+                    // Backup cleanup is post-commit housekeeping; a failure here means the
+                    // rotation already succeeded, so it must not be reported as a failure.
+                    File.Delete(masterBackup);
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger?.LogWarning(cleanupEx, "Master key rotation committed but the old-key backup could not be removed: {Backup}", masterBackup);
+                }
             }
             catch
             {
-                foreach (var replacement in replacements)
-                    if (File.Exists(replacement.Temporary)) File.Delete(replacement.Temporary);
+                // Roll back to a consistent, decryptable state: if the new master key was
+                // never committed, re-encrypt the swapped entries under the OLD key so the
+                // store remains fully readable. If the master key was already swapped, the
+                // rotation actually succeeded and only cleanup is needed.
+                try
+                {
+                    if (!masterSwapped)
+                    {
+                        foreach (var (target, _, plaintext) in staged)
+                        {
+                            await File.WriteAllBytesAsync(target, EncryptWithMaster(oldKey, plaintext), CancellationToken.None).ConfigureAwait(false);
+                        }
+
+                        if (File.Exists(masterBackup)) File.Delete(masterBackup);
+                    }
+                    else if (File.Exists(masterBackup))
+                    {
+                        File.Delete(masterBackup);
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger?.LogError(cleanupEx, "Failed to fully roll back master key rotation; keystore may need manual recovery.");
+                }
+
+                foreach (var temporary in stagedTemps)
+                {
+                    try { if (File.Exists(temporary)) File.Delete(temporary); } catch { /* best effort */ }
+                }
+
                 throw;
             }
         }
@@ -349,8 +409,20 @@ public sealed class NasKeyStore : INasKeyStore, IMasterKeyRotationService
     }
 
     private static void SetDirectoryMode(string path, UnixFileMode mode)
-        => File.SetUnixFileMode(path, mode);
+    {
+        // Linux-only API; on Windows (local dev, CI) tests exercise the key store logic
+        // without POSIX permissions — the deploy target is always Linux.
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(path, mode);
+        }
+    }
 
     private static void SetFileMode(string path, UnixFileMode mode)
-        => File.SetUnixFileMode(path, mode);
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(path, mode);
+        }
+    }
 }

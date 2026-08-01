@@ -366,10 +366,14 @@ public record AgentTemplate
     public required string Version { get; init; }
     /// <summary>Template description.</summary>
     public string? Description { get; init; }
+    /// <summary>Template logo: emoji or image URL (http/https).</summary>
+    public string? Logo { get; init; }
     /// <summary>Required capabilities.</summary>
     public string[] CapabilitiesRequired { get; init; } = [];
     /// <summary>Template parameters.</summary>
     public AgentTemplateParameter[] Parameters { get; init; } = [];
+    /// <summary>External access / integration notes shown after deployment (web UI URL hints, chat channel setup, ...).</summary>
+    public string[] AccessNotes { get; init; } = [];
     /// <summary>Raw Compose template.</summary>
     public required string ComposeTemplate { get; init; }
 }
@@ -404,6 +408,8 @@ public record AgentConfig
     public PortMapping[] PortMapping { get; init; } = [];
     /// <summary>Resource quota.</summary>
     public ResourceQuota? ResourceQuota { get; init; }
+    /// <summary>Additional environment variables merged over template defaults (written to the agent .env file).</summary>
+    public Dictionary<string, string> Environment { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>Volume mapping.</summary>
@@ -427,6 +433,31 @@ public record PortMapping
     /// <summary>Protocol.</summary>
     public string Protocol { get; init; } = "tcp";
 }
+
+/// <summary>Deployed agent external-access manifest: ports, environment variable names, and access notes.</summary>
+public record AgentAccessInfo
+{
+    /// <summary>Agent ID.</summary>
+    public required string AgentId { get; init; }
+    /// <summary>Source template ID.</summary>
+    public required string TemplateId { get; init; }
+    /// <summary>Deployed image name.</summary>
+    public required string ImageName { get; init; }
+    /// <summary>Display name.</summary>
+    public required string DisplayName { get; init; }
+    /// <summary>Published ports.</summary>
+    public AgentPortInfo[] Ports { get; init; } = [];
+    /// <summary>Environment variable names available for external integration (values live in the agent .env file).</summary>
+    public AgentEnvInfo[] Env { get; init; } = [];
+    /// <summary>External access / integration notes from the template.</summary>
+    public string[] AccessNotes { get; init; } = [];
+}
+
+/// <summary>Published agent port.</summary>
+public record AgentPortInfo(int HostPort, int ContainerPort, string Protocol = "tcp");
+
+/// <summary>Agent environment variable entry (value is never exposed, only whether it is configured).</summary>
+public record AgentEnvInfo(string Name, bool Set);
 
 /// <summary>Agent token issuance result.</summary>
 public record AgentTokenResult

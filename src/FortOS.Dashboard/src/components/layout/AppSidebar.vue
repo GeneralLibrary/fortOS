@@ -62,7 +62,7 @@ function navigate(key: string) {
       </div>
     </div>
 
-    <!-- Menu items -->
+    <!-- Menu items fill the remaining sidebar height -->
     <div class="zs-sidebar-menu">
       <NTooltip
         v-for="item in menuItems"
@@ -91,9 +91,6 @@ function navigate(key: string) {
         {{ t(item.i18nKey) }}
       </NTooltip>
     </div>
-
-    <!-- Spacer -->
-    <div style="flex:1" />
   </nav>
 </template>
 
@@ -145,6 +142,7 @@ function navigate(key: string) {
   gap: 2px;
   padding: 8px 0;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   width: 100%;
@@ -154,9 +152,14 @@ function navigate(key: string) {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   width: 100%;
-  padding: 8px 4px 5px;
+  /* Stretch nav items to fill the full sidebar height; they share the
+     available space evenly and shrink when the window gets shorter. */
+  flex: 1 1 0;
+  min-height: 52px;
+  padding: 6px 4px 4px;
   border: none;
   background: none;
   cursor: pointer;

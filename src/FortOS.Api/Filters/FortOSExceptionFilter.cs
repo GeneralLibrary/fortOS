@@ -1,4 +1,5 @@
 using FortOS.Core;
+using FortOS.Modules.Share.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using FortOS.Api.Middleware;
@@ -38,6 +39,11 @@ public sealed class FortOSExceptionFilter : IExceptionFilter
         PermissionDeniedException ex => (StatusCodes.Status403Forbidden, ex.ErrorCode, ex.Message),
         TokenValidationException ex => (StatusCodes.Status401Unauthorized, ex.ErrorCode, ex.Message),
         ConfigurationException ex => (StatusCodes.Status400BadRequest, ex.ErrorCode, ex.Message),
+        // Upload resume conflicts are client-correctable, so they must be 4xx (409),
+        // not the generic 500 an unhandled IOException would produce. The controller
+        // additionally sets the Upload-Offset header before rethrowing.
+        UploadOffsetConflictException ex => (StatusCodes.Status409Conflict, "UPLOAD_OFFSET_CONFLICT", ex.Message),
+        UploadVersionConflictException ex => (StatusCodes.Status412PreconditionFailed, "UPLOAD_VERSION_CONFLICT", ex.Message),
         ArgumentException ex => (StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message),
         FortOSException ex => (StatusCodes.Status500InternalServerError, ex.ErrorCode, ex.Message),
         _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "Internal server error."),

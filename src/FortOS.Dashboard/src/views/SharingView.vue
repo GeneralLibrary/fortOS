@@ -10,10 +10,13 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { ShareDefinition } from '@/types'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
-import { useMessage, NTag, NButton } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton } from 'naive-ui'
 
 const store = useSharesStore()
 const message = useMessage()
+// useDialog must be resolved inside setup (it injects the provider); calling it lazily
+// inside an event handler throws 'No outer <n-dialog-provider /> founded.'.
+const dialog = useDialog()
 const { t } = useI18n()
 
 const showCreate = ref(false)
@@ -69,8 +72,7 @@ async function handleCreate() {
 }
 
 function confirmDelete(share: ShareDefinition) {
-  const d = useDialog()
-  d.warning({
+  dialog.warning({
     title: t('common.confirm'),
     content: t('sharing.deleteConfirm', { name: share.name }),
     positiveText: t('common.delete'),
@@ -85,7 +87,6 @@ function confirmDelete(share: ShareDefinition) {
     },
   })
 }
-
 onMounted(() => store.fetchShares())
 
 const columns: DataTableColumns<ShareDefinition> = [
@@ -157,10 +158,6 @@ const columns: DataTableColumns<ShareDefinition> = [
     </NModal>
   </div>
 </template>
-
-<script lang="ts">
-import { useDialog } from 'naive-ui'
-</script>
 
 <style scoped>
 .sharing-page {
