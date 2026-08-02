@@ -80,7 +80,8 @@
 
 ### 3.1 UI 框架:Avalonia
 
-- .NET 原生跨平台 UI,.NET 10 支持良好,技术栈与全项目统一(C#);
+- .NET 原生跨平台 UI,技术栈与全项目统一(C#);**.NET 10 + Avalonia 12 + Semi.Avalonia + Ursa.Avalonia**;
+- **主题**:Semi.Avalonia 12(Semi Design 风格)+ Ursa.Avalonia 2.2(Ursa.Themes.Semi),全部在 `App.axaml` 的 `Application.Styles` 中以 `SemiTheme` / `UrsaSemiTheme` 引入(两库 12.x 均无 AppBuilder 扩展,纯 XAML 即官方用法);
 - Linux 下提供 X11 / Wayland 后端,支持无边框全屏 kiosk;
 - `Avalonia.Headless` 支持 ViewModel 层无头测试;
 - 对照:TUI(Spectre.Console)可作为失败回退,但不作为主 UI;GTK/Qt 与 .NET 绑定维护成本高。

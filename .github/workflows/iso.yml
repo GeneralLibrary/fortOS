@@ -7,6 +7,10 @@ on:
         description: Version embedded in the ISO filename
         required: true
         default: dev
+      size_baseline:
+        description: Baseline ISO size in bytes for the ≤300 MiB graphics-stack delta check (optional; empty records this build as reference)
+        required: false
+        default: ""
   release:
     types: [published]
 
@@ -25,7 +29,8 @@ jobs:
       - name: Validate ISO configuration
         run: |
           bash -n eng/iso/build.sh eng/iso/build-in-container.sh eng/iso/verify-config.sh \
-            eng/iso/test-image.sh eng/iso/test-boot.sh eng/iso/test-install.sh
+            eng/iso/test-image.sh eng/iso/test-boot.sh eng/iso/test-install.sh \
+            eng/iso/verify-size.sh eng/iso/tests/installer-e2e.sh
           bash eng/iso/verify-config.sh
 
       - name: Build Debian 12 installation image
@@ -41,6 +46,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+      - name: Enforce ISO size budget
+        # 体积护栏(设计稿 §8.5):首次构建记录基线,后续传 baseline-bytes 断言
+        # 图形栈增量 ≤ 300 MiB。GitHub Actions 无跨运行状态,基线可取自
+        # 上一次 release 的 ISO 大小(workflow 输入或手动传递)。
+        shell: bash
+        run: |
+          iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "${iso}"
+          bash eng/iso/verify-size.sh "${iso}" "${{ inputs.size_baseline }}"
 
       - name: Check GitHub release asset size
         if: github.event_name == 'release'

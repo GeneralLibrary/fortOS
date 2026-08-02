@@ -142,14 +142,30 @@ fortos-debian12-1.0.0-amd64.iso
 fortos-debian12-1.0.0-amd64.iso.sha256
 ```
 
-Write to USB, boot, and follow the Debian installer:
+Write to USB and boot — the ISO boots straight into the **FortOS graphical
+installer wizard** (Avalonia kiosk on Xorg + Openbox):
 
 ```bash
 sha256sum --check fortos-debian12-1.0.0-amd64.iso.sha256
 sudo dd if=fortos-debian12-1.0.0-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-FortOS starts automatically via `fortos.service` after installation, listening on `http://0.0.0.0:5000`.
+The wizard covers language → disk layout (system disk + optional data disk) →
+network → admin account → review → install, then hands over to the installed
+system. Data-disk layouts include single disk (ext4/xfs/btrfs), mdadm
+RAID1/5/10, and LUKS2 encryption, or you can defer the data disk to
+post-install. The classic **Debian Installer** entry (and its preseed/automated
+path) remains available as a secondary boot menu option, so unattended
+deployments keep working:
+
+```bash
+# Headless installation on the live boot entry (install.yaml supports the
+# same layouts, including raid/luks data disks):
+fortos-installer --config install.yaml --yes
+```
+
+FortOS starts automatically via `fortos.service` after installation, listening
+on `http://0.0.0.0:5000`.
 
 > Pre-built ISOs are also available from the [FortOS Debian ISO](https://github.com/GeneralLibrary/fortos/actions/workflows/iso.yml) GitHub Actions workflow.
 
