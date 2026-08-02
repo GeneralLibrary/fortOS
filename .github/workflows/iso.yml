@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version embedded in the ISO filename
+        description: Version embedded in the ISO filename; 以 v 开头(如 v1.2.3)时,手动构建也会自动创建 tag + release 并发布 ISO
         required: true
         default: dev
       size_baseline:
@@ -61,7 +61,7 @@ jobs:
           bash eng/iso/verify-size.sh "${iso}" "${{ inputs.size_baseline }}"
 
       - name: Check GitHub release asset size
-        if: github.event_name == 'release' || github.event_name == 'push'
+        if: github.event_name == 'release' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && startsWith(inputs.version, 'v'))
         shell: bash
         run: |
           iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
@@ -73,13 +73,15 @@ jobs:
           fi
 
       - name: Publish image to GitHub release
-        # release published:release 已存在,仅上传;v* tag push:release 不存在则创建并上传。
-        if: github.event_name == 'release' || github.event_name == 'push'
+        # 三条发布路径:① release published → 上传到已存在 release;
+        # ② push v* tag → 创建/更新 release;③ 手动触发且 version 以 v 开头
+        # → 按 version 创建 tag + release 并上传(dev 等非 v 开头只出 artifacts)。
+        if: github.event_name == 'release' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && startsWith(inputs.version, 'v'))
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          tag="${{ github.event.release.tag_name || github.ref_name }}"
+          tag="${{ github.event.release.tag_name || github.ref_name || inputs.version }}"
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" artifacts/iso/* --clobber
           else
