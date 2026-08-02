@@ -81,7 +81,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          tag="${{ github.event.release.tag_name || github.ref_name || inputs.version }}"
+          tag="${{ inputs.version || github.event.release.tag_name || github.ref_name }}"
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" artifacts/iso/* --clobber
           else
