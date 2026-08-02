@@ -1,6 +1,12 @@
 <!--
-  FortOS Dashboard — 极空间-style System Overview
-  Circular gauge rings for CPU/Memory/Storage, stat cards, and detail tables.
+  FortOS Dashboard — System Overview (redesigned)
+
+  设计原则:
+  - 信息有效:只用后端真实有值的字段;SMART/温度等缺失时显示 "—" 或隐藏,不伪造 0 值。
+  - 无冗余:核心指标(CPU/内存/存储)只在顶部 gauge 行出现一次;KPI 行只放
+    运行时间/网络/告警/服务,不与 gauge 重复。
+  - 有意义:负载带核心数上下文;告警无则显示"正常";网络速率取 up 接口合计。
+  - 可读性:数字格式统一,标签清晰,i18n key 全部补齐。
 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, h } from 'vue'
@@ -8,8 +14,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
-  ServerOutline, PulseOutline, SaveOutline,
-  WifiOutline, AlertCircleOutline, ThermometerOutline,
+  ServerOutline, WifiOutline, AlertCircleOutline, PulseOutline,
 } from '@vicons/ionicons5'
 import StatCard from '@/components/common/StatCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -20,7 +25,7 @@ import {
 import type { DataTableColumns } from 'naive-ui'
 import type {
   DiskInfo, ServiceStatusInfo, ServiceDefinition,
-  ActiveAlert, FileSystemCapacityMetrics,
+  ActiveAlert, FileSystemCapacityMetrics, NetworkTrafficMetrics,
 } from '@/types'
 
 const dashboard = useDashboardStore()
@@ -30,54 +35,89 @@ const { t } = useI18n()
 onMounted(() => dashboard.startPolling())
 onUnmounted(() => dashboard.stopPolling())
 
-// ---- Computed metrics ----
+// ---- Gauge metrics (CPU / Memory / Storage) ----
 
 const metrics = computed(() => dashboard.systemMetrics)
 
 const cpuPct = computed(() => metrics.value ? Math.round(metrics.value.cpu.usagePercent) : 0)
-/** CPU gauge caption: logical cores · usage. Temperature shows separately as a badge. */
+/** CPU gauge caption: load · logical cores (load without core count is meaningless). */
 const cpuDetail = computed(() => {
   if (!metrics.value) return '—'
-  return `${metrics.value.cpu.logicalProcessorCount} ${t('dashboard.logicalCores')} · ${cpuPct.value}%`
+  return `${t('dashboard.loadAverage')} ${metrics.value.host.loadAverage1.toFixed(2)} · ${metrics.value.cpu.logicalProcessorCount} ${t('dashboard.logicalCores')}`
 })
 
-/** CPU temperature, rendered independently from the gauge caption (0 when no sensor). */
-const cpuTempText = computed(() =>
-  metrics.value ? formatTemperature(metrics.value.cpu.temperatureCelsius) : '—',
-)
 const memUsed = computed(() => metrics.value ? metrics.value.memory.usedBytes : 0)
 const memTotal = computed(() => metrics.value ? metrics.value.memory.totalBytes : 1)
 const memPct = computed(() => Math.round(memUsed.value / memTotal.value * 100))
+const memDetail = computed(() => `${formatBytes(memUsed.value)} / ${formatBytes(memTotal.value)}`)
 
 /** Aggregate storage across all filesystems. */
-const storageTotal = computed(() => {
-  if (!metrics.value?.fileSystems?.length) return 0
-  return metrics.value.fileSystems.reduce((s, fs) => s + (fs.totalBytes ?? 0), 0)
-})
-const storageUsed = computed(() => {
-  if (!metrics.value?.fileSystems?.length) return 0
-  return metrics.value.fileSystems.reduce((s, fs) => s + (fs.usedBytes ?? 0), 0)
-})
+const storageTotal = computed(() => metrics.value?.fileSystems?.length
+  ? metrics.value.fileSystems.reduce((s, fs) => s + (fs.totalBytes ?? 0), 0)
+  : 0)
+const storageUsed = computed(() => metrics.value?.fileSystems?.length
+  ? metrics.value.fileSystems.reduce((s, fs) => s + (fs.usedBytes ?? 0), 0)
+  : 0)
 const storagePct = computed(() => storageTotal.value ? Math.round(storageUsed.value / storageTotal.value * 100) : 0)
+const storageDetail = computed(() => `${formatBytes(storageUsed.value)} / ${formatBytes(storageTotal.value)}`)
+
+/** CPU temperature — only meaningful when a sensor is present. */
+const hasCpuTemp = computed(() => metrics.value?.cpu.temperatureCelsius != null)
+const cpuTempText = computed(() =>
+  metrics.value?.cpu.temperatureCelsius != null
+    ? formatTemperature(metrics.value.cpu.temperatureCelsius)
+    : '—',
+)
+
+// ---- KPI row (uptime / network / alerts / services) ----
+
+const uptimeText = computed(() => metrics.value ? formatUptime(metrics.value.host.uptime) : '—')
+const bootedAtText = computed(() =>
+  metrics.value ? `${t('dashboard.bootedAt')} ${formatDateTime(metrics.value.host.bootedAt, 'short')}` : '',
+)
+
+/** Aggregate rx/tx across up interfaces. */
+const netRx = computed(() => metrics.value?.networks
+  ?.filter(n => n.isUp)
+  .reduce((s, n) => s + (n.receiveBytesPerSecond ?? 0), 0) ?? 0)
+const netTx = computed(() => metrics.value?.networks
+  ?.filter(n => n.isUp)
+  .reduce((s, n) => s + (n.transmitBytesPerSecond ?? 0), 0) ?? 0)
+const netText = computed(() =>
+  metrics.value?.networks?.length
+    ? `↓ ${formatBytesPerSecond(netRx.value)}  ↑ ${formatBytesPerSecond(netTx.value)}`
+    : '—',
+)
+const connectionsText = computed(() =>
+  metrics.value ? `${metrics.value.networkStack.establishedConnections} ${t('dashboard.connections')}` : '',
+)
 
 const criticalAlerts = computed(() =>
   dashboard.activeAlerts.filter(a =>
     a.severity.toLowerCase() === 'critical' || a.severity.toLowerCase() === 'error',
   ).length,
 )
-
-const healthyDiskPercent = computed(() => {
-  const disks = dashboard.disks
-  if (!disks.length) return 100
-  const healthy = disks.filter(d => d.smartStatus?.toLowerCase() === 'ok' || d.smartStatus?.toLowerCase() === 'passed').length
-  return Math.round((healthy / disks.length) * 100)
-})
+const alertText = computed(() =>
+  dashboard.activeAlerts.length > 0 ? String(dashboard.activeAlerts.length) : t('dashboard.normal'),
+)
+const alertColor = computed(() =>
+  criticalAlerts.value > 0 ? '#ef4444'
+    : dashboard.activeAlerts.length > 0 ? '#f59e0b'
+      : '#34c759',
+)
+const alertSubtitle = computed(() =>
+  dashboard.activeAlerts.length > 0 ? `${criticalAlerts.value} ${t('dashboard.criticalAlerts')}` : '',
+)
 
 const runningServiceCount = computed(() =>
   dashboard.services.filter(s => s.status === 'Running').length,
 )
+const serviceText = computed(() =>
+  dashboard.services.length ? `${runningServiceCount.value}/${dashboard.services.length}` : '—',
+)
 
-/** Gauge track color based on percentage. */
+// ---- Gauge rendering ----
+
 function gaugeColor(pct: number): string {
   if (pct >= 90) return '#ef4444'
   if (pct >= 70) return '#f59e0b'
@@ -85,19 +125,10 @@ function gaugeColor(pct: number): string {
   return '#34c759'
 }
 
-/** SVG circular gauge props. */
-interface GaugeArc {
-  cx: number; cy: number; r: number
-  stroke: string; pct: number
-}
-function gaugePath({ cx, cy, r, stroke, pct }: GaugeArc): { d: string; color: string } {
+interface GaugeArc { cx: number; cy: number; r: number; pct: number }
+function gaugePath({ cx, cy, r, pct }: GaugeArc): { d: string; color: string } {
   const color = gaugeColor(pct)
-  if (pct <= 0) {
-    return { d: '', color }
-  }
-  const circumference = 2 * Math.PI * r
-  const length = (pct / 100) * circumference
-  // Arc starts at 12 o'clock (-90deg), draws clockwise
+  if (pct <= 0) return { d: '', color }
   const startAngle = -Math.PI / 2
   const endAngle = startAngle + (pct / 100) * 2 * Math.PI
   const x1 = cx + r * Math.cos(startAngle)
@@ -111,15 +142,12 @@ function gaugePath({ cx, cy, r, stroke, pct }: GaugeArc): { d: string; color: st
   }
 }
 
-/** Render the SVG gauge inline (so it works in scoped styles without h()). */
 function renderGauge(pct: number, label: string, detail: string) {
-  const arc = gaugePath({ cx: 44, cy: 44, r: 34, stroke: '', pct })
-  return h('div', { class: 'zs-gauge-item', onClick: label === 'CPU' ? () => router.push({ name: 'Services' }) : label === 'RAM' ? () => router.push({ name: 'Services' }) : () => router.push({ name: 'Storage' }) }, [
+  const arc = gaugePath({ cx: 44, cy: 44, r: 34, pct })
+  return h('div', { class: 'zs-gauge-item' }, [
     h('div', { class: 'zs-gauge' }, [
       h('svg', { width: 88, height: 88, viewBox: '0 0 88 88' }, [
-        // Background track
         h('circle', { cx: 44, cy: 44, r: 34, fill: 'none', stroke: 'var(--zs-border)', 'stroke-width': 8 }),
-        // Colored arc
         arc.d ? h('path', { d: arc.d, fill: 'none', stroke: arc.color, 'stroke-width': 8, 'stroke-linecap': 'round' }) : null,
       ]),
       h('div', { class: 'zs-gauge-center' }, [
@@ -133,18 +161,46 @@ function renderGauge(pct: number, label: string, detail: string) {
 
 // ---- Table column definitions ----
 
-const diskColumns: DataTableColumns<DiskInfo> = [
-  { title: () => t('dashboard.devicePath'), key: 'path', ellipsis: { tooltip: true }, width: 160 },
-  { title: () => t('dashboard.model'), key: 'model', ellipsis: { tooltip: true } },
-  { title: () => t('dashboard.capacity'), key: 'sizeBytes', render: (r) => formatBytes(r.sizeBytes) },
-  { title: () => t('dashboard.smartStatus') ?? 'SMART', key: 'smartStatus', width: 90,
-    render: (r) => h(NTag, {
-      type: r.smartStatus?.toLowerCase() === 'ok' || r.smartStatus?.toLowerCase() === 'passed' ? 'success' : 'warning',
-      size: 'small',
-    }, { default: () => r.smartStatus ?? t('common.unknown') }),
+const filesystemColumns: DataTableColumns<FileSystemCapacityMetrics> = [
+  { title: () => t('dashboard.mountPoint'), key: 'mountPoint', ellipsis: { tooltip: true }, width: 130 },
+  { title: () => t('dashboard.filesystemType'), key: 'fileSystemType', width: 80, render: (r) => r.fileSystemType ?? '—' },
+  { title: () => t('dashboard.capacity'), key: 'totalBytes', width: 100, render: (r) => formatBytes(r.totalBytes) },
+  { title: () => t('dashboard.used'), key: 'usedBytes', width: 100, render: (r) => formatBytes(r.usedBytes) },
+  { title: () => t('dashboard.usage'), key: 'usedPercent', width: 130,
+    render: (r) => h(NProgress, {
+      type: 'line',
+      color: r.usedPercent > 90 ? '#d03050' : r.usedPercent > 75 ? '#f0a020' : '#18a058',
+      percentage: Math.round(r.usedPercent),
+      showIndicator: false,
+      height: 16,
+      borderRadius: '4px',
+    }),
   },
-  { title: () => t('dashboard.temperature'), key: 'temperatureCelsius', width: 70, render: (r) => formatTemperature(r.temperatureCelsius) },
+]
+
+const diskColumns: DataTableColumns<DiskInfo> = [
+  { title: () => t('dashboard.devicePath'), key: 'path', ellipsis: { tooltip: true }, width: 130 },
+  { title: () => t('dashboard.model'), key: 'model', ellipsis: { tooltip: true } },
+  { title: () => t('dashboard.capacity'), key: 'sizeBytes', width: 100, render: (r) => formatBytes(r.sizeBytes) },
+  { title: () => t('dashboard.smartStatus'), key: 'smartStatus', width: 100,
+    render: (r) => r.smartStatus
+      ? h(NTag, {
+          type: r.smartStatus.toLowerCase() === 'ok' || r.smartStatus.toLowerCase() === 'passed' ? 'success' : 'warning',
+          size: 'small',
+        }, { default: () => r.smartStatus })
+      : '—',
+  },
+  { title: () => t('dashboard.temperature'), key: 'temperatureCelsius', width: 80, render: (r) => formatTemperature(r.temperatureCelsius) },
   { title: () => t('dashboard.usage'), key: 'usedPercent', width: 80, render: (r) => formatPercent(r.usedPercent) },
+]
+
+const networkColumns: DataTableColumns<NetworkTrafficMetrics> = [
+  { title: () => t('dashboard.interface'), key: 'interface', width: 120 },
+  { title: () => t('common.status'), key: 'isUp', width: 90,
+    render: (r) => h(NTag, { type: r.isUp ? 'success' : 'default', size: 'small' }, { default: () => r.isUp ? t('common.up') : t('common.down') }),
+  },
+  { title: () => `${t('dashboard.rxRate')} ↓`, key: 'receiveBytesPerSecond', width: 110, render: (r) => formatBytesPerSecond(r.receiveBytesPerSecond) },
+  { title: () => `${t('dashboard.txRate')} ↑`, key: 'transmitBytesPerSecond', width: 110, render: (r) => formatBytesPerSecond(r.transmitBytesPerSecond) },
 ]
 
 const serviceColumns: DataTableColumns<ServiceStatusInfo> = [
@@ -152,7 +208,6 @@ const serviceColumns: DataTableColumns<ServiceStatusInfo> = [
   { title: () => t('common.status'), key: 'status', width: 90,
     render: (r) => h(NTag, { type: serviceStatusType(r.status), size: 'small' }, { default: () => r.status }),
   },
-  { title: () => t('common.type'), key: 'type', width: 90 },
   { title: () => t('services.cpu'), key: 'cpuPercent', width: 70, render: (r) => `${r.cpuPercent.toFixed(1)}%` },
   { title: () => t('services.memory'), key: 'memoryBytes', width: 90, render: (r) => formatBytes(r.memoryBytes) },
   { title: () => t('services.uptime'), key: 'uptime', width: 100, render: (r) => formatUptime(r.uptime) },
@@ -162,17 +217,6 @@ const agentColumns: DataTableColumns<ServiceDefinition> = [
   { title: 'ID', key: 'serviceId', ellipsis: { tooltip: true }, width: 140 },
   { title: () => t('common.name'), key: 'displayName', ellipsis: { tooltip: true } },
   { title: () => t('common.type'), key: 'type', width: 80 },
-]
-
-const filesystemColumns: DataTableColumns<FileSystemCapacityMetrics> = [
-  { title: () => t('dashboard.mountPoint'), key: 'mountPoint', ellipsis: { tooltip: true } },
-  { title: () => t('dashboard.device'), key: 'device', ellipsis: { tooltip: true }, width: 140 },
-  { title: () => t('dashboard.filesystemType'), key: 'fileSystemType', width: 80 },
-  { title: () => t('dashboard.capacity'), key: 'totalBytes', width: 100, render: (r) => formatBytes(r.totalBytes) },
-  { title: () => t('dashboard.used'), key: 'usedBytes', width: 100, render: (r) => formatBytes(r.usedBytes) },
-  { title: () => t('dashboard.usage'), key: 'usedPercent', width: 80,
-    render: (r) => h(NProgress, { type: 'line', color: r.usedPercent > 90 ? '#d03050' : r.usedPercent > 75 ? '#f0a020' : '#18a058', percentage: Math.round(r.usedPercent), showIndicator: false, height: 18, borderRadius: '4px' }),
-  },
 ]
 
 const alertColumns: DataTableColumns<ActiveAlert> = [
@@ -186,69 +230,57 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
 
 <template>
   <div class="zs-dashboard">
-    <!-- Gauges row: CPU / Memory / Storage -->
+    <!-- 核心指标环:CPU / 内存 / 存储(每个指标只出现一次) -->
     <div class="zs-gauges-row">
       <component :is="renderGauge(cpuPct, 'CPU', cpuDetail)" />
-      <component :is="renderGauge(memPct, 'RAM', `${formatBytes(memUsed)} / ${formatBytes(memTotal)}`)" />
-      <component :is="renderGauge(storagePct, t('nav.storage'), `${formatBytes(storageUsed)} / ${formatBytes(storageTotal)}`)" />
+      <component :is="renderGauge(memPct, 'RAM', memDetail)" />
+      <component :is="renderGauge(storagePct, t('nav.storage'), storageDetail)" />
     </div>
 
-    <!-- Stat pills row -->
+    <!-- KPI 行:运行时间 / 网络 / 告警 / 服务(不与 gauge 重复) -->
     <div class="zs-stats-row">
       <StatCard
+        :label="t('dashboard.hostUptime')"
+        :value="uptimeText"
+        :icon="ServerOutline"
+        color="#4a90d9"
+        :subtitle="bootedAtText || undefined"
+      />
+      <StatCard
+        :label="t('dashboard.networkTraffic')"
+        :value="netText"
+        :icon="WifiOutline"
+        color="#0ea5e9"
+        :subtitle="connectionsText || undefined"
+      />
+      <StatCard
+        :label="t('dashboard.activeAlerts')"
+        :value="alertText"
+        :icon="AlertCircleOutline"
+        :color="alertColor"
+        :subtitle="alertSubtitle || undefined"
+      />
+      <StatCard
+        :label="t('dashboard.servicesStatus')"
+        :value="serviceText"
+        :icon="PulseOutline"
+        color="#34c759"
+        :subtitle="dashboard.services.length ? t('dashboard.servicesRunningOf') : undefined"
+      />
+      <!-- CPU 温度:仅在有传感器时展示(缺失显示 0°C 无意义) -->
+      <StatCard
+        v-if="hasCpuTemp"
         :label="t('dashboard.cpuTemperature')"
         :value="cpuTempText"
         :icon="ThermometerOutline"
         color="#f59e0b"
-        :subtitle="`${t('dashboard.cpuUsage')} ${cpuPct}%`"
-      />
-      <StatCard
-        :label="t('dashboard.hostUptime')"
-        :value="metrics ? formatUptime(metrics.host.uptime) : '—'"
-        :icon="ServerOutline"
-        :subtitle="metrics ? `Load ${metrics.host.loadAverage1.toFixed(1)} / ${metrics.host.loadAverage5.toFixed(1)} / ${metrics.host.loadAverage15.toFixed(1)}` : undefined"
-        color="#4a90d9"
-      />
-      <StatCard
-        :label="t('dashboard.diskHealth')"
-        :value="`${healthyDiskPercent}%`"
-        :icon="SaveOutline"
-        :color="healthyDiskPercent === 100 ? '#34c759' : healthyDiskPercent >= 80 ? '#f59e0b' : '#ef4444'"
-        :subtitle="`${t('dashboard.disksCount', { count: dashboard.disks.length })} · ${t('dashboard.servicesRunning', { count: runningServiceCount })}`"
-      />
-      <StatCard
-        :label="t('dashboard.activeAlerts')"
-        :value="dashboard.activeAlerts.length"
-        :icon="AlertCircleOutline"
-        :color="criticalAlerts > 0 ? '#ef4444' : dashboard.activeAlerts.length > 0 ? '#f59e0b' : '#34c759'"
-        :subtitle="`${criticalAlerts} ${t('dashboard.criticalAlerts')}`"
-      />
-      <StatCard
-        :label="t('dashboard.networkTraffic')"
-        :value="metrics?.networks?.length ? `${metrics.networks.filter(n => n.isUp).length}/${metrics.networks.length}` : '—'"
-        :icon="WifiOutline"
-        color="#0ea5e9"
-        :subtitle="t('dashboard.networkInterfaces')"
       />
     </div>
 
-    <!-- Content grid: two columns -->
+    <!-- 详情区:左(存储相关)/ 右(运行相关) -->
     <div class="zs-dashboard-grid">
-      <!-- Left column -->
       <div class="zs-dashboard-col">
-        <NCard :title="t('dashboard.disks')" size="small" :bordered="true" class="zs-dashboard-card">
-          <template #header-extra>
-            <NButton text size="small" @click="router.push({ name: 'Storage' })">{{ t('dashboard.viewDetails') }}</NButton>
-          </template>
-          <NDataTable
-            v-if="dashboard.disks.length"
-            :columns="diskColumns" :data="dashboard.disks"
-            :bordered="false" size="small" :max-height="280" striped
-          />
-          <EmptyState v-else :message="t('dashboard.noDisks')" />
-        </NCard>
-
-        <NCard :title="t('dashboard.filesystems')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
+        <NCard :title="t('dashboard.filesystems')" size="small" :bordered="true" class="zs-dashboard-card">
           <NDataTable
             v-if="metrics?.fileSystems?.length"
             :columns="filesystemColumns" :data="metrics.fileSystems"
@@ -257,30 +289,31 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
           <EmptyState v-else :message="t('dashboard.noFilesystems')" />
         </NCard>
 
-        <!-- Network -->
-        <NCard :title="t('dashboard.networkTraffic')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
+        <NCard :title="t('dashboard.disks')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
+          <template #header-extra>
+            <NButton text size="small" @click="router.push({ name: 'Storage' })">{{ t('dashboard.viewDetails') }}</NButton>
+          </template>
+          <NDataTable
+            v-if="dashboard.disks.length"
+            :columns="diskColumns" :data="dashboard.disks"
+            :bordered="false" size="small" :max-height="260" striped
+          />
+          <EmptyState v-else :message="t('dashboard.noDisks')" />
+        </NCard>
+
+        <NCard :title="t('dashboard.networkInterfaces')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
           <template #header-extra>
             <NButton text size="small" @click="router.push({ name: 'Network' })">{{ t('dashboard.viewDetails') }}</NButton>
           </template>
-          <div v-if="metrics?.networks?.length" class="network-list">
-            <div v-for="net in metrics.networks.slice(0, 4)" :key="net.interface" class="network-row">
-              <div class="network-iface">
-                <NTag :type="net.isUp ? 'success' : 'default'" size="small" round>
-                  {{ net.interface }}
-                </NTag>
-                <span class="network-speed" v-if="net.linkSpeedMbps">{{ net.linkSpeedMbps }} Mbps</span>
-              </div>
-              <div class="network-rates">
-                <span class="rate-down">↓ {{ formatBytesPerSecond(net.receiveBytesPerSecond) }}</span>
-                <span class="rate-up">↑ {{ formatBytesPerSecond(net.transmitBytesPerSecond) }}</span>
-              </div>
-            </div>
-          </div>
+          <NDataTable
+            v-if="metrics?.networks?.length"
+            :columns="networkColumns" :data="metrics.networks"
+            :bordered="false" size="small" :max-height="180" striped
+          />
           <EmptyState v-else :message="t('dashboard.noNetwork')" />
         </NCard>
       </div>
 
-      <!-- Right column -->
       <div class="zs-dashboard-col">
         <NCard :title="t('dashboard.servicesStatus')" size="small" :bordered="true" class="zs-dashboard-card">
           <template #header-extra>
@@ -289,10 +322,22 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
           <NDataTable
             v-if="dashboard.services.length"
             :columns="serviceColumns" :data="dashboard.services"
-            :bordered="false" size="small" :max-height="280" striped
+            :bordered="false" size="small" :max-height="260" striped
           />
           <EmptyState v-else-if="dashboard.failedEndpoints.has('services')" :message="t('dashboard.loadFailed')" :description="t('dashboard.loadFailedHint')" />
           <EmptyState v-else :message="t('dashboard.noServices')" />
+        </NCard>
+
+        <NCard :title="t('dashboard.activeAlerts')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
+          <template #header-extra>
+            <NButton text size="small" @click="router.push({ name: 'Alerts' })">{{ t('dashboard.viewDetails') }}</NButton>
+          </template>
+          <NDataTable
+            v-if="dashboard.activeAlerts.length"
+            :columns="alertColumns" :data="dashboard.activeAlerts"
+            :bordered="false" size="small" :max-height="220" striped
+          />
+          <EmptyState v-else :message="t('dashboard.noAlerts')" :description="t('dashboard.allNormal')" />
         </NCard>
 
         <NCard :title="t('dashboard.agentContainers')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
@@ -307,18 +352,6 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
           <EmptyState v-else-if="dashboard.failedEndpoints.has('agents')" :message="t('dashboard.loadFailed')" :description="t('dashboard.loadFailedHint')" />
           <EmptyState v-else :message="t('dashboard.noAgents')" />
         </NCard>
-
-        <NCard :title="t('dashboard.activeAlerts')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
-          <template #header-extra>
-            <NButton text size="small" @click="router.push({ name: 'Alerts' })">{{ t('dashboard.viewDetails') }}</NButton>
-          </template>
-          <NDataTable
-            v-if="dashboard.activeAlerts.length"
-            :columns="alertColumns" :data="dashboard.activeAlerts"
-            :bordered="false" size="small" :max-height="260" striped
-          />
-          <EmptyState v-else :message="t('dashboard.noAlerts')" :description="t('dashboard.allNormal')" />
-        </NCard>
       </div>
     </div>
   </div>
@@ -326,6 +359,7 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
 
 <script lang="ts">
 import { NTag, NProgress } from 'naive-ui'
+import { ThermometerOutline } from '@vicons/ionicons5'
 </script>
 
 <style scoped>
@@ -339,7 +373,7 @@ import { NTag, NProgress } from 'naive-ui'
   display: flex;
   justify-content: center;
   gap: 48px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   padding: 20px;
   background: var(--zs-bg-card);
   border: 1px solid var(--zs-border);
@@ -350,12 +384,7 @@ import { NTag, NProgress } from 'naive-ui'
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
-  transition: transform var(--zs-transition);
   min-width: 100px;
-}
-.zs-gauge-item:hover {
-  transform: scale(1.05);
 }
 .zs-gauge {
   position: relative;
@@ -390,7 +419,7 @@ import { NTag, NProgress } from 'naive-ui'
   text-align: center;
 }
 
-/* ---- Stats row ---- */
+/* ---- KPI stats row ---- */
 .zs-stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -417,40 +446,6 @@ import { NTag, NProgress } from 'naive-ui'
   display: flex;
   flex-direction: column;
 }
-
-/* ---- Network list ---- */
-.network-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.network-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--zs-border);
-}
-.network-row:last-child {
-  border-bottom: none;
-}
-.network-iface {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.network-speed {
-  font-size: 12px;
-  color: var(--zs-text-tertiary);
-}
-.network-rates {
-  display: flex;
-  gap: 12px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.rate-down { color: #34c759; }
-.rate-up { color: #4a90d9; }
 
 /* Make NCards match zspace */
 :deep(.zs-dashboard-card) {
