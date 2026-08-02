@@ -87,3 +87,46 @@ jobs:
           else
             gh release create "${tag}" artifacts/iso/* --title "${tag}" --generate-notes
           fi
+
+  smoke-boot:
+    name: Boot smoke test (BIOS + UEFI → FortOS GUI)
+    needs: build-iso
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: fortos-debian12-amd64
+          path: artifacts/iso
+
+      - name: Install QEMU and ISO tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf xorriso squashfs-tools
+
+      - name: Validate ISO image contents
+        run: |
+          iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "${iso}"
+          bash eng/iso/test-image.sh "${iso}"
+
+      - name: Boot test — BIOS (isolinux)
+        run: |
+          iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "${iso}"
+          bash eng/iso/test-boot.sh "${iso}" bios artifacts/boot-bios
+
+      - name: Boot test — UEFI (grub)
+        run: |
+          iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "${iso}"
+          bash eng/iso/test-boot.sh "${iso}" uefi artifacts/boot-uefi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: boot-test-results
+          path: artifacts/boot-*

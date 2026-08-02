@@ -11,7 +11,8 @@ echo "=== FortOS Installer GUI Hook ==="
 
 # 启动脚本执行位。
 chmod 0755 /opt/fortos/installer/gui/fortos-installer-kiosk.sh \
-    /opt/fortos/installer/gui/installer-session.sh
+    /opt/fortos/installer/gui/installer-session.sh \
+    /opt/fortos/installer/gui/fortos-installer-diag.sh
 
 # headless CLI 进 PATH(串口/自动化/E2E 路径使用 `fortos-installer` 命令)。
 if [ -x /opt/fortos/installer/cli/fortos-installer ]; then
@@ -53,5 +54,7 @@ if [ -n "${missing_libs}" ]; then
 fi
 
 systemctl enable fortos-installer.service
+# CI 冒烟诊断服务(QEMU 引导测试经 ttyS1 断言 GUI 状态)。
+systemctl enable fortos-installer-diag.service
 
 echo "=== FortOS Installer GUI Hook Complete ==="

@@ -9,6 +9,8 @@ required_files=(
     "includes.chroot/etc/apt/sources.list.d/docker.list"
     "includes.chroot/etc/fortos/fortos.env"
     "includes.chroot/etc/systemd/system/fortos.service"
+    "includes.chroot/etc/systemd/system/fortos-installer-diag.service"
+    "includes.chroot/opt/fortos/installer/gui/fortos-installer-diag.sh"
     "includes.chroot/etc/tmpfiles.d/fortos.conf"
     "hooks/live/0100-fortos-runtime.hook.chroot"
     "bootloaders/syslinux_common/menu.cfg"
