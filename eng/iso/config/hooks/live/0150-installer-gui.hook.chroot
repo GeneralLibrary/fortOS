@@ -20,7 +20,7 @@ else
     echo "WARNING: /opt/fortos/installer/cli/fortos-installer not found" >&2
 fi
 
-# 0100 hook 的 trim-services.sh 可能裁掉图形栈依赖——断言关键组件存在,
+# 0100 hook 的服务裁剪可能裁掉图形栈依赖——断言关键组件存在,
 # 缺失时报警(CI 构建据此发现问题)。
 for component in /usr/bin/Xorg /usr/bin/openbox \
     /opt/fortos/installer/gui/fortos-installer-gui; do

@@ -233,16 +233,6 @@ APTEOF
     cp -a "${PUBLISH_ROOT}/cli" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
     cp -a "${PUBLISH_ROOT}/installer" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
     printf '%s\n' "${VERSION}" > "${LIVE_ROOT}/config/includes.chroot/etc/fortos/version"
-
-    # Stage service trimming script — applies the enabled-services whitelist
-    # inside the chroot so only FortOS-required services start at boot.
-    local TRIM_SCRIPT="/workspace/fortos debian12/scripts/trim-services.sh"
-    if [[ -f "${TRIM_SCRIPT}" ]]; then
-        sed -i 's/\r$//' "${TRIM_SCRIPT}" 2>/dev/null || true
-        mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/fortos/scripts"
-        cp "${TRIM_SCRIPT}" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/scripts/trim-services.sh"
-        chmod 0755 "${LIVE_ROOT}/config/includes.chroot/opt/fortos/scripts/trim-services.sh"
-    fi
 }
 
 build_image() {

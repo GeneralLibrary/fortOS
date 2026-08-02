@@ -32,14 +32,47 @@ systemctl enable fortos.service
 systemd-tmpfiles --create /etc/tmpfiles.d/fortos.conf
 
 # --- 4. Trim non-essential services ---
-# Only keep what FortOS directly or indirectly needs.
-if [ -x /opt/fortos/scripts/trim-services.sh ]; then
-    echo "Running service trimming..."
-    /opt/fortos/scripts/trim-services.sh
-    rm /opt/fortos/scripts/trim-services.sh
-else
-    echo "WARNING: trim-services.sh not found. Services will not be trimmed."
-fi
+# Keep only the services FortOS directly or indirectly needs — the same
+# whitelist enabled in step 2, the installer GUI unit (enabled by the 0150
+# hook), apparmor (Docker container security), keyboard/console setup, and
+# mdmonitor (mdadm RAID event reporting). Everything else Debian enables by
+# default (cron, rsyslog, avahi, cups, ifupdown networking, smartd, ...) is
+# disabled so the installed system stays minimal. To keep a service, add it
+# to FORTOS_SERVICE_KEEP below. (FortOS' backup scheduler and logging are
+# process-local, so system cron/syslog daemons are never required.)
+# NOTE: keep FORTOS_SERVICE_KEEP on a single line — the case match below
+# relies on every unit being surrounded by spaces.
+FORTOS_SERVICE_KEEP="fortos.service docker.service containerd.service smbd.service nmbd.service nfs-server.service nfs-mountd.service rpcbind.service vsftpd.service ssh.service NetworkManager.service nut-monitor.service fortos-installer.service apparmor.service console-setup.service keyboard-setup.service mdmonitor.service"
+# System infrastructure that must never be disabled: systemd/dbus/getty
+# plumbing, and live-boot/live-config (the live environment hosting the
+# installer — trimming those breaks booting into the wizard).
+KEEP_PREFIXES="systemd dbus getty@ serial-getty@ console-getty plymouth- live-"
+
+echo "Trimming non-essential services..."
+unit_list="$(systemctl list-unit-files --type=service --state=enabled --no-legend)" || exit 1
+for unit in $(printf '%s\n' "${unit_list}" | awk '{print $1}'); do
+    case " ${FORTOS_SERVICE_KEEP} " in
+        *" ${unit} "*) continue ;;
+    esac
+    keep=0
+    for prefix in ${KEEP_PREFIXES}; do
+        case "${unit}" in
+            "${prefix}"*) keep=1; break ;;
+        esac
+    done
+    if [ "${keep}" -eq 1 ]; then
+        continue
+    fi
+    echo "  disabling ${unit}"
+    systemctl disable "${unit}" >/dev/null 2>&1 || true
+done
+
+# --- 4b. Disable unattended automatic updates ---
+# apt-daily / apt-daily-upgrade timers pull Debian updates in the background
+# (bandwidth, surprise service restarts) — FortOS manages its own OTA update
+# path, so disable them. Operational maintenance timers (fstrim.timer for SSD
+# TRIM, e2scrub_all.timer for ext4 scrubbing) are intentionally left enabled.
+systemctl disable apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 
 # --- 5. Disable graphical target ---
 # FortOS is headless — force multi-user.target.
