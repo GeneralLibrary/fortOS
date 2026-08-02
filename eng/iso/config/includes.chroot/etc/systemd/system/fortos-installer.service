@@ -1,0 +1,21 @@
+[Unit]
+Description=FortOS Graphical Installer (Xorg + Openbox + Avalonia)
+# 在 live 环境启动流程中、用户会话之后拉起,占用 tty7。
+After=systemd-user-sessions.service
+Conflicts=getty@tty7.service
+
+[Service]
+Type=simple
+Environment=HOME=/root
+ExecStart=/opt/fortos/installer/gui/fortos-installer-kiosk.sh
+StandardInput=tty
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
+# 崩溃后重新拉起向导(systemd 默认启动限流防死循环)。
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

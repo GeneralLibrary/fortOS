@@ -69,6 +69,28 @@ publish_fortos() {
         --output "${PUBLISH_ROOT}/cli"
 }
 
+# FortOS 图形安装器(GUI kiosk + headless CLI,设计稿 §8.2)。
+# --self-contained + partial trimming 控制增量体积(目标 ≤ 300 MB,§8.5)。
+publish_installer() {
+    mkdir -p "${PUBLISH_ROOT}/installer/gui" "${PUBLISH_ROOT}/installer/cli"
+
+    dotnet publish /workspace/src/FortOS.Installer.Gui/FortOS.Installer.Gui.csproj \
+        --configuration Release \
+        --runtime "${DOTNET_RUNTIME}" \
+        --self-contained true \
+        -p:PublishTrimmed=true -p:TrimMode=partial \
+        --artifacts-path "${BUILD_ROOT}/artifacts" \
+        --output "${PUBLISH_ROOT}/installer/gui"
+
+    dotnet publish /workspace/src/FortOS.Installer.Cli/FortOS.Installer.Cli.csproj \
+        --configuration Release \
+        --runtime "${DOTNET_RUNTIME}" \
+        --self-contained true \
+        -p:PublishTrimmed=true -p:TrimMode=partial \
+        --artifacts-path "${BUILD_ROOT}/artifacts" \
+        --output "${PUBLISH_ROOT}/installer/cli"
+}
+
 configure_live_image() {
     mkdir -p "${LIVE_ROOT}"
     cd "${LIVE_ROOT}"
@@ -209,6 +231,7 @@ APTEOF
     mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/fortos"
     cp -a "${PUBLISH_ROOT}/api" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
     cp -a "${PUBLISH_ROOT}/cli" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
+    cp -a "${PUBLISH_ROOT}/installer" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
     printf '%s\n' "${VERSION}" > "${LIVE_ROOT}/config/includes.chroot/etc/fortos/version"
 
     # Stage service trimming script — applies the enabled-services whitelist
@@ -242,6 +265,7 @@ build_image() {
 install_builder_dependencies
 install_dotnet_sdk
 publish_fortos
+publish_installer
 configure_live_image
 build_image
 

@@ -1,0 +1,34 @@
+#!/bin/sh
+# -------------------------------------------------------------------------
+# FortOS installer kiosk hook — 启用图形安装向导服务并赋予启动脚本执行位
+# (includes.chroot 从 Windows checkout 复制时权限可能丢失)。
+# 注意:同一 rootfs 也是安装后的目标系统,ChrootStep 会在安装时禁用
+# fortos-installer.service(见 FortOS.Installer.Core Steps/ChrootStep.cs)。
+# -------------------------------------------------------------------------
+set -eu
+
+echo "=== FortOS Installer GUI Hook ==="
+
+# 启动脚本执行位。
+chmod 0755 /opt/fortos/installer/gui/fortos-installer-kiosk.sh \
+    /opt/fortos/installer/gui/installer-session.sh
+
+# headless CLI 进 PATH(串口/自动化/E2E 路径使用 `fortos-installer` 命令)。
+if [ -x /opt/fortos/installer/cli/fortos-installer ]; then
+    ln -sf /opt/fortos/installer/cli/fortos-installer /usr/local/bin/fortos-installer
+else
+    echo "WARNING: /opt/fortos/installer/cli/fortos-installer not found" >&2
+fi
+
+# 0100 hook 的 trim-services.sh 可能裁掉图形栈依赖——断言关键组件存在,
+# 缺失时报警(CI 构建据此发现问题)。
+for component in /usr/bin/Xorg /usr/bin/openbox \
+    /opt/fortos/installer/gui/fortos-installer-gui; do
+    if [ ! -e "${component}" ]; then
+        echo "WARNING: expected installer component missing: ${component}" >&2
+    fi
+done
+
+systemctl enable fortos-installer.service
+
+echo "=== FortOS Installer GUI Hook Complete ==="

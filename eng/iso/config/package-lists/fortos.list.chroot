@@ -39,3 +39,27 @@ rclone
 live-boot
 live-config
 live-config-systemd
+
+# ---------------------------------------------------------------------------
+# FortOS graphical installer (design: docs/installer-design.md §3.2/§8).
+# Xorg + Openbox kiosk stack; installed-system copies inherit these, which is
+# an accepted size trade-off (M4 may trim them post-install).
+# ---------------------------------------------------------------------------
+xorg
+openbox
+xinit
+xauth
+x11-xkb-utils
+fonts-noto-cjk
+gdisk
+dosfstools
+cryptsetup
+
+# Bootloader toolchain used by the installer's BootloaderStep (design §5.5).
+# grub-install executes from the live environment; signed shim + grub modules
+# keep the Secure Boot chain intact.
+grub-efi-amd64-signed
+grub-efi-amd64-bin
+grub-pc-bin
+grub-common
+shim-signed
