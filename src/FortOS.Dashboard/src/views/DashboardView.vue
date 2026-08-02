@@ -1,22 +1,18 @@
 <!--
-  FortOS Dashboard — System Overview (redesigned)
+  FortOS Dashboard — System Overview
 
-  设计原则:
-  - 信息有效:只用后端真实有值的字段;SMART/温度等缺失时显示 "—" 或隐藏,不伪造 0 值。
-  - 无冗余:核心指标(CPU/内存/存储)只在顶部 gauge 行出现一次;KPI 行只放
-    运行时间/网络/告警/服务,不与 gauge 重复。
-  - 有意义:负载带核心数上下文;告警无则显示"正常";网络速率取 up 接口合计。
-  - 可读性:数字格式统一,标签清晰,i18n key 全部补齐。
+  布局原则:信息分块,但块之间聚合不碎片化。
+  - 顶部「系统状态」一块:CPU/内存/存储三环 + 运行时间/网络/告警/服务关键指标,
+    核心信息一眼看全,不再散成独立小卡。
+  - 中部两列:左「存储」(文件系统/磁盘标签切换),右「服务与告警」(标签切换)。
+  - 底部次要:网络接口、Agent 容器。
+  - 数据有效性:SMART/温度缺失显示 "—";无传感器时不显示温度;无冗余重复指标。
 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, h } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import {
-  ServerOutline, WifiOutline, AlertCircleOutline, PulseOutline,
-} from '@vicons/ionicons5'
-import StatCard from '@/components/common/StatCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import {
   formatBytes, formatUptime, formatPercent, formatBytesPerSecond,
@@ -35,12 +31,11 @@ const { t } = useI18n()
 onMounted(() => dashboard.startPolling())
 onUnmounted(() => dashboard.stopPolling())
 
-// ---- Gauge metrics (CPU / Memory / Storage) ----
-
 const metrics = computed(() => dashboard.systemMetrics)
 
+// ---- Core metrics ----
+
 const cpuPct = computed(() => metrics.value ? Math.round(metrics.value.cpu.usagePercent) : 0)
-/** CPU gauge caption: load · logical cores (load without core count is meaningless). */
 const cpuDetail = computed(() => {
   if (!metrics.value) return '—'
   return `${t('dashboard.loadAverage')} ${metrics.value.host.loadAverage1.toFixed(2)} · ${metrics.value.cpu.logicalProcessorCount} ${t('dashboard.logicalCores')}`
@@ -51,7 +46,6 @@ const memTotal = computed(() => metrics.value ? metrics.value.memory.totalBytes 
 const memPct = computed(() => Math.round(memUsed.value / memTotal.value * 100))
 const memDetail = computed(() => `${formatBytes(memUsed.value)} / ${formatBytes(memTotal.value)}`)
 
-/** Aggregate storage across all filesystems. */
 const storageTotal = computed(() => metrics.value?.fileSystems?.length
   ? metrics.value.fileSystems.reduce((s, fs) => s + (fs.totalBytes ?? 0), 0)
   : 0)
@@ -61,33 +55,19 @@ const storageUsed = computed(() => metrics.value?.fileSystems?.length
 const storagePct = computed(() => storageTotal.value ? Math.round(storageUsed.value / storageTotal.value * 100) : 0)
 const storageDetail = computed(() => `${formatBytes(storageUsed.value)} / ${formatBytes(storageTotal.value)}`)
 
-/** CPU temperature — only meaningful when a sensor is present. */
 const hasCpuTemp = computed(() => metrics.value?.cpu.temperatureCelsius != null)
-const cpuTempText = computed(() =>
-  metrics.value?.cpu.temperatureCelsius != null
-    ? formatTemperature(metrics.value.cpu.temperatureCelsius)
-    : '—',
-)
-
-// ---- KPI row (uptime / network / alerts / services) ----
 
 const uptimeText = computed(() => metrics.value ? formatUptime(metrics.value.host.uptime) : '—')
 const bootedAtText = computed(() =>
   metrics.value ? `${t('dashboard.bootedAt')} ${formatDateTime(metrics.value.host.bootedAt, 'short')}` : '',
 )
 
-/** Aggregate rx/tx across up interfaces. */
 const netRx = computed(() => metrics.value?.networks
   ?.filter(n => n.isUp)
   .reduce((s, n) => s + (n.receiveBytesPerSecond ?? 0), 0) ?? 0)
 const netTx = computed(() => metrics.value?.networks
   ?.filter(n => n.isUp)
   .reduce((s, n) => s + (n.transmitBytesPerSecond ?? 0), 0) ?? 0)
-const netText = computed(() =>
-  metrics.value?.networks?.length
-    ? `↓ ${formatBytesPerSecond(netRx.value)}  ↑ ${formatBytesPerSecond(netTx.value)}`
-    : '—',
-)
 const connectionsText = computed(() =>
   metrics.value ? `${metrics.value.networkStack.establishedConnections} ${t('dashboard.connections')}` : '',
 )
@@ -97,23 +77,14 @@ const criticalAlerts = computed(() =>
     a.severity.toLowerCase() === 'critical' || a.severity.toLowerCase() === 'error',
   ).length,
 )
-const alertText = computed(() =>
-  dashboard.activeAlerts.length > 0 ? String(dashboard.activeAlerts.length) : t('dashboard.normal'),
-)
 const alertColor = computed(() =>
   criticalAlerts.value > 0 ? '#ef4444'
     : dashboard.activeAlerts.length > 0 ? '#f59e0b'
       : '#34c759',
 )
-const alertSubtitle = computed(() =>
-  dashboard.activeAlerts.length > 0 ? `${criticalAlerts.value} ${t('dashboard.criticalAlerts')}` : '',
-)
 
 const runningServiceCount = computed(() =>
   dashboard.services.filter(s => s.status === 'Running').length,
-)
-const serviceText = computed(() =>
-  dashboard.services.length ? `${runningServiceCount.value}/${dashboard.services.length}` : '—',
 )
 
 // ---- Gauge rendering ----
@@ -125,8 +96,7 @@ function gaugeColor(pct: number): string {
   return '#34c759'
 }
 
-interface GaugeArc { cx: number; cy: number; r: number; pct: number }
-function gaugePath({ cx, cy, r, pct }: GaugeArc): { d: string; color: string } {
+function gaugePath(cx: number, cy: number, r: number, pct: number): { d: string; color: string } {
   const color = gaugeColor(pct)
   if (pct <= 0) return { d: '', color }
   const startAngle = -Math.PI / 2
@@ -135,15 +105,14 @@ function gaugePath({ cx, cy, r, pct }: GaugeArc): { d: string; color: string } {
   const y1 = cy + r * Math.sin(startAngle)
   const x2 = cx + r * Math.cos(endAngle)
   const y2 = cy + r * Math.sin(endAngle)
-  const largeArc = pct > 50 ? 1 : 0
   return {
-    d: `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+    d: `M ${x1} ${y1} A ${r} ${r} 0 ${pct > 50 ? 1 : 0} 1 ${x2} ${y2}`,
     color,
   }
 }
 
 function renderGauge(pct: number, label: string, detail: string) {
-  const arc = gaugePath({ cx: 44, cy: 44, r: 34, pct })
+  const arc = gaugePath(44, 44, 34, pct)
   return h('div', { class: 'zs-gauge-item' }, [
     h('div', { class: 'zs-gauge' }, [
       h('svg', { width: 88, height: 88, viewBox: '0 0 88 88' }, [
@@ -159,7 +128,17 @@ function renderGauge(pct: number, label: string, detail: string) {
   ])
 }
 
-// ---- Table column definitions ----
+// ---- Status side item ----
+
+function statusItem(label: string, value: string, sub?: string) {
+  return h('div', { class: 'zs-status-item' }, [
+    h('span', { class: 'zs-status-label' }, label),
+    h('span', { class: 'zs-status-value' }, value),
+    sub ? h('span', { class: 'zs-status-sub' }, sub) : null,
+  ])
+}
+
+// ---- Table columns ----
 
 const filesystemColumns: DataTableColumns<FileSystemCapacityMetrics> = [
   { title: () => t('dashboard.mountPoint'), key: 'mountPoint', ellipsis: { tooltip: true }, width: 130 },
@@ -230,75 +209,67 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
 
 <template>
   <div class="zs-dashboard">
-    <!-- 核心指标环:CPU / 内存 / 存储(每个指标只出现一次) -->
-    <div class="zs-gauges-row">
-      <component :is="renderGauge(cpuPct, 'CPU', cpuDetail)" />
-      <component :is="renderGauge(memPct, 'RAM', memDetail)" />
-      <component :is="renderGauge(storagePct, t('nav.storage'), storageDetail)" />
-    </div>
-
-    <!-- KPI 行:运行时间 / 网络 / 告警 / 服务(不与 gauge 重复) -->
-    <div class="zs-stats-row">
-      <StatCard
-        :label="t('dashboard.hostUptime')"
-        :value="uptimeText"
-        :icon="ServerOutline"
-        color="#4a90d9"
-        :subtitle="bootedAtText || undefined"
-      />
-      <StatCard
-        :label="t('dashboard.networkTraffic')"
-        :value="netText"
-        :icon="WifiOutline"
-        color="#0ea5e9"
-        :subtitle="connectionsText || undefined"
-      />
-      <StatCard
-        :label="t('dashboard.activeAlerts')"
-        :value="alertText"
-        :icon="AlertCircleOutline"
-        :color="alertColor"
-        :subtitle="alertSubtitle || undefined"
-      />
-      <StatCard
-        :label="t('dashboard.servicesStatus')"
-        :value="serviceText"
-        :icon="PulseOutline"
-        color="#34c759"
-        :subtitle="dashboard.services.length ? t('dashboard.servicesRunningOf') : undefined"
-      />
-      <!-- CPU 温度:仅在有传感器时展示(缺失显示 0°C 无意义) -->
-      <StatCard
-        v-if="hasCpuTemp"
-        :label="t('dashboard.cpuTemperature')"
-        :value="cpuTempText"
-        :icon="ThermometerOutline"
-        color="#f59e0b"
-      />
-    </div>
-
-    <!-- 详情区:左(存储相关)/ 右(运行相关) -->
-    <div class="zs-dashboard-grid">
-      <div class="zs-dashboard-col">
-        <NCard :title="t('dashboard.filesystems')" size="small" :bordered="true" class="zs-dashboard-card">
-          <NDataTable
-            v-if="metrics?.fileSystems?.length"
-            :columns="filesystemColumns" :data="metrics.fileSystems"
-            :bordered="false" size="small" :max-height="220" striped
+    <!-- ===== 系统状态:核心指标聚合成一块 ===== -->
+    <NCard class="zs-status-card" :bordered="true" size="small">
+      <div class="zs-status-body">
+        <!-- 左:三环 -->
+        <div class="zs-gauges">
+          <component :is="renderGauge(cpuPct, 'CPU', cpuDetail)" />
+          <component :is="renderGauge(memPct, 'RAM', memDetail)" />
+          <component :is="renderGauge(storagePct, t('nav.storage'), storageDetail)" />
+        </div>
+        <!-- 右:关键指标,紧凑排列 -->
+        <div class="zs-status-side">
+          <component :is="statusItem(t('dashboard.hostUptime'), uptimeText, bootedAtText || undefined)" />
+          <component :is="statusItem(
+            t('dashboard.networkTraffic'),
+            metrics?.networks?.length ? `↓ ${formatBytesPerSecond(netRx)}  ↑ ${formatBytesPerSecond(netTx)}` : '—',
+            connectionsText || undefined,
+          )" />
+          <component :is="statusItem(
+            t('dashboard.activeAlerts'),
+            dashboard.activeAlerts.length ? String(dashboard.activeAlerts.length) : t('dashboard.normal'),
+            dashboard.activeAlerts.length ? `${criticalAlerts} ${t('dashboard.criticalAlerts')}` : undefined,
+          )" />
+          <component :is="statusItem(
+            t('dashboard.servicesStatus'),
+            dashboard.services.length ? `${runningServiceCount}/${dashboard.services.length}` : '—',
+            dashboard.services.length ? t('dashboard.servicesRunningOf') : undefined,
+          )" />
+          <component
+            v-if="hasCpuTemp"
+            :is="statusItem(t('dashboard.cpuTemperature'), formatTemperature(metrics!.cpu.temperatureCelsius))"
           />
-          <EmptyState v-else :message="t('dashboard.noFilesystems')" />
-        </NCard>
+        </div>
+      </div>
+    </NCard>
 
-        <NCard :title="t('dashboard.disks')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
+    <!-- ===== 详情区:两列,相关块合并 ===== -->
+    <div class="zs-dashboard-grid">
+      <!-- 左列:存储 + 网络 -->
+      <div class="zs-dashboard-col">
+        <NCard :title="t('nav.storage')" size="small" :bordered="true" class="zs-dashboard-card">
           <template #header-extra>
             <NButton text size="small" @click="router.push({ name: 'Storage' })">{{ t('dashboard.viewDetails') }}</NButton>
           </template>
-          <NDataTable
-            v-if="dashboard.disks.length"
-            :columns="diskColumns" :data="dashboard.disks"
-            :bordered="false" size="small" :max-height="260" striped
-          />
-          <EmptyState v-else :message="t('dashboard.noDisks')" />
+          <NTabs type="segment" animated>
+            <NTabPane name="filesystems" :tab="t('dashboard.filesystems')">
+              <NDataTable
+                v-if="metrics?.fileSystems?.length"
+                :columns="filesystemColumns" :data="metrics.fileSystems"
+                :bordered="false" size="small" :max-height="260" striped
+              />
+              <EmptyState v-else :message="t('dashboard.noFilesystems')" />
+            </NTabPane>
+            <NTabPane name="disks" :tab="t('dashboard.disks')">
+              <NDataTable
+                v-if="dashboard.disks.length"
+                :columns="diskColumns" :data="dashboard.disks"
+                :bordered="false" size="small" :max-height="260" striped
+              />
+              <EmptyState v-else :message="t('dashboard.noDisks')" />
+            </NTabPane>
+          </NTabs>
         </NCard>
 
         <NCard :title="t('dashboard.networkInterfaces')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
@@ -308,36 +279,37 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
           <NDataTable
             v-if="metrics?.networks?.length"
             :columns="networkColumns" :data="metrics.networks"
-            :bordered="false" size="small" :max-height="180" striped
+            :bordered="false" size="small" :max-height="200" striped
           />
           <EmptyState v-else :message="t('dashboard.noNetwork')" />
         </NCard>
       </div>
 
+      <!-- 右列:服务与告警 + Agent -->
       <div class="zs-dashboard-col">
         <NCard :title="t('dashboard.servicesStatus')" size="small" :bordered="true" class="zs-dashboard-card">
           <template #header-extra>
             <NButton text size="small" @click="router.push({ name: 'Services' })">{{ t('dashboard.viewDetails') }}</NButton>
           </template>
-          <NDataTable
-            v-if="dashboard.services.length"
-            :columns="serviceColumns" :data="dashboard.services"
-            :bordered="false" size="small" :max-height="260" striped
-          />
-          <EmptyState v-else-if="dashboard.failedEndpoints.has('services')" :message="t('dashboard.loadFailed')" :description="t('dashboard.loadFailedHint')" />
-          <EmptyState v-else :message="t('dashboard.noServices')" />
-        </NCard>
-
-        <NCard :title="t('dashboard.activeAlerts')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
-          <template #header-extra>
-            <NButton text size="small" @click="router.push({ name: 'Alerts' })">{{ t('dashboard.viewDetails') }}</NButton>
-          </template>
-          <NDataTable
-            v-if="dashboard.activeAlerts.length"
-            :columns="alertColumns" :data="dashboard.activeAlerts"
-            :bordered="false" size="small" :max-height="220" striped
-          />
-          <EmptyState v-else :message="t('dashboard.noAlerts')" :description="t('dashboard.allNormal')" />
+          <NTabs type="segment" animated>
+            <NTabPane name="services" :tab="t('dashboard.servicesStatus')">
+              <NDataTable
+                v-if="dashboard.services.length"
+                :columns="serviceColumns" :data="dashboard.services"
+                :bordered="false" size="small" :max-height="260" striped
+              />
+              <EmptyState v-else-if="dashboard.failedEndpoints.has('services')" :message="t('dashboard.loadFailed')" :description="t('dashboard.loadFailedHint')" />
+              <EmptyState v-else :message="t('dashboard.noServices')" />
+            </NTabPane>
+            <NTabPane name="alerts" :tab="t('dashboard.activeAlerts')">
+              <NDataTable
+                v-if="dashboard.activeAlerts.length"
+                :columns="alertColumns" :data="dashboard.activeAlerts"
+                :bordered="false" size="small" :max-height="260" striped
+              />
+              <EmptyState v-else :message="t('dashboard.noAlerts')" :description="t('dashboard.allNormal')" />
+            </NTabPane>
+          </NTabs>
         </NCard>
 
         <NCard :title="t('dashboard.agentContainers')" size="small" :bordered="true" class="zs-dashboard-card" style="margin-top: 16px">
@@ -359,7 +331,6 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
 
 <script lang="ts">
 import { NTag, NProgress } from 'naive-ui'
-import { ThermometerOutline } from '@vicons/ionicons5'
 </script>
 
 <style scoped>
@@ -368,16 +339,23 @@ import { ThermometerOutline } from '@vicons/ionicons5'
   margin: 0 auto;
 }
 
-/* ---- Gauge rings row ---- */
-.zs-gauges-row {
+/* ---- 系统状态块 ---- */
+.zs-status-card {
+  border-radius: var(--zs-radius-xl) !important;
+  border-color: var(--zs-border) !important;
+  margin-bottom: 16px;
+}
+.zs-status-body {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  gap: 40px;
+  padding: 8px 8px;
+  flex-wrap: wrap;
+}
+.zs-gauges {
+  display: flex;
   gap: 48px;
-  margin-bottom: 20px;
-  padding: 20px;
-  background: var(--zs-bg-card);
-  border: 1px solid var(--zs-border);
-  border-radius: var(--zs-radius-xl);
+  flex: 0 0 auto;
 }
 .zs-gauge-item {
   display: flex;
@@ -419,15 +397,44 @@ import { ThermometerOutline } from '@vicons/ionicons5'
   text-align: center;
 }
 
-/* ---- KPI stats row ---- */
-.zs-stats-row {
+/* 右侧关键指标:网格排列,紧凑不散落 */
+.zs-status-side {
+  flex: 1 1 320px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 24px;
+  min-width: 0;
+}
+.zs-status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  min-width: 0;
+}
+.zs-status-label {
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+  font-weight: 500;
+}
+.zs-status-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--zs-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.zs-status-sub {
+  font-size: 11px;
+  color: var(--zs-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ---- Content grid ---- */
+/* ---- 详情区 ---- */
 .zs-dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -437,9 +444,13 @@ import { ThermometerOutline } from '@vicons/ionicons5'
   .zs-dashboard-grid {
     grid-template-columns: 1fr;
   }
-  .zs-gauges-row {
+  .zs-gauges {
     gap: 24px;
     flex-wrap: wrap;
+    justify-content: center;
+  }
+  .zs-status-body {
+    justify-content: center;
   }
 }
 .zs-dashboard-col {
