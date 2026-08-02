@@ -10,12 +10,12 @@ namespace FortOS.Tests.Installer.Session;
 public class InstallerSessionTests
 {
     private const string DisksJson = """
-        {"blockdevices":[{"name":"sda","path":"/dev/sda","size":21474836480,"type":"disk","rota":0,"rm":0,"ro":0}]}
+        {"blockdevices":[{"name":"vda","path":"/dev/vda","size":21474836480,"type":"disk","rota":0,"rm":0,"ro":0}]}
         """;
 
     private static readonly InstallConfig Config = new()
     {
-        SystemDisk = "/dev/sda",
+        SystemDisk = "/dev/vda",
         RootFs = RootFileSystem.Btrfs,
         Network = new NetworkConfig { Hostname = "fortos" },
         Account = new AccountConfig { Username = "admin", Password = "secret" },
@@ -97,8 +97,8 @@ public class InstallerSessionTests
         var step1 = new FakeStep("A", InstallerPhase.Partitioning);
         var configWithData = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
-            Data = new DataDiskConfig { Mode = DataDiskMode.Single, Disk = "/dev/sda" },
+            SystemDisk = "/dev/vda",
+            Data = new DataDiskConfig { Mode = DataDiskMode.Single, Disk = "/dev/vda" },
             Account = new AccountConfig { Username = "admin" },
         };
         var (session, _, _) = CreateSession([step1]);
@@ -126,8 +126,8 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
-            Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidDisks = ["/dev/sdb"] },
+            SystemDisk = "/dev/vda",
+            Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidDisks = ["/dev/vdb"] },
             Account = new AccountConfig { Username = "admin" },
         };
 
@@ -141,8 +141,8 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
-            Data = new DataDiskConfig { Mode = DataDiskMode.Luks, Disk = "/dev/sdb" },
+            SystemDisk = "/dev/vda",
+            Data = new DataDiskConfig { Mode = DataDiskMode.Luks, Disk = "/dev/vdb" },
             Account = new AccountConfig { Username = "admin" },
         };
 
@@ -160,7 +160,7 @@ public class InstallerSessionTests
         var members = Enumerable.Range(0, diskCount).Select(i => $"/dev/sd{(char)('b' + i)}").ToArray();
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
+            SystemDisk = "/dev/vda",
             Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidLevel = level, RaidDisks = members },
             Account = new AccountConfig { Username = "admin" },
         };
@@ -175,8 +175,8 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
-            Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidDisks = ["/dev/sda", "/dev/sdb"] },
+            SystemDisk = "/dev/vda",
+            Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidDisks = ["/dev/vda", "/dev/vdb"] },
             Account = new AccountConfig { Username = "admin" },
         };
 
@@ -191,17 +191,17 @@ public class InstallerSessionTests
     {
         const string threeDisks = """
             {"blockdevices":[
-              {"name":"sda","path":"/dev/sda","size":21474836480,"type":"disk","rota":0,"rm":0,"ro":0},
-              {"name":"sdb","path":"/dev/sdb","size":107374182400,"type":"disk","rota":0,"rm":0,"ro":0},
-              {"name":"sdc","path":"/dev/sdc","size":107374182400,"type":"disk","rota":0,"rm":0,"ro":0}
+              {"name":"vda","path":"/dev/vda","size":21474836480,"type":"disk","rota":0,"rm":0,"ro":0},
+              {"name":"vdb","path":"/dev/vdb","size":107374182400,"type":"disk","rota":0,"rm":0,"ro":0},
+              {"name":"vdc","path":"/dev/vdc","size":107374182400,"type":"disk","rota":0,"rm":0,"ro":0}
             ]}
             """;
         var step1 = new FakeStep("A", InstallerPhase.Partitioning);
         var (session, _, _) = CreateSession([step1], disksJson: threeDisks);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
-            Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidDisks = ["/dev/sdb", "/dev/sdc", "/dev/sdb"] },
+            SystemDisk = "/dev/vda",
+            Data = new DataDiskConfig { Mode = DataDiskMode.Raid, RaidDisks = ["/dev/vdb", "/dev/vdc", "/dev/vdb"] },
             Account = new AccountConfig { Username = "admin" },
         };
 
@@ -221,11 +221,11 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
+            SystemDisk = "/dev/vda",
             Data = new DataDiskConfig
             {
                 Mode = DataDiskMode.Raid,
-                RaidDisks = ["/dev/sdb", "/dev/sdc"],
+                RaidDisks = ["/dev/vdb", "/dev/vdc"],
                 RaidDeviceName = badName,
             },
             Account = new AccountConfig { Username = "admin" },
@@ -243,7 +243,7 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
+            SystemDisk = "/dev/vda",
             Account = new AccountConfig { Username = "admin", Password = password },
         };
 
@@ -259,8 +259,8 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
-            Data = new DataDiskConfig { Mode = DataDiskMode.Single, Disk = "/dev/sdb", Label = label },
+            SystemDisk = "/dev/vda",
+            Data = new DataDiskConfig { Mode = DataDiskMode.Single, Disk = "/dev/vdb", Label = label },
             Account = new AccountConfig { Username = "admin" },
         };
 
@@ -274,7 +274,7 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
+            SystemDisk = "/dev/vda",
             Network = new NetworkConfig { Mode = NetworkMode.Static, Address = "192.168.1.10" },
             Account = new AccountConfig { Username = "admin" },
         };
@@ -293,7 +293,7 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
+            SystemDisk = "/dev/vda",
             Account = new AccountConfig { Username = username },
         };
 
@@ -315,7 +315,7 @@ public class InstallerSessionTests
         var (session, _, _) = CreateSession([step1]);
         var config = new InstallConfig
         {
-            SystemDisk = "/dev/sda",
+            SystemDisk = "/dev/vda",
             Account = new AccountConfig { Username = username },
         };
 
@@ -348,11 +348,11 @@ public class InstallerSessionTests
     {
         const string mounts = """
             overlay / overlay rw 0 0
-            /dev/sda2 /media/foo ext4 rw 0 0
+            /dev/vda2 /media/foo ext4 rw 0 0
             tmpfs /run tmpfs rw 0 0
             """;
 
-        Assert.True(InstallerSession.IsDiskInUse("/dev/sda", mounts));
-        Assert.False(InstallerSession.IsDiskInUse("/dev/sdb", mounts));
+        Assert.True(InstallerSession.IsDiskInUse("/dev/vda", mounts));
+        Assert.False(InstallerSession.IsDiskInUse("/dev/vdb", mounts));
     }
 }

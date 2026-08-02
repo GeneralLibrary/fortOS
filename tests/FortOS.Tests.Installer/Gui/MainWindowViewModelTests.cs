@@ -12,8 +12,8 @@ public class MainWindowViewModelTests
 {
     private const string DisksJson = """
         {"blockdevices":[
-          {"name":"sda","path":"/dev/sda","size":21474836480,"type":"disk","rota":0,"rm":0,"ro":0},
-          {"name":"sdb","path":"/dev/sdb","size":107374182400,"type":"disk","rota":0,"rm":0,"ro":0}
+          {"name":"vda","path":"/dev/vda","size":21474836480,"type":"disk","rota":0,"rm":0,"ro":0},
+          {"name":"vdb","path":"/dev/vdb","size":107374182400,"type":"disk","rota":0,"rm":0,"ro":0}
         ]}
         """;
 
@@ -57,7 +57,7 @@ public class MainWindowViewModelTests
 
     private static void FillPages(MainWindowViewModel vm)
     {
-        vm.DiskLayout.SelectedSystemDisk = vm.DiskLayout.Disks.First(d => d.Path == "/dev/sda");
+        vm.DiskLayout.SelectedSystemDisk = vm.DiskLayout.Disks.First(d => d.Path == "/dev/vda");
         vm.Network.Hostname = "nas-test";
         vm.Account.Username = "admin";
         vm.Account.Password = "correct-horse";
@@ -68,9 +68,9 @@ public class MainWindowViewModelTests
     public async Task BuildInstallConfig_MapsAllPages()
     {
         var vm = await CreateViewModelAsync();
-        vm.DiskLayout.SelectedSystemDisk = vm.DiskLayout.Disks.First(d => d.Path == "/dev/sda");
+        vm.DiskLayout.SelectedSystemDisk = vm.DiskLayout.Disks.First(d => d.Path == "/dev/vda");
         vm.DiskLayout.DataMode = DataDiskMode.Single;
-        vm.DiskLayout.SelectedDataDisk = vm.DiskLayout.Disks.First(d => d.Path == "/dev/sdb");
+        vm.DiskLayout.SelectedDataDisk = vm.DiskLayout.Disks.First(d => d.Path == "/dev/vdb");
         vm.DiskLayout.DataFs = DataFileSystem.Xfs;
         vm.DiskLayout.DataLabel = "DATA";
         vm.DiskLayout.SwapMode = SwapMode.Fixed;
@@ -87,12 +87,12 @@ public class MainWindowViewModelTests
 
         var config = vm.BuildInstallConfig();
 
-        Assert.Equal("/dev/sda", config.SystemDisk);
+        Assert.Equal("/dev/vda", config.SystemDisk);
         Assert.Equal(RootFileSystem.Btrfs, config.RootFs);
         Assert.Equal(SwapMode.Fixed, config.SwapMode);
         Assert.Equal(2048, config.SwapSizeMiB);
         Assert.Equal(DataDiskMode.Single, config.Data.Mode);
-        Assert.Equal("/dev/sdb", config.Data.Disk);
+        Assert.Equal("/dev/vdb", config.Data.Disk);
         Assert.Equal(DataFileSystem.Xfs, config.Data.FileSystem);
         Assert.Equal("DATA", config.Data.Label);
         Assert.Equal(NetworkMode.Static, config.Network.Mode);
@@ -207,7 +207,7 @@ public class MainWindowViewModelTests
             new RingLog());
 
         var vm = new InstallViewModel(() => session, action => action());
-        var config = new InstallConfig { SystemDisk = "/dev/sda", Account = new AccountConfig { Username = "admin" } };
+        var config = new InstallConfig { SystemDisk = "/dev/vda", Account = new AccountConfig { Username = "admin" } };
 
         await vm.StartCommand.ExecuteAsync(config);
         Assert.True(vm.IsFailed);
