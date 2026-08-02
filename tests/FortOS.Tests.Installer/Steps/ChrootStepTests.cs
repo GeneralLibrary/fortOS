@@ -1,0 +1,99 @@
+using FortOS.Installer.Core.Models;
+using FortOS.Installer.Core.Steps;
+
+namespace FortOS.Tests.Installer.Steps;
+
+public class ChrootStepTests
+{
+    private static InstallContext Context(RootFileSystem rootFs = RootFileSystem.Btrfs, DataDiskConfig? data = null)
+    {
+        var config = new InstallConfig
+        {
+            SystemDisk = "/dev/sda",
+            RootFs = rootFs,
+            Data = data ?? new DataDiskConfig { Mode = DataDiskMode.Single, Disk = "/dev/sdb", FileSystem = DataFileSystem.Btrfs },
+            Network = new NetworkConfig { Hostname = "MyNas" },
+            Account = new AccountConfig { Username = "admin", Timezone = "Asia/Shanghai" },
+        };
+        var context = new InstallContext { Config = config, SourcePath = "/", TargetMount = "/target" };
+        context.Uuids["root"] = "root-uuid";
+        context.Uuids["efi"] = "efi-uuid";
+        context.Uuids["swap"] = "swap-uuid";
+        context.Uuids["data"] = "data-uuid";
+        return context;
+    }
+
+    [Fact]
+    public void BuildFstab_UsesUuidsAndConfiguredFs()
+    {
+        var fstab = ChrootStep.BuildFstab(Context());
+
+        Assert.Contains("UUID=root-uuid / btrfs defaults,noatime 0 1", fstab);
+        Assert.Contains("UUID=efi-uuid /boot/efi vfat umask=0077 0 1", fstab);
+        Assert.Contains("UUID=swap-uuid none swap sw 0 0", fstab);
+        Assert.Contains("UUID=data-uuid /srv/nas btrfs defaults,noatime 0 2", fstab);
+    }
+
+    [Fact]
+    public void BuildFstab_Ext4RootAndNoData()
+    {
+        var fstab = ChrootStep.BuildFstab(Context(rootFs: RootFileSystem.Ext4));
+
+        Assert.Contains("UUID=root-uuid / ext4 defaults,noatime 0 1", fstab);
+    }
+
+    [Fact]
+    public void BuildFstab_OmitsOptionalEntriesWhenAbsent()
+    {
+        var context = Context(data: new DataDiskConfig { Mode = DataDiskMode.None });
+        context.Uuids.Remove("efi");
+        context.Uuids.Remove("swap");
+        context.Uuids.Remove("data");
+
+        var fstab = ChrootStep.BuildFstab(context);
+
+        Assert.Single(fstab.TrimEnd().Split('\n'));
+    }
+
+    [Fact]
+    public void BuildFstab_LuksData_UsesMapperDevice()
+    {
+        var context = Context(data: new DataDiskConfig
+        {
+            Mode = DataDiskMode.Luks,
+            Disk = "/dev/sdb",
+            FileSystem = DataFileSystem.Btrfs,
+            LuksMapperName = "fortos-data",
+        });
+        context.Uuids["data-luks"] = "luks-container-uuid";
+
+        var fstab = ChrootStep.BuildFstab(context);
+
+        Assert.Contains("/dev/mapper/fortos-data /srv/nas btrfs defaults,noatime 0 2", fstab);
+        Assert.DoesNotContain("UUID=data-uuid /srv/nas", fstab);
+    }
+
+    [Fact]
+    public void BuildCrypttab_LuksData_WritesMapperEntry()
+    {
+        var context = Context(data: new DataDiskConfig
+        {
+            Mode = DataDiskMode.Luks,
+            Disk = "/dev/sdb",
+            LuksMapperName = "fortos-data",
+        });
+        context.Uuids["data-luks"] = "luks-container-uuid";
+
+        var crypttab = ChrootStep.BuildCrypttab(context);
+
+        Assert.Equal("fortos-data UUID=luks-container-uuid none luks\n", crypttab);
+    }
+
+    [Fact]
+    public void BuildCrypttab_NoLuks_IsEmpty()
+    {
+        var context = Context(data: new DataDiskConfig { Mode = DataDiskMode.None });
+
+        Assert.Equal(string.Empty, ChrootStep.BuildCrypttab(context));
+    }
+}

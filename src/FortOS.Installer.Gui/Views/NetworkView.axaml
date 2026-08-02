@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             x:DataType="vm:NetworkViewModel"
+             x:Class="FortOS.Installer.Gui.Views.NetworkView">
+    <StackPanel Spacing="16" MaxWidth="640" VerticalAlignment="Center" HorizontalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="24">
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding L[network.hostname]}"/>
+                <TextBox Text="{Binding Hostname}" MinWidth="220"/>
+            </StackPanel>
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding L[network.mode]}"/>
+                <ComboBox ItemsSource="{Binding ModeOptions}" SelectedItem="{Binding Mode}" MinWidth="140"/>
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="8" IsVisible="{Binding ShowStaticFields}">
+            <TextBlock Text="{Binding L[network.address]}"/>
+            <TextBox Text="{Binding Address}" MinWidth="280"/>
+            <TextBlock Text="{Binding L[network.gateway]}"/>
+            <TextBox Text="{Binding Gateway}" MinWidth="280"/>
+            <TextBlock Text="{Binding L[network.dns]}"/>
+            <TextBox Text="{Binding Dns}" MinWidth="280"/>
+        </StackPanel>
+
+        <TextBlock Text="{Binding L[network.hint]}"
+                   Foreground="#9BA6B5" FontSize="12"/>
+    </StackPanel>
+</UserControl>

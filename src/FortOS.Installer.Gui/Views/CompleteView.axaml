@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             x:DataType="vm:CompleteViewModel"
+             x:Class="FortOS.Installer.Gui.Views.CompleteView">
+    <StackPanel Spacing="20" MaxWidth="640" VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock Text="{Binding L[complete.title]}" FontSize="28" FontWeight="Bold" Foreground="#4CAF50"/>
+        <TextBlock Text="{Binding Guidance}" TextWrapping="Wrap" FontSize="14" LineHeight="24"/>
+        <StackPanel Orientation="Horizontal" Spacing="16">
+            <Button Content="{Binding L[complete.reboot]}" Command="{Binding RebootCommand}" Classes="Primary" Padding="24,10"/>
+            <Button Content="{Binding L[complete.shutdown]}" Command="{Binding ShutdownCommand}" Padding="24,10"/>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

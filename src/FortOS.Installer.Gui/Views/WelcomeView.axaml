@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             x:DataType="vm:WelcomeViewModel"
+             x:Class="FortOS.Installer.Gui.Views.WelcomeView">
+    <StackPanel Spacing="20" MaxWidth="640" VerticalAlignment="Center" HorizontalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center">
+            <!-- 品牌色块 -->
+            <Border Width="48" Height="48" CornerRadius="10" Background="#00B4D8">
+                <TextBlock Text="F" FontSize="28" FontWeight="Bold" Foreground="White"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock Text="{Binding L[welcome.title]}" FontSize="44" FontWeight="Bold" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Text="{Binding L[welcome.subtitle]}" FontSize="16" Foreground="#9BA6B5" HorizontalAlignment="Center"/>
+        <TextBlock Text="{Binding Version, StringFormat='v{0}'}" FontSize="12" Foreground="#6B7686" HorizontalAlignment="Center"/>
+        <StackPanel Spacing="8" Margin="0,24,0,0">
+            <TextBlock Text="{Binding L[welcome.language]}"/>
+            <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" HorizontalAlignment="Stretch"/>
+        </StackPanel>
+        <StackPanel Spacing="8">
+            <TextBlock Text="{Binding L[welcome.keyboard]}"/>
+            <ComboBox ItemsSource="{Binding Keyboards}" SelectedItem="{Binding Keyboard}" HorizontalAlignment="Stretch"/>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

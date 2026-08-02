@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             x:DataType="vm:InstallViewModel"
+             x:Class="FortOS.Installer.Gui.Views.InstallView">    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,16">
+            <TextBlock Text="{Binding PhaseText}" FontSize="16" FontWeight="Bold"/>
+            <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" Height="14"/>
+            <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding IsFailed}">
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#FF6B6B" TextWrapping="Wrap" MaxWidth="520"/>
+                <Button Content="{Binding L[install.retry]}" Command="{Binding RetryCommand}"/>
+                <Button Content="{Binding L[install.reboot]}" Command="{Binding RebootCommand}"/>
+            </StackPanel>
+        </StackPanel>
+        <Border Background="#15181D" CornerRadius="6" Padding="12">
+            <ListBox ItemsSource="{Binding LogLines}" FontFamily="Cascadia Mono,Consolas,monospace"
+                     FontSize="12" Background="Transparent"/>
+        </Border>
+    </DockPanel>
+</UserControl>

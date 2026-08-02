@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/FortOS.Agent/FortOS.Agent.csproj" />
     <Project Path="src/FortOS.Api/FortOS.Api.csproj" />
+    <Project Path="src/FortOS.Installer.Core/FortOS.Installer.Core.csproj" />
+    <Project Path="src/FortOS.Installer.Cli/FortOS.Installer.Cli.csproj" />
+    <Project Path="src/FortOS.Installer.Gui/FortOS.Installer.Gui.csproj" />
     <Project Path="src/FortOS.Cli/FortOS.Cli.csproj" />
     <Project Path="src/FortOS.Core/FortOS.Core.csproj" />
     <Project Path="src/FortOS.Modules.Agent/FortOS.Modules.Agent.csproj" />
@@ -18,5 +21,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FortOS.Tests.Integration/FortOS.Tests.Integration.csproj" />
+    <Project Path="tests/FortOS.Tests.Installer/FortOS.Tests.Installer.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             x:DataType="vm:AccountViewModel"
+             x:Class="FortOS.Installer.Gui.Views.AccountView">
+    <ScrollViewer>
+        <StackPanel Spacing="16" MaxWidth="640" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[account.username]}"/>
+                    <TextBox Text="{Binding Username}" MinWidth="220"/>
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[account.timezone]}"/>
+                    <ComboBox ItemsSource="{Binding Timezones}" SelectedItem="{Binding Timezone}" MinWidth="180"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[account.password]}"/>
+                    <TextBox Text="{Binding Password}" PasswordChar="●" MinWidth="220"/>
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[account.confirmPassword]}"/>
+                    <TextBox Text="{Binding ConfirmPassword}" PasswordChar="●" MinWidth="220"/>
+                </StackPanel>
+            </StackPanel>
+            <TextBlock Text="{Binding PasswordStrength}" Foreground="#9BA6B5" FontSize="12"/>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding L[account.sshKey]}"/>
+                <TextBox Text="{Binding SshKey}" MinWidth="560" Height="90" AcceptsReturn="True"
+                         PlaceholderText="ssh-ed25519 AAAA..."/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

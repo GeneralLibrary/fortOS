@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+        x:DataType="vm:MainWindowViewModel"
+        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="640"
+        x:Class="FortOS.Installer.Gui.Views.MainWindow"
+        Title="{Binding L[window.title]}"
+        Width="960" Height="640"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="None"
+        WindowState="Maximized">
+    <DockPanel>
+        <!-- 页眉 -->
+        <Border DockPanel.Dock="Top" Background="#1E2228" Padding="28,18">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right"
+                           Text="{Binding Wizard.CurrentPage.Title}"
+                           FontSize="16" Foreground="#9BA6B5"
+                           VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="{Binding L[window.title]}" FontSize="22" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Wizard.StepIndicator}"
+                               VerticalAlignment="Bottom" Foreground="#9BA6B5"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- 页脚导航 -->
+        <Border DockPanel.Dock="Bottom" Background="#1E2228" Padding="28,14">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="{Binding L[nav.next]}"
+                        Command="{Binding Wizard.NextCommand}"
+                        IsVisible="{Binding Wizard.IsWizardNavigationVisible}"
+                        Classes="Primary" Padding="20,8"/>
+                <Button DockPanel.Dock="Right" Content="{Binding L[nav.back]}"
+                        Command="{Binding Wizard.BackCommand}"
+                        Margin="0,0,12,0"
+                        IsVisible="{Binding Wizard.IsWizardNavigationVisible}"
+                        Padding="20,8"/>
+            </DockPanel>
+        </Border>
+
+        <!-- 当前页 -->
+        <ContentControl Content="{Binding Wizard.CurrentPage}" Margin="28"/>
+    </DockPanel>
+</Window>

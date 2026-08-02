@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             x:DataType="vm:DiskLayoutViewModel"
+             x:Class="FortOS.Installer.Gui.Views.DiskLayoutView">
+    <ScrollViewer>
+        <StackPanel Spacing="16" MaxWidth="860">
+            <TextBlock Text="{Binding L[disk.warning]}"
+                       Foreground="#FF6B6B" FontWeight="Bold" FontSize="15"/>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding L[disk.systemDisk]}"/>
+                <ComboBox ItemsSource="{Binding Disks}" SelectedItem="{Binding SelectedSystemDisk}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="{Binding Path}" FontWeight="Bold" MinWidth="110"/>
+                                <TextBlock Text="{Binding SizeHuman}" MinWidth="70"/>
+                                <TextBlock Text="{Binding Model}" Foreground="#9BA6B5"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[disk.rootFs]}"/>
+                    <ComboBox ItemsSource="{Binding RootFsOptions}" SelectedItem="{Binding RootFs}" MinWidth="140"/>
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[disk.swap]}"/>
+                    <ComboBox ItemsSource="{Binding SwapOptions}" SelectedItem="{Binding SwapMode}" MinWidth="120"/>
+                </StackPanel>
+                <StackPanel Spacing="8" IsVisible="{Binding ShowSwapSize}">
+                    <TextBlock Text="{Binding L[disk.swapSize]}"/>
+                    <TextBox Text="{Binding SwapSizeMiB}" MinWidth="120"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding L[disk.dataDisk]}"/>
+                <ComboBox ItemsSource="{Binding DataModeOptions}" SelectedItem="{Binding DataMode}" HorizontalAlignment="Stretch"/>
+            </StackPanel>
+
+            <StackPanel Spacing="16" IsVisible="{Binding ShowDataDiskPanel}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding L[disk.dataDiskHint]}"/>
+                    <ComboBox ItemsSource="{Binding Disks}" SelectedItem="{Binding SelectedDataDisk}" HorizontalAlignment="Stretch">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Text="{Binding Path}" FontWeight="Bold" MinWidth="110"/>
+                                    <TextBlock Text="{Binding SizeHuman}" MinWidth="70"/>
+                                    <TextBlock Text="{Binding Model}" Foreground="#9BA6B5"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="24">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding L[disk.fs]}"/>
+                        <ComboBox ItemsSource="{Binding DataFsOptions}" SelectedItem="{Binding DataFs}" MinWidth="140"/>
+                    </StackPanel>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding L[disk.label]}"/>
+                        <TextBox Text="{Binding DataLabel}" MinWidth="160"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

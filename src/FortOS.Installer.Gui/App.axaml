@@ -1,0 +1,22 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:semi="using:Semi.Avalonia"
+             xmlns:ursa="using:Ursa.Themes.Semi"
+             xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
+             xmlns:v="using:FortOS.Installer.Gui.Views"
+             x:Class="FortOS.Installer.Gui.App"
+             RequestedThemeVariant="Dark">
+    <Application.DataTemplates>
+        <DataTemplate DataType="vm:WelcomeViewModel"><v:WelcomeView/></DataTemplate>
+        <DataTemplate DataType="vm:DiskLayoutViewModel"><v:DiskLayoutView/></DataTemplate>
+        <DataTemplate DataType="vm:NetworkViewModel"><v:NetworkView/></DataTemplate>
+        <DataTemplate DataType="vm:AccountViewModel"><v:AccountView/></DataTemplate>
+        <DataTemplate DataType="vm:ConfirmViewModel"><v:ConfirmView/></DataTemplate>
+        <DataTemplate DataType="vm:InstallViewModel"><v:InstallView/></DataTemplate>
+        <DataTemplate DataType="vm:CompleteViewModel"><v:CompleteView/></DataTemplate>
+    </Application.DataTemplates>
+    <Application.Styles>
+        <semi:SemiTheme />
+        <ursa:UrsaSemiTheme />
+    </Application.Styles>
+</Application>
