@@ -29,6 +29,29 @@ for component in /usr/bin/Xorg /usr/bin/openbox \
     fi
 done
 
+# Avalonia 安装器运行时库断言:fortos-installer-gui 在启动时 dlopen 这些
+# X11/Skia 库,缺任意一个都会静默崩溃(表现为 live 环境无 GUI)。
+# 与 package-lists/fortos.list.chroot 中的条目一一对应;缺失直接失败,
+# 让构建日志指出具体库,而不是发布后开机黑屏。
+required_libs="
+libICE.so.6 libSM.so.6 libX11.so.6 libXcomposite.so.1 libXcursor.so.1
+libXdamage.so.1 libXext.so.6 libXfixes.so.3 libXi.so.6 libXinerama.so.1
+libXrandr.so.2 libXrender.so.1 libXtst.so.6 libxkbcommon.so.0
+libxkbcommon-x11.so.0 libfontconfig.so.1 libfreetype.so.6
+libGL.so.1 libEGL.so.1
+"
+missing_libs=""
+for lib in ${required_libs}; do
+    if ! ldconfig -p 2>/dev/null | grep -q "${lib} "; then
+        missing_libs="${missing_libs} ${lib}"
+    fi
+done
+if [ -n "${missing_libs}" ]; then
+    echo "error: missing Avalonia installer runtime libraries:${missing_libs}" >&2
+    echo "       add the corresponding packages to package-lists/fortos.list.chroot" >&2
+    exit 1
+fi
+
 systemctl enable fortos-installer.service
 
 echo "=== FortOS Installer GUI Hook Complete ==="

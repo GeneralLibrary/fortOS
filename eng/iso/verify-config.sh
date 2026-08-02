@@ -45,4 +45,19 @@ if grep -q '^task-.*-desktop$' "${CONFIG_ROOT}/package-lists/fortos.list.chroot"
     exit 1
 fi
 
+# Avalonia installer runtime library packages — keep in sync with the
+# required_libs assertion in hooks/live/0150-installer-gui.hook.chroot.
+avalon_libs=(
+    libice6 libsm6 libx11-6 libxcomposite1 libxcursor1 libxdamage1
+    libxext6 libxfixes3 libxi6 libxinerama1 libxrandr2 libxrender1
+    libxtst6 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libfreetype6
+    libgl1 libegl1
+)
+for libpkg in "${avalon_libs[@]}"; do
+    if ! grep -q "^${libpkg}$" "${CONFIG_ROOT}/package-lists/fortos.list.chroot"; then
+        echo "error: package missing from fortos.list.chroot: ${libpkg}" >&2
+        exit 1
+    fi
+done
+
 echo "Debian ISO configuration is complete."

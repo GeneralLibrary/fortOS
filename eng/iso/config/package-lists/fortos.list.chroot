@@ -55,6 +55,30 @@ gdisk
 dosfstools
 cryptsetup
 
+# Avalonia 12 GUI runtime libraries (X11 backend + Skia rendering). The
+# installer binary dlopens these at startup — missing any one crashes the
+# wizard silently, so they are also asserted at build time by the
+# 0150-installer-gui hook (missing → build fails with the exact library).
+libice6
+libsm6
+libx11-6
+libxcomposite1
+libxcursor1
+libxdamage1
+libxext6
+libxfixes3
+libxi6
+libxinerama1
+libxrandr2
+libxrender1
+libxtst6
+libxkbcommon0
+libxkbcommon-x11-0
+libfontconfig1
+libfreetype6
+libgl1
+libegl1
+
 # Bootloader toolchain used by the installer's BootloaderStep (design §5.5).
 # grub-install executes from the live environment; signed shim + grub modules
 # keep the Secure Boot chain intact.
