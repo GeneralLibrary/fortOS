@@ -8,6 +8,7 @@ using FortOS.Tests.Installer.Fakes;
 
 namespace FortOS.Tests.Installer.Gui;
 
+[Collection("Gui.Localization")]
 public class MainWindowViewModelTests
 {
     private const string DisksJson = """

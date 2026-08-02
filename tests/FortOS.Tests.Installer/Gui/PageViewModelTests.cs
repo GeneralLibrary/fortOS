@@ -5,6 +5,7 @@ using FortOS.Tests.Installer.Fakes;
 
 namespace FortOS.Tests.Installer.Gui;
 
+[Collection("Gui.Localization")]
 public class PageViewModelTests
 {
     private const string DisksJson = """

@@ -2,6 +2,7 @@ using FortOS.Installer.Gui.ViewModels;
 
 namespace FortOS.Tests.Installer.Gui;
 
+[Collection("Gui.Localization")]
 public class WizardViewModelTests
 {
     private sealed class PageStub(string title, bool isValid, bool mutable = false) : IWizardPage

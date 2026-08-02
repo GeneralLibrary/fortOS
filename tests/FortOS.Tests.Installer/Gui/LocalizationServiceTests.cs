@@ -9,6 +9,7 @@ using FortOS.Tests.Installer.Fakes;
 
 namespace FortOS.Tests.Installer.Gui;
 
+[Collection("Gui.Localization")]
 public class LocalizationServiceTests
 {
     private static void Reset() => LocalizationService.Current.SetLanguage("en");
