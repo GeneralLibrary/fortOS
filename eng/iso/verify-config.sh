@@ -11,6 +11,10 @@ required_files=(
     "includes.chroot/etc/systemd/system/fortos.service"
     "includes.chroot/etc/tmpfiles.d/fortos.conf"
     "hooks/live/0100-fortos-runtime.hook.chroot"
+    "bootloaders/syslinux_common/menu.cfg"
+    "bootloaders/syslinux_common/live.cfg.in"
+    "bootloaders/syslinux_common/install_gui.cfg"
+    "bootloaders/grub-pc/grub.cfg"
 )
 
 for relative_path in "${required_files[@]}"; do
