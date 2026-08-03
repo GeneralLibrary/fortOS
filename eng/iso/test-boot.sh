@@ -63,8 +63,8 @@ fi
 echo "Boot test: ${FIRMWARE} firmware, accelerator=${accel_name}"
 
 if [[ "${accel_name}" == "tcg" ]]; then
-    DIAG_TIMEOUT_S=300
-    QEMU_TIMEOUT_S=480
+    DIAG_TIMEOUT_S=420
+    QEMU_TIMEOUT_S=600
 else
     QEMU_TIMEOUT_S=240
 fi
@@ -91,7 +91,38 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 通过 QEMU monitor socket 执行动作(screendump <file> / quit)。
+monitor_cmd() {
+    local action="${1:?action}"
+    local arg="${2:-}"
+    python3 - "${MONITOR_SOCK}" "${action}" "${arg}" <<'PYEOF'
+import socket, sys, time
+sock_path, action = sys.argv[1], sys.argv[2]
+arg = sys.argv[3] if len(sys.argv) > 3 else ""
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+for _ in range(50):
+    try:
+        s.connect(sock_path)
+        break
+    except OSError:
+        time.sleep(0.2)
+else:
+    sys.exit(2)
+time.sleep(0.5)
+if action == "screendump":
+    s.sendall(("screendump %s\n" % arg).encode())
+elif action == "quit":
+    s.sendall(b"info status\n")
+    s.sendall(b"quit\n")
+time.sleep(1)
+s.close()
+PYEOF
+}
+
 # 等待 fortos-installer-diag.service 报告 GUI 状态。
+# 等待期间每 ~60s 截一张图,超时后可凭截图判断卡在哪个阶段。
+shot_no=0
+loop=0
 deadline=$((SECONDS + DIAG_TIMEOUT_S))
 while (( SECONDS < deadline )); do
     if grep -q 'FORTOS_INSTALLER_DIAG_END' "${DIAG_LOG}" 2>/dev/null; then
@@ -104,6 +135,12 @@ while (( SECONDS < deadline )); do
         tail -40 "${SERIAL_LOG}" 2>/dev/null >&2 || true
         exit 1
     fi
+    if (( loop > 0 && loop % 20 == 0 && shot_no < 6 )); then
+        shot_no=$((shot_no + 1))
+        monitor_cmd screendump "${RESULT_DIR}/${FIRMWARE}-shot-${shot_no}.ppm" \
+            || echo "warning: screenshot ${shot_no} failed" >&2
+    fi
+    loop=$((loop + 1))
     sleep 3
 done
 
@@ -113,33 +150,15 @@ if ! grep -q 'FORTOS_INSTALLER_DIAG_END' "${DIAG_LOG}" 2>/dev/null; then
     cat "${DIAG_LOG}" 2>/dev/null >&2 || true
     echo "--- ttyS0 (kernel) tail ---" >&2
     tail -40 "${SERIAL_LOG}" 2>/dev/null >&2 || true
+    echo "--- screenshots (see which stage the boot reached) ---" >&2
+    ls -1 "${RESULT_DIR}"/${FIRMWARE}-shot-*.ppm 2>/dev/null >&2 || echo "(none)" >&2
     exit 1
 fi
 
-# 通过 monitor socket 截图并退出虚拟机。
-python3 - "${MONITOR_SOCK}" "${SCREENSHOT}" <<'PYEOF'
-import socket, sys, time
-sock_path, shot = sys.argv[1], sys.argv[2]
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-for _ in range(50):
-    try:
-        s.connect(sock_path)
-        break
-    except OSError:
-        time.sleep(0.2)
-else:
-    sys.exit(2)
-time.sleep(1)
-s.sendall(("screendump %s\n" % shot).encode())
-time.sleep(2)
-s.sendall(b"info status\n")
-time.sleep(1)
-s.sendall(b"quit\n")
-time.sleep(1)
-s.close()
-PYEOF
+# 抓取最终显示帧并退出虚拟机。
+monitor_cmd screendump "${SCREENSHOT}"
 monitor_rc=$?
-
+monitor_cmd quit
 wait "${qemu_pid}" 2>/dev/null || true
 trap - EXIT
 

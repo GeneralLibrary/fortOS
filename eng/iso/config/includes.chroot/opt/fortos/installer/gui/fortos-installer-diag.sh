@@ -7,6 +7,11 @@
 # -------------------------------------------------------------------------
 set -eu
 
+# 立即标记:即使后续失败,test-boot.sh 也能确认本服务已执行。
+{
+    echo "=== FORTOS_INSTALLER_DIAG_START ==="
+} > /dev/ttyS1 2>/dev/null || true
+
 # 给 Xorg + Avalonia 留出启动时间(服务已启动,此处仅等渲染就绪)。
 sleep 20
 
