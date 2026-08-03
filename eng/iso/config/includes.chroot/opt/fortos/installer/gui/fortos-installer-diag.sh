@@ -37,5 +37,14 @@ done
     echo "xorg_pid=$(pgrep -x Xorg -o 2>/dev/null || pgrep -x Xorg.wrap -o 2>/dev/null || echo none)"
     echo "gui=$(pgrep -f fortos-installer-gui >/dev/null 2>&1 && echo alive || echo dead)"
     echo "gui_pid=$(pgrep -f fortos-installer-gui -o 2>/dev/null || echo none)"
+    echo "--- fortos-installer.service journal (last 40 lines) ---"
+    journalctl -u fortos-installer.service -n 40 --no-pager 2>/dev/null \
+        | tail -40 || echo "(journal unavailable)"
+    echo "--- kiosk / X / installer processes ---"
+    ps -ef | grep -E 'xinit|Xorg|openbox|fortos-installer' | grep -v grep \
+        | head -15 || true
+    echo "--- fortos-installer-gui stderr/stdout (journalctl 全部) ---"
+    journalctl -u fortos-installer.service --no-pager 2>/dev/null \
+        | grep -iE 'error|exception|fail|killed|crash' | tail -15 || true
     echo "=== FORTOS_INSTALLER_DIAG_END ==="
 } > /dev/ttyS1 2>/dev/null || true
