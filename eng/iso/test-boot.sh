@@ -196,6 +196,29 @@ if ! grep -q 'FORTOS_INSTALLER_DIAG_END' "${DIAG_LOG}" 2>/dev/null; then
     else
         echo "qemu exited — monitor log above shows why" >&2
     fi
+    # 通过 monitor socket 读取 guest CPU 状态:如果 RIP 停在复位向量
+    # (0xfffffff0)附近,说明内核从未被 QEMU 跳转执行(-kernel 加载了但
+    # guest 没跑);如果 RIP 在内核代码段,说明内核执行中卡住。这是区分
+    # "QEMU 未启动 guest" 与 "guest 启动后崩溃" 的决定性证据。
+    echo "--- QEMU guest state (via monitor socket) ---" >&2
+    python3 - "${MONITOR_SOCK}" <<'PYEOF' || echo "(monitor socket unavailable)" >&2
+import socket, sys, time
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    s.connect(sys.argv[1])
+except OSError:
+    sys.exit(1)
+s.settimeout(5)
+for cmd in (b"info status\n", b"info registers\n"):
+    try:
+        s.sendall(cmd)
+        time.sleep(0.5)
+        data = s.recv(65536)
+        print(data.decode(errors="replace"))
+    except Exception as e:
+        print("(error reading %r: %s)" % (cmd, e))
+s.close()
+PYEOF
     echo "--- ttyS1 (diag) ---" >&2
     cat "${DIAG_LOG}" 2>/dev/null >&2 || true
     echo "--- ttyS0 (kernel) tail ---" >&2
