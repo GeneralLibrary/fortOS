@@ -82,11 +82,20 @@ jobs:
         shell: bash
         run: |
           tag="${{ inputs.version || github.event.release.tag_name || github.ref_name }}"
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            gh release upload "${tag}" artifacts/iso/* --clobber
-          else
-            gh release create "${tag}" artifacts/iso/* --title "${tag}" --generate-notes
-          fi
+          max_attempts=5
+          for attempt in $(seq 1 "${max_attempts}"); do
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              gh release upload "${tag}" artifacts/iso/* --clobber && exit 0
+            else
+              gh release create "${tag}" artifacts/iso/* --title "${tag}" --generate-notes && exit 0
+            fi
+            if (( attempt == max_attempts )); then
+              echo "::error::Failed to publish ISO assets after ${max_attempts} attempts."
+              exit 1
+            fi
+            echo "::warning::Publish attempt ${attempt}/${max_attempts} failed. Retrying..."
+            sleep $(( attempt * 5 ))
+          done
 
   smoke-boot:
     name: Boot smoke test (BIOS + UEFI → FortOS GUI)
