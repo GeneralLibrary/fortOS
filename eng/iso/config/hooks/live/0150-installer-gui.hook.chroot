@@ -48,7 +48,7 @@ libGL.so.1 libEGL.so.1
 "
 missing_libs=""
 for lib in ${required_libs}; do
-    if ! ldconfig -p 2>/dev/null | grep -q "${lib} "; then
+    if ! ldconfig -p 2>/dev/null | grep -Fq "${lib} "; then
         missing_libs="${missing_libs} ${lib}"
     fi
 done
