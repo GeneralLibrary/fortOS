@@ -60,7 +60,7 @@ unsquashfs -f -d "${EXTRACTED_ROOT}" "${SQUASHFS_PATH}" "${required_paths[@]}" \
     >/dev/null
 
 for path in "${required_paths[@]}"; do
-    if [[ ! -e "${EXTRACTED_ROOT}/${path}" && ! -L "${EXTRACTED_ROOT}/${path}" ]]; then
+    if [[ ! -e "${EXTRACTED_ROOT}/${path}" ]]; then
         echo "error: required installed path is missing: /${path}" >&2
         exit 1
     fi
