@@ -64,6 +64,21 @@ _iso_extract /live/initrd.img "${INITRD}" \
     || _iso_extract /isolinux/live/initrd.img "${INITRD}" \
     || { echo "error: live initrd.img not found in ISO." >&2; exit 1; }
 
+# 提取后校验:空文件或非内核镜像会令 QEMU 静默挂起 420 s 而无任何输出,
+# 尽早失败并把实际内容(类型/大小)写进日志,便于定位提取环节的问题。
+if [[ ! -s "${VMLINUZ}" ]]; then
+    echo "error: extracted vmlinuz is empty or missing: ${VMLINUZ}" >&2
+    exit 1
+fi
+if ! file "${VMLINUZ}" | grep -q 'Linux kernel'; then
+    echo "error: extracted vmlinuz is not a Linux kernel image: $(file "${VMLINUZ}")" >&2
+    exit 1
+fi
+if [[ ! -s "${INITRD}" ]]; then
+    echo "error: extracted initrd.img is empty or missing: ${INITRD}" >&2
+    exit 1
+fi
+
 firmware_args=()
 if [[ "${FIRMWARE}" == "uefi" ]]; then
     cp "${OVMF_VARS_TEMPLATE}" "${VARS_FILE}"
@@ -173,6 +188,14 @@ done
 
 if ! grep -q 'FORTOS_INSTALLER_DIAG_END' "${DIAG_LOG}" 2>/dev/null; then
     echo "error: FortOS installer GUI diagnostics never completed within ${DIAG_TIMEOUT_S}s." >&2
+    echo "--- QEMU monitor log (qemu stdout/stderr) ---" >&2
+    cat "${MONITOR_LOG}" 2>/dev/null >&2 || echo "(no QEMU output captured)" >&2
+    echo "--- QEMU process state ---" >&2
+    if kill -0 "${qemu_pid}" 2>/dev/null; then
+        echo "qemu still running (pid ${qemu_pid})" >&2
+    else
+        echo "qemu exited — monitor log above shows why" >&2
+    fi
     echo "--- ttyS1 (diag) ---" >&2
     cat "${DIAG_LOG}" 2>/dev/null >&2 || true
     echo "--- ttyS0 (kernel) tail ---" >&2
