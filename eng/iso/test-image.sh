@@ -60,7 +60,30 @@ unsquashfs -f -d "${EXTRACTED_ROOT}" "${SQUASHFS_PATH}" "${required_paths[@]}" \
     >/dev/null
 
 for path in "${required_paths[@]}"; do
-    if [[ ! -e "${EXTRACTED_ROOT}/${path}" ]]; then
+    target="${EXTRACTED_ROOT}/${path}"
+    if [[ -L "${target}" ]]; then
+        # Symlink — 在镜像根内解析目标,而非宿主机文件系统。
+        # 绝对路径链接(如 /usr/local/bin/fortos -> /opt/fortos/cli/FortOS.Cli)
+        # 在 CI runner 上宿主机不存在 /opt/fortos,裸 -e 会跟随并误报缺失;
+        # 相对链接则基于链接所在目录解析。越界/悬空仍按错误处理。
+        link_target="$(readlink "${target}")"
+        case "${link_target}" in
+            /*) candidate="${EXTRACTED_ROOT}/${link_target#/}" ;;
+            *)  candidate="$(dirname -- "${target}")/${link_target}" ;;
+        esac
+        resolved="$(realpath -m "${candidate}")"
+        case "${resolved}" in
+            "${EXTRACTED_ROOT}"|"${EXTRACTED_ROOT}"/*) ;;
+            *)
+                echo "error: required installed path resolves outside the image root: /${path} -> ${link_target}" >&2
+                exit 1
+                ;;
+        esac
+        if [[ ! -e "${resolved}" ]]; then
+            echo "error: required installed path is a broken symlink: /${path} -> ${link_target}" >&2
+            exit 1
+        fi
+    elif [[ ! -e "${target}" ]]; then
         echo "error: required installed path is missing: /${path}" >&2
         exit 1
     fi
