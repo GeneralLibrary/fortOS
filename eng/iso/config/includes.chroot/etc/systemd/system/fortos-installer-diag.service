@@ -8,7 +8,7 @@ After=fortos-installer.service
 Type=oneshot
 Environment=HOME=/root
 ExecStart=/opt/fortos/installer/gui/fortos-installer-diag.sh
-TimeoutStartSec=60
+TimeoutStartSec=360
 
 [Install]
 WantedBy=multi-user.target

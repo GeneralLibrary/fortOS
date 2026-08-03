@@ -12,8 +12,18 @@ set -eu
     echo "=== FORTOS_INSTALLER_DIAG_START ==="
 } > /dev/ttyS1 2>/dev/null || true
 
-# 给 Xorg + Avalonia 留出启动时间(服务已启动,此处仅等渲染就绪)。
-sleep 20
+# 等待 Xorg 和 Avalonia 安装器启动。
+# TCG 软件仿真模式下 JIT 和图形初始化远慢于实机;默认轮询上限 300 s。
+# 内核命令行可通过 FORTOS_DIAG_WAIT_S=<秒数> 覆盖该值。
+WAIT_LIMIT="${FORTOS_DIAG_WAIT_S:-300}"
+elapsed=0
+while [ "${elapsed}" -lt "${WAIT_LIMIT}" ]; do
+    if pgrep -x Xorg >/dev/null 2>&1 && pgrep -f fortos-installer-gui >/dev/null 2>&1; then
+        break
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+done
 
 {
     echo "=== FORTOS_INSTALLER_DIAG ==="

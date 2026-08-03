@@ -24,7 +24,7 @@ if [[ "${FIRMWARE}" != "bios" && "${FIRMWARE}" != "uefi" ]]; then
     exit 1
 fi
 
-for command in qemu-system-x86_64 python3; do
+for command in qemu-system-x86_64 python3 xorriso; do
     if ! command -v "${command}" >/dev/null 2>&1; then
         echo "error: ${command} is required for the boot test." >&2
         exit 1
@@ -32,14 +32,36 @@ for command in qemu-system-x86_64 python3; do
 done
 
 mkdir -p "${RESULT_DIR}"
+readonly BOOT_DIR="${RESULT_DIR}/boot"
 readonly SCREENSHOT="${RESULT_DIR}/${FIRMWARE}.ppm"
 readonly MONITOR_LOG="${RESULT_DIR}/${FIRMWARE}-monitor.log"
 readonly SERIAL_LOG="${RESULT_DIR}/${FIRMWARE}-serial.log"
 readonly DIAG_LOG="${RESULT_DIR}/${FIRMWARE}-diag.log"
 readonly MONITOR_SOCK="${RESULT_DIR}/${FIRMWARE}-monitor.sock"
 readonly VARS_FILE="${RESULT_DIR}/${FIRMWARE}-vars.fd"
+readonly VMLINUZ="${BOOT_DIR}/vmlinuz"
+readonly INITRD="${BOOT_DIR}/initrd.img"
 
 rm -f "${SCREENSHOT}" "${MONITOR_LOG}" "${SERIAL_LOG}" "${DIAG_LOG}" "${MONITOR_SOCK}"
+
+# -------------------------------------------------------------------------
+# 从 ISO 中提取 live 内核和 initrd,直接传给 QEMU(-kernel/-initrd/-append),
+# 绕过 ISO 引导器(isolinux/GRUB)。ISO 引导器在 TCG 软件仿真模式下会因
+# vesamenu.c32 初始化或超时配置问题停止响应,导致内核从未启动、串口日志
+# 为空。直接引导可复现与引导器相同的内核命令行(boot=live …),同时将
+# 内核启动推前 30-40 秒(省去引导菜单倒计时),让 420 s 诊断窗口充裕。
+# -------------------------------------------------------------------------
+mkdir -p "${BOOT_DIR}"
+_iso_extract() {
+    xorriso -osirrox on -indev "${ISO_PATH}" -extract "${1}" "${2}" \
+        >/dev/null 2>&1
+}
+_iso_extract /live/vmlinuz "${VMLINUZ}" \
+    || _iso_extract /isolinux/live/vmlinuz "${VMLINUZ}" \
+    || { echo "error: live vmlinuz not found in ISO." >&2; exit 1; }
+_iso_extract /live/initrd.img "${INITRD}" \
+    || _iso_extract /isolinux/live/initrd.img "${INITRD}" \
+    || { echo "error: live initrd.img not found in ISO." >&2; exit 1; }
 
 firmware_args=()
 if [[ "${FIRMWARE}" == "uefi" ]]; then
@@ -70,11 +92,15 @@ else
 fi
 
 # 后台启动 QEMU:ttyS0 留内核日志,ttyS1 收 GUI 诊断输出,monitor 走 unix socket。
+# -cdrom 挂载 ISO 供 live-boot initramfs 定位 squashfs;引导由 -kernel/-initrd 完成。
+# earlycon 在串行驱动完整初始化之前就输出内核消息,便于诊断早期崩溃。
 timeout "${QEMU_TIMEOUT_S}s" qemu-system-x86_64 \
     "${accel_args[@]}" \
     -m 2048 \
     -smp 2 \
-    -boot order=d \
+    -kernel "${VMLINUZ}" \
+    -initrd "${INITRD}" \
+    -append "boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=ttyS0,115200n8 earlycon" \
     -cdrom "${ISO_PATH}" \
     -display vnc=127.0.0.1:99 \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \
