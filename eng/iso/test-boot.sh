@@ -41,6 +41,7 @@ readonly MONITOR_SOCK="${RESULT_DIR}/${FIRMWARE}-monitor.sock"
 readonly VARS_FILE="${RESULT_DIR}/${FIRMWARE}-vars.fd"
 readonly VMLINUZ="${BOOT_DIR}/vmlinuz"
 readonly INITRD="${BOOT_DIR}/initrd.img"
+readonly LIVE_BOOT_APPEND="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8 earlycon"
 
 rm -f "${SCREENSHOT}" "${MONITOR_LOG}" "${SERIAL_LOG}" "${DIAG_LOG}" "${MONITOR_SOCK}"
 
@@ -100,7 +101,7 @@ timeout "${QEMU_TIMEOUT_S}s" qemu-system-x86_64 \
     -smp 2 \
     -kernel "${VMLINUZ}" \
     -initrd "${INITRD}" \
-    -append "boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=ttyS0,115200n8 earlycon" \
+    -append "${LIVE_BOOT_APPEND}" \
     -cdrom "${ISO_PATH}" \
     -display vnc=127.0.0.1:99 \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \

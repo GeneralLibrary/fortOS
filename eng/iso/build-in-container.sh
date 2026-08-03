@@ -112,6 +112,8 @@ configure_live_image() {
         echo "    To create the cache: cd 'fortos debian12' && bash scripts/bootstrap-debian12.sh debs"
     fi
 
+    local live_boot_append="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8"
+
     lb config \
         --mode debian \
         --distribution bookworm \
@@ -122,7 +124,7 @@ configure_live_image() {
         --debian-installer live \
         --debian-installer-distribution bookworm \
         --debian-installer-gui true \
-        --bootappend-live "boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=ttyS0,115200n8" \
+        --bootappend-live "${live_boot_append}" \
         --iso-application "FortOS Debian 12 Installer" \
         --iso-publisher "FortOS Project" \
         --iso-volume "FortOS_${SAFE_VERSION:0:20}" \

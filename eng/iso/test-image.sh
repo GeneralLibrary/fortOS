@@ -40,10 +40,14 @@ xorriso -osirrox on -indev "${ISO_PATH}" \
 required_paths=(
     "opt/fortos/api/FortOS.Api"
     "opt/fortos/cli/FortOS.Cli"
+    "opt/fortos/installer/gui/fortos-installer-gui"
+    "opt/fortos/installer/gui/fortos-installer-kiosk.sh"
     "etc/fortos/fortos.env"
     "etc/fortos/version"
     "etc/systemd/system/fortos.service"
+    "etc/systemd/system/fortos-installer.service"
     "etc/systemd/system/multi-user.target.wants/fortos.service"
+    "etc/systemd/system/multi-user.target.wants/fortos-installer.service"
     "etc/systemd/system/multi-user.target.wants/docker.service"
     "etc/apt/keyrings/docker.asc"
     "etc/apt/sources.list.d/docker.list"
@@ -64,8 +68,11 @@ done
 
 file "${EXTRACTED_ROOT}/opt/fortos/api/FortOS.Api" | grep -q 'ELF 64-bit.*x86-64'
 file "${EXTRACTED_ROOT}/opt/fortos/cli/FortOS.Cli" | grep -q 'ELF 64-bit.*x86-64'
+file "${EXTRACTED_ROOT}/opt/fortos/installer/gui/fortos-installer-gui" | grep -q 'ELF 64-bit.*x86-64'
 grep -q '^ExecStart=/opt/fortos/api/FortOS.Api$' \
     "${EXTRACTED_ROOT}/etc/systemd/system/fortos.service"
+grep -q '^ExecStart=/opt/fortos/installer/gui/fortos-installer-kiosk.sh$' \
+    "${EXTRACTED_ROOT}/etc/systemd/system/fortos-installer.service"
 grep -q '^FortOS_DATA_ROOT=/srv/nas$' \
     "${EXTRACTED_ROOT}/etc/fortos/fortos.env"
 

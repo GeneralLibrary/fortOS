@@ -189,7 +189,7 @@ lappend cmd \
     -drive "file=$cfgimg,format=raw,if=virtio" \
     -cdrom "$iso" \
     -kernel "$vmlinuz" -initrd "$initrd" \
-    -append "boot=live components hostname=fortos console=ttyS0,115200n8 user-autologin" \
+    -append "boot=live components hostname=fortos console=tty0 console=ttyS0,115200n8 user-autologin" \
     -nic user,model=virtio-net-pci \
     -serial "file:$serial_log" \
     -nographic -no-reboot

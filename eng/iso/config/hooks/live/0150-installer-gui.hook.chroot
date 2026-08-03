@@ -26,7 +26,8 @@ fi
 for component in /usr/bin/Xorg /usr/bin/openbox \
     /opt/fortos/installer/gui/fortos-installer-gui; do
     if [ ! -e "${component}" ]; then
-        echo "WARNING: expected installer component missing: ${component}" >&2
+        echo "error: expected installer component missing: ${component}" >&2
+        exit 1
     fi
 done
 
