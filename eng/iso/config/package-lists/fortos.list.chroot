@@ -59,12 +59,25 @@ cryptsetup
 # installer binary dlopens these at startup — missing any one crashes the
 # wizard silently, so they are also asserted at build time by the
 # 0150-installer-gui hook (missing → build fails with the exact library).
+# 运行期还会继续加载 Mesa/XCB/DRM 族库(见 CI 本地 strace 结果),否则
+# fortos-installer-gui 会在 xinit 会话里立即退出并触发 fortos-installer
+# systemd 重启循环。
 libice6
 libsm6
 libx11-6
+libx11-xcb1
+libxcb1
+libxcb-glx0
+libxcb-shm0
+libxcb-dri3-0
+libxcb-present0
+libxcb-xfixes0
+libxcb-randr0
+libxcb-sync1
 libxcomposite1
 libxcursor1
 libxdamage1
+libdrm2
 libxext6
 libxfixes3
 libxi6
@@ -77,6 +90,7 @@ libxkbcommon-x11-0
 libfontconfig1
 libfreetype6
 libgl1
+libgl1-mesa-dri
 libegl1
 
 # Bootloader toolchain used by the installer's BootloaderStep (design §5.5).
