@@ -38,10 +38,17 @@ cp "${PRESEED_PATH}" "${INSTALL_DIR}/preseed/preseed.cfg"
 rm -f "${DISK_PATH}" "${SERIAL_LOG}"
 qemu-img create -q -f qcow2 "${DISK_PATH}" 20G
 
+# GitHub runner 的嵌套虚拟化不保证可用(/dev/kvm 可能缺失),回退 TCG。
+if [[ -e /dev/kvm && -r /dev/kvm ]]; then
+    accel_args=(-machine q35,accel=kvm -cpu host)
+else
+    accel_args=(-machine q35,accel=tcg -cpu qemu64)
+    echo "note: /dev/kvm unavailable — using TCG software emulation (slower)."
+fi
+
 set +e
 timeout 30m qemu-system-x86_64 \
-    -machine q35,accel=kvm \
-    -cpu host \
+    "${accel_args[@]}" \
     -m 3072 \
     -smp 2 \
     -drive "file=${DISK_PATH},if=virtio,format=qcow2" \

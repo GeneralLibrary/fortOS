@@ -16,7 +16,8 @@ readonly FIRMWARE="${2:?firmware must be bios or uefi}"
 readonly RESULT_DIR="${3:?result directory is required}"
 readonly OVMF_CODE="${OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
 readonly OVMF_VARS_TEMPLATE="${OVMF_VARS_TEMPLATE:-/usr/share/OVMF/OVMF_VARS_4M.fd}"
-readonly DIAG_TIMEOUT_S="${DIAG_TIMEOUT_S:-150}"
+# 非 readonly:TCG 模式会放宽诊断超时。
+DIAG_TIMEOUT_S="${DIAG_TIMEOUT_S:-150}"
 
 if [[ "${FIRMWARE}" != "bios" && "${FIRMWARE}" != "uefi" ]]; then
     echo "error: firmware must be bios or uefi." >&2
@@ -49,10 +50,28 @@ if [[ "${FIRMWARE}" == "uefi" ]]; then
     )
 fi
 
+# -------------------------------------------------------------------------
+# 加速器选择:GitHub-hosted runner 的嵌套虚拟化是实验性支持(/dev/kvm
+# 不保证存在),KVM 不可用时回退 TCG 软件模拟(慢,放宽诊断超时)。
+# -------------------------------------------------------------------------
+accel_args=(-machine q35,accel=tcg -cpu qemu64)
+accel_name="tcg"
+if [[ -e /dev/kvm && -r /dev/kvm ]]; then
+    accel_args=(-machine q35,accel=kvm -cpu host)
+    accel_name="kvm"
+fi
+echo "Boot test: ${FIRMWARE} firmware, accelerator=${accel_name}"
+
+if [[ "${accel_name}" == "tcg" ]]; then
+    DIAG_TIMEOUT_S=300
+    QEMU_TIMEOUT_S=480
+else
+    QEMU_TIMEOUT_S=240
+fi
+
 # 后台启动 QEMU:ttyS0 留内核日志,ttyS1 收 GUI 诊断输出,monitor 走 unix socket。
-timeout 240s qemu-system-x86_64 \
-    -machine q35,accel=kvm \
-    -cpu host \
+timeout "${QEMU_TIMEOUT_S}s" qemu-system-x86_64 \
+    "${accel_args[@]}" \
     -m 2048 \
     -smp 2 \
     -boot order=d \
@@ -79,7 +98,10 @@ while (( SECONDS < deadline )); do
         break
     fi
     if ! kill -0 "${qemu_pid}" 2>/dev/null; then
-        echo "error: QEMU exited before diagnostics — see ${MONITOR_LOG}." >&2
+        echo "error: QEMU exited before diagnostics — ${MONITOR_LOG}:" >&2
+        cat "${MONITOR_LOG}" 2>/dev/null >&2 || true
+        echo "--- ttyS0 (kernel) tail ---" >&2
+        tail -40 "${SERIAL_LOG}" 2>/dev/null >&2 || true
         exit 1
     fi
     sleep 3
