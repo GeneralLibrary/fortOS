@@ -84,7 +84,13 @@ public class LocalizationServiceTests
     {
         Reset();
         var session = new InstallerSession([], new LsblkTool(new FakeRunner()), new RingLog());
-        var vm = new InstallViewModel(() => session, action => action());
+        var vm = new InstallViewModel(
+            new WelcomeViewModel(),
+            new DiskLayoutViewModel(new LsblkTool(new FakeRunner())),
+            new NetworkViewModel(),
+            new AccountViewModel(),
+            () => session,
+            action => action());
         vm.Phase = InstallerPhase.Copying;
         Assert.Equal("Phase: Copying", vm.PhaseText);
         LocalizationService.Current.SetLanguage("zh");

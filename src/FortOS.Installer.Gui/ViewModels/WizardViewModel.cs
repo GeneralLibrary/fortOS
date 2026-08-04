@@ -5,7 +5,7 @@ using FortOS.Installer.Gui.Localization;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 向导导航(设计稿 4):七页顺序导航,支持回退;进入执行页后隐藏导航。
+/// 向导导航(设计稿 4):顺序导航,支持回退;进入执行页后隐藏导航。
 /// </summary>
 public partial class WizardViewModel : ViewModelBase
 {

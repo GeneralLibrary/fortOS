@@ -11,7 +11,6 @@
         <DataTemplate DataType="vm:DiskLayoutViewModel"><v:DiskLayoutView/></DataTemplate>
         <DataTemplate DataType="vm:NetworkViewModel"><v:NetworkView/></DataTemplate>
         <DataTemplate DataType="vm:AccountViewModel"><v:AccountView/></DataTemplate>
-        <DataTemplate DataType="vm:ConfirmViewModel"><v:ConfirmView/></DataTemplate>
         <DataTemplate DataType="vm:InstallViewModel"><v:InstallView/></DataTemplate>
         <DataTemplate DataType="vm:CompleteViewModel"><v:CompleteView/></DataTemplate>
     </Application.DataTemplates>

@@ -3,6 +3,7 @@ using FortOS.Installer.Core.Models;
 using FortOS.Installer.Core.Session;
 using FortOS.Installer.Core.Steps;
 using FortOS.Installer.Core.Tools;
+using FortOS.Installer.Gui.Localization;
 using FortOS.Installer.Gui.ViewModels;
 using FortOS.Tests.Installer.Fakes;
 
@@ -124,21 +125,21 @@ public class MainWindowViewModelTests
     public async Task BeginInstall_WithoutSystemDisk_DoesNothing()
     {
         var vm = await CreateViewModelAsync();
-        vm.Wizard.JumpTo(4); // Confirm(即便绕过校验链)
+        vm.Wizard.JumpTo(4); // Install(即便绕过校验链)
 
         await vm.BeginInstallCommand.ExecuteAsync(null);
 
-        // 防御:未选系统盘时不前进、不执行。
-        Assert.IsType<ConfirmViewModel>(vm.Wizard.CurrentPage);
+        // 防御:未选系统盘时不启动安装。
+        Assert.IsType<InstallViewModel>(vm.Wizard.CurrentPage);
     }
 
     [Fact]
-    public async Task WizardWalkThrough_ReachesConfirmPage()
+    public async Task WizardWalkThrough_ReachesInstallPage()
     {
         var vm = await CreateViewModelAsync();
         FillPages(vm);
 
-        // Welcome(valid)→ 直接 Next 可达 Disk(选盘后 valid)→ Network(默认 valid)→ Account。
+        // Welcome(valid)→ 直接 Next 可达 Disk(选盘后 valid)→ Network(默认 valid)→ Account→ Install。
         Assert.True(vm.Wizard.CanGoNext);
         vm.Wizard.NextCommand.Execute(null);
         Assert.True(vm.Wizard.CanGoNext); // 磁盘页(已选盘)
@@ -148,7 +149,7 @@ public class MainWindowViewModelTests
         Assert.True(vm.Wizard.CanGoNext); // 账户页
         vm.Wizard.NextCommand.Execute(null);
 
-        Assert.IsType<ConfirmViewModel>(vm.Wizard.CurrentPage);
+        Assert.IsType<InstallViewModel>(vm.Wizard.CurrentPage);
     }
 
     [Fact]
@@ -157,7 +158,7 @@ public class MainWindowViewModelTests
         var vm = await CreateViewModelAsync();
         FillPages(vm);
 
-        vm.Wizard.JumpTo(4); // Confirm
+        vm.Wizard.JumpTo(4); // Install
         await vm.BeginInstallCommand.ExecuteAsync(null);
 
         Assert.IsType<CompleteViewModel>(vm.Wizard.CurrentPage);
@@ -198,6 +199,22 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ManagementDisplay_FallsBackToNoNetworkLabel()
+    {
+        LocalizationService.Current.SetLanguage("en");
+        var vm = new MainWindowViewModel(
+            lsblkFactory: () => new LsblkTool(Runner()),
+            sessionFactory: SuccessSession,
+            uiDispatch: action => action());
+
+        vm.ManagementAddress = string.Empty;
+        Assert.Equal("No network", vm.ManagementDisplay);
+
+        vm.ManagementAddress = "http://192.168.1.5:5000";
+        Assert.Equal("http://192.168.1.5:5000", vm.ManagementDisplay);
+    }
+
+    [Fact]
     public async Task InstallViewModel_Retry_AfterFailureRestarts()
     {
         // 第一次失败,第二次成功:用可变步骤。
@@ -207,7 +224,13 @@ public class MainWindowViewModelTests
             new LsblkTool(Runner()),
             new RingLog());
 
-        var vm = new InstallViewModel(() => session, action => action());
+        var vm = new InstallViewModel(
+            new WelcomeViewModel(),
+            new DiskLayoutViewModel(new LsblkTool(Runner())),
+            new NetworkViewModel(),
+            new AccountViewModel(),
+            () => session,
+            action => action());
         var config = new InstallConfig { SystemDisk = "/dev/vda", Account = new AccountConfig { Username = "admin" } };
 
         await vm.StartCommand.ExecuteAsync(config);

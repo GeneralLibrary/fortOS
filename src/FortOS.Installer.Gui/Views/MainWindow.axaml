@@ -30,6 +30,13 @@
         <!-- 页脚导航 -->
         <Border DockPanel.Dock="Bottom" Background="#1E2228" Padding="28,14">
             <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="🌐" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ManagementDisplay}"
+                               Foreground="#9BA6B5" FontSize="13"
+                               ToolTip.Tip="{Binding L[status.managementTip]}"/>
+                </StackPanel>
                 <Button DockPanel.Dock="Right" Content="{Binding L[nav.next]}"
                         Command="{Binding Wizard.NextCommand}"
                         IsVisible="{Binding Wizard.IsWizardNavigationVisible}"

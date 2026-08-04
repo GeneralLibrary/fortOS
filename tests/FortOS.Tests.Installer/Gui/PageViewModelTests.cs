@@ -1,4 +1,6 @@
+using FortOS.Installer.Core.Logging;
 using FortOS.Installer.Core.Models;
+using FortOS.Installer.Core.Session;
 using FortOS.Installer.Core.Tools;
 using FortOS.Installer.Gui.ViewModels;
 using FortOS.Tests.Installer.Fakes;
@@ -86,7 +88,7 @@ public class PageViewModelTests
     }
 
     [Fact]
-    public void Confirm_SummaryReflectsChoices()
+    public void Install_SummaryReflectsChoices()
     {
         var welcome = new WelcomeViewModel();
         var disk = new DiskLayoutViewModel(new LsblkTool(new FakeRunner()))
@@ -96,9 +98,10 @@ public class PageViewModelTests
         };
         var network = new NetworkViewModel { Hostname = "nas-1" };
         var account = new AccountViewModel { Username = "admin", Password = "x123456", ConfirmPassword = "x123456", Timezone = "UTC" };
-        var confirm = new ConfirmViewModel(welcome, disk, network, account);
+        var session = new InstallerSession([], new LsblkTool(new FakeRunner()), new RingLog());
+        var install = new InstallViewModel(welcome, disk, network, account, () => session, action => action());
 
-        var summary = confirm.Summary;
+        var summary = install.Summary;
 
         Assert.Contains("/dev/sda", summary);
         Assert.Contains("nas-1", summary);

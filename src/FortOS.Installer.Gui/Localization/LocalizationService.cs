@@ -62,6 +62,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["nav.next"] = "Next ›",
             ["nav.back"] = "‹ Back",
             ["wizard.step"] = "Step {0} of {1}",
+            ["status.noNetwork"] = "No network",
+            ["status.managementTip"] = "FortOS management address — open in a web browser on another machine.",
 
             // 欢迎
             ["welcome.title"] = "FortOS",
@@ -88,6 +90,14 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["network.gateway"] = "Gateway",
             ["network.dns"] = "DNS servers (comma separated)",
             ["network.hint"] = "DHCP is used when static address is left empty.",
+            ["network.wifi.title"] = "WiFi",
+            ["network.wifi.scan"] = "Scan networks",
+            ["network.wifi.ssid"] = "Select a wireless network",
+            ["network.wifi.password"] = "WiFi password",
+            ["network.wifi.connect"] = "Connect",
+            ["network.wifi.connected"] = "Connected to {0}.",
+            ["network.wifi.failed"] = "Connection failed: {0}",
+            ["network.wifi.none"] = "No wireless networks found. Scan again or use a wired connection.",
 
             // 账户
             ["account.username"] = "Admin username",
@@ -129,6 +139,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["nav.next"] = "下一步 ›",
             ["nav.back"] = "‹ 上一步",
             ["wizard.step"] = "第 {0} 步,共 {1} 步",
+            ["status.noNetwork"] = "未检测到网络",
+            ["status.managementTip"] = "FortOS 管理入口 — 在另一台机器的浏览器中打开。",
 
             ["welcome.title"] = "FortOS",
             ["welcome.subtitle"] = "NAS 操作系统安装向导",
@@ -152,6 +164,14 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["network.gateway"] = "网关",
             ["network.dns"] = "DNS 服务器(逗号分隔)",
             ["network.hint"] = "留空静态地址时使用 DHCP。",
+            ["network.wifi.title"] = "无线网络",
+            ["network.wifi.scan"] = "扫描网络",
+            ["network.wifi.ssid"] = "选择无线网络",
+            ["network.wifi.password"] = "WiFi 密码",
+            ["network.wifi.connect"] = "连接",
+            ["network.wifi.connected"] = "已连接到 {0}。",
+            ["network.wifi.failed"] = "连接失败:{0}",
+            ["network.wifi.none"] = "未发现无线网络。请重新扫描或使用有线连接。",
 
             ["account.username"] = "管理员用户名",
             ["account.timezone"] = "时区",

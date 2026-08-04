@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FortOS.Installer.Core.Models;
@@ -7,11 +8,16 @@ using FortOS.Installer.Core.Session;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 第 6 页:执行。绑定 InstallerSession,展示阶段进度与实时日志;
-/// 失败时停留在本页并允许重试。
+/// 执行页:顶部先展示安装计划汇总与不可回退警告(原确认页内容),
+/// 点击「开始安装」后在同一页展示阶段进度与实时日志;
+/// 失败时停留本页并允许重试。
 /// </summary>
 public partial class InstallViewModel : ViewModelBase, IWizardPage
 {
+    private readonly WelcomeViewModel _welcome;
+    private readonly DiskLayoutViewModel _disk;
+    private readonly NetworkViewModel _network;
+    private readonly AccountViewModel _account;
     private readonly Func<InstallerSession> _sessionFactory;
     private readonly Action<Action> _uiDispatch;
     private InstallerSession? _session;
@@ -19,13 +25,27 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
     private bool _started;
 
     /// <param name="uiDispatch">把回调封送到 UI 线程的委托;测试注入同步执行。</param>
-    public InstallViewModel(Func<InstallerSession> sessionFactory, Action<Action>? uiDispatch = null)
+    public InstallViewModel(
+        WelcomeViewModel welcome,
+        DiskLayoutViewModel disk,
+        NetworkViewModel network,
+        AccountViewModel account,
+        Func<InstallerSession> sessionFactory,
+        Action<Action>? uiDispatch = null)
     {
+        _welcome = welcome;
+        _disk = disk;
+        _network = network;
+        _account = account;
         _sessionFactory = sessionFactory;
         _uiDispatch = uiDispatch ?? (action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+        foreach (var page in new IWizardPage[] { welcome, disk, network, account })
+        {
+            page.IsValidChanged += (_, _) => OnPropertyChanged(nameof(Summary));
+        }
     }
 
-    public override string Title => "Installing";
+    public override string Title => "Review & install";
 
     public ObservableCollection<string> LogLines { get; } = [];
 
@@ -43,6 +63,13 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
 
     [ObservableProperty]
     private string _errorMessage = string.Empty;
+
+    /// <summary>开始安装前展示计划汇总;执行开始后切换为进度视图。</summary>
+    [ObservableProperty]
+    private bool _isPlanning = true;
+
+    /// <summary>安装计划汇总(由前面四页输入动态生成)。</summary>
+    public string Summary => BuildSummary();
 
     public bool IsValid => false; // 执行页不可前进
 
@@ -65,6 +92,7 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
         }
 
         _started = true;
+        IsPlanning = false;
         IsFailed = false;
         ErrorMessage = string.Empty;
         LogLines.Clear();
@@ -137,6 +165,38 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
             LogLines.RemoveAt(0);
         }
     }
+
+    private string BuildSummary()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"{L["confirm.summary.systemDisk"]}{_disk.SelectedSystemDisk?.Path} — {_disk.RootFs}");
+        sb.AppendLine($"{L["confirm.summary.swap"]}{DescribeSwap()}");
+        sb.AppendLine($"{L["confirm.summary.data"]}{DescribeData()}");
+        sb.AppendLine($"{L["confirm.summary.network"]}{DescribeNetwork()}");
+        sb.AppendLine($"{L["confirm.summary.hostname"]}{_network.Hostname}");
+        sb.AppendLine($"{L["confirm.summary.admin"]}{_account.Username} ({_account.Timezone})");
+        sb.AppendLine($"{L["confirm.summary.locale"]}{_welcome.Language} / keyboard {_welcome.Keyboard}");
+        return sb.ToString();
+    }
+
+    private string DescribeSwap() => _disk.SwapMode switch
+    {
+        SwapMode.Off => "off",
+        SwapMode.Fixed => $"{_disk.SwapSizeMiB} MiB",
+        _ => "auto (RAM size)",
+    };
+
+    private string DescribeData() => _disk.DataMode switch
+    {
+        DataDiskMode.Single => $"{_disk.SelectedDataDisk?.Path} — {_disk.DataFs} (label {_disk.DataLabel})",
+        _ => "not configured (post-install)",
+    };
+
+    private string DescribeNetwork() => _network.Mode switch
+    {
+        NetworkMode.Static => $"static {_network.Address}{(string.IsNullOrEmpty(_network.Gateway) ? "" : $" gw {_network.Gateway}")}",
+        _ => "DHCP",
+    };
 
     private static double PhaseToProgress(InstallerPhase phase) => phase switch
     {

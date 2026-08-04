@@ -24,6 +24,25 @@
             <TextBox Text="{Binding Dns}" MinWidth="280"/>
         </StackPanel>
 
+        <!-- WiFi:扫描、选择、连接(连接成功后经 DHCP 获取地址) -->
+        <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="{Binding L[network.wifi.title]}" FontWeight="Bold" VerticalAlignment="Center"/>
+                <Button Content="{Binding L[network.wifi.scan]}" Command="{Binding ScanWifiCommand}"
+                        IsVisible="{Binding !IsWifiBusy}" Padding="12,4"/>
+            </StackPanel>
+            <ComboBox ItemsSource="{Binding WifiSsids}" SelectedItem="{Binding SelectedSsid}" MinWidth="280"
+                      PlaceholderText="{Binding L[network.wifi.ssid]}"/>
+            <TextBox Text="{Binding WifiPassword}" MinWidth="280" PasswordChar="●"
+                     Watermark="{Binding L[network.wifi.password]}"/>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Content="{Binding L[network.wifi.connect]}" Command="{Binding ConnectWifiCommand}"
+                        IsEnabled="{Binding CanConnectWifi}" Padding="12,4"/>
+                <TextBlock Text="{Binding WifiStatus}" Foreground="#9BA6B5" FontSize="12"
+                           VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </StackPanel>
+
         <TextBlock Text="{Binding L[network.hint]}"
                    Foreground="#9BA6B5" FontSize="12"/>
     </StackPanel>

@@ -3,7 +3,22 @@
              xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
              x:DataType="vm:InstallViewModel"
              x:Class="FortOS.Installer.Gui.Views.InstallView">    <DockPanel>
-        <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,16">
+        <!-- 规划视图:汇总 + 警告 + 开始安装(执行开始后隐藏) -->
+        <StackPanel DockPanel.Dock="Top" Spacing="16" Margin="0,0,0,16"
+                    IsVisible="{Binding IsPlanning}">
+            <TextBlock Text="{Binding L[confirm.title]}" FontSize="20" FontWeight="Bold"/>
+            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontFamily="Cascadia Mono,Consolas,monospace"
+                       FontSize="14" LineHeight="24"/>
+            <TextBlock Text="{Binding L[confirm.warning]}"
+                       Foreground="#FF6B6B" FontWeight="Bold"/>
+            <Button Content="{Binding L[confirm.begin]}"
+                    Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).BeginInstallCommand}"
+                    Classes="Primary" FontSize="16" Padding="24,10" HorizontalAlignment="Left"/>
+        </StackPanel>
+
+        <!-- 进度视图:阶段 + 进度条 + 失败操作 -->
+        <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,16"
+                    IsVisible="{Binding !IsPlanning}">
             <TextBlock Text="{Binding PhaseText}" FontSize="16" FontWeight="Bold"/>
             <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" Height="14"/>
             <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding IsFailed}">

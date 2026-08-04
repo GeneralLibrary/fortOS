@@ -73,10 +73,10 @@ public class WizardViewModelTests
         var vm = new MainWindowViewModel(lsblkFactory: () => new FortOS.Installer.Core.Tools.LsblkTool(new Fakes.FakeRunner()));
         Assert.True(vm.Wizard.IsWizardNavigationVisible);
 
-        vm.Wizard.JumpTo(5); // Install
+        vm.Wizard.JumpTo(4); // Install
         Assert.False(vm.Wizard.IsWizardNavigationVisible);
 
-        vm.Wizard.JumpTo(6); // Complete
+        vm.Wizard.JumpTo(5); // Complete
         Assert.False(vm.Wizard.IsWizardNavigationVisible);
     }
 }
