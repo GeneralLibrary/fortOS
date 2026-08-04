@@ -12,7 +12,7 @@ public sealed class CliOptions
     /// <summary>Server URL option.</summary>
     public Option<string?> Server { get; } = new("--server") { Description = "FortOS server URL" };
     /// <summary>Access token option.</summary>
-    public Option<string?> Token { get; } = new("--token") { Description = "******" };
+    public Option<string?> Token { get; } = new("--token") { Description = "FortOS access token (overrides the stored one)" };
     /// <summary>Output format option.</summary>
     public Option<string> Output { get; } = new("--output") { Description = "Output format: table or json", DefaultValueFactory = _ => "table" };
     /// <summary>Disable color option.</summary>
@@ -65,7 +65,9 @@ public static class CommandRuntime
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return 0;
+            // Unix convention: 128 + SIGINT = 130, so scripts can distinguish user cancellation
+            // (Ctrl+C) from a successful command instead of misreading it as exit code 0.
+            return 130;
         }
         catch (FortOSApiException ex)
         {
@@ -118,9 +120,9 @@ public static class CommandRuntime
             // Avoid sending stale stored token while calling the anonymous login endpoint.
             using var client = new FortOSApiClient(result.GetValue(options.Server), string.Empty);
             using var doc = await client.PostAsync("api/auth/login", new { username, password }, cancellationToken).ConfigureAwait(false);
-            var token = FindString(doc.RootElement, "token")
-                ?? FindString(doc.RootElement, "accessToken")
-                ?? FindString(doc.RootElement, "jwt");
+            var token = JsonHelpers.FindString(doc.RootElement, "token")
+                ?? JsonHelpers.FindString(doc.RootElement, "accessToken")
+                ?? JsonHelpers.FindString(doc.RootElement, "jwt");
             if (string.IsNullOrWhiteSpace(token))
             {
                 Console.Error.WriteLine("Login failed: server did not return a usable token.");
@@ -250,38 +252,5 @@ public static class CommandRuntime
             dict[value[..index]] = value[(index + 1)..];
         }
         return dict;
-    }
-
-    private static string? FindString(JsonElement element, string name)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
-                {
-                    return property.Value.GetString();
-                }
-
-                var nested = FindString(property.Value, name);
-                if (nested is not null)
-                {
-                    return nested;
-                }
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var nested = FindString(item, name);
-                if (nested is not null)
-                {
-                    return nested;
-                }
-            }
-        }
-
-        return null;
     }
 }

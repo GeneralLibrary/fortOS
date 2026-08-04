@@ -134,7 +134,7 @@ public sealed class FortOSApiClient : IDisposable
             if (!response.IsSuccessStatusCode) return false;
             var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = ParseJsonOrWrap(text);
-            var token = FindString(doc.RootElement, "token") ?? FindString(doc.RootElement, "accessToken") ?? FindString(doc.RootElement, "jwt");
+            var token = JsonHelpers.FindString(doc.RootElement, "token") ?? JsonHelpers.FindString(doc.RootElement, "accessToken") ?? JsonHelpers.FindString(doc.RootElement, "jwt");
             if (string.IsNullOrWhiteSpace(token)) return false;
             _currentToken = token;
             AuthStore.SaveToken(Server, token);
@@ -162,9 +162,9 @@ public sealed class FortOSApiClient : IDisposable
         try
         {
             using var doc = JsonDocument.Parse(text);
-            var error = FindString(doc.RootElement, "error") ?? FindString(doc.RootElement, "message");
-            var code = FindString(doc.RootElement, "code");
-            var traceId = FindString(doc.RootElement, "traceId");
+            var error = JsonHelpers.FindString(doc.RootElement, "error") ?? JsonHelpers.FindString(doc.RootElement, "message");
+            var code = JsonHelpers.FindString(doc.RootElement, "code");
+            var traceId = JsonHelpers.FindString(doc.RootElement, "traceId");
             message = string.Join(' ', new[] { error ?? message, code is null ? null : $"({code})", traceId is null ? null : $"traceId={traceId}" }.Where(x => !string.IsNullOrWhiteSpace(x)));
         }
         catch
@@ -172,28 +172,6 @@ public sealed class FortOSApiClient : IDisposable
             if (!string.IsNullOrWhiteSpace(text)) message += $" - {text}";
         }
         return new FortOSApiException(message, response.StatusCode);
-    }
-
-    private static string? FindString(JsonElement element, string name)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String) return property.Value.GetString();
-                var nested = FindString(property.Value, name);
-                if (nested is not null) return nested;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var nested = FindString(item, name);
-                if (nested is not null) return nested;
-            }
-        }
-        return null;
     }
 
     private static bool IsConnectionFailure(HttpRequestException ex) => ex.StatusCode is null;

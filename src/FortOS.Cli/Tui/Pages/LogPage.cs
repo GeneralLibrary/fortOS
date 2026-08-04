@@ -38,9 +38,14 @@ public sealed class LogPage : ITuiPage
     {
         var map = new Dictionary<char, string> { ['S'] = "System", ['A'] = "Audit", ['C'] = "Container", ['G'] = "FortOS", ['T'] = "Task", ['M'] = "Metrics" };
         if (map.TryGetValue(char.ToUpperInvariant(key.KeyChar), out var category)) { _category = _category == category ? null : category; return Task.FromResult(true); }
-        if (key.KeyChar == 'l') { _levelIndex = (_levelIndex + 1) % _levels.Length; return Task.FromResult(true); }
-        if (key.KeyChar == 'r') { _refreshIndex = (_refreshIndex + 1) % _refresh.Length; return Task.FromResult(true); }
-        if (key.KeyChar == '/') { _search = AnsiConsole.Ask<string>("Search text (leave blank to clear):", string.Empty); if (string.IsNullOrWhiteSpace(_search)) _search = null; return Task.FromResult(true); }
-        return Task.FromResult(false);
+        // Normalize to lower case so the shortcuts work regardless of Caps Lock / Shift state,
+        // consistent with the category mapping above.
+        switch (char.ToLowerInvariant(key.KeyChar))
+        {
+            case 'l': _levelIndex = (_levelIndex + 1) % _levels.Length; return Task.FromResult(true);
+            case 'r': _refreshIndex = (_refreshIndex + 1) % _refresh.Length; return Task.FromResult(true);
+            case '/': _search = AnsiConsole.Ask<string>("Search text (leave blank to clear):", string.Empty); if (string.IsNullOrWhiteSpace(_search)) _search = null; return Task.FromResult(true);
+            default: return Task.FromResult(false);
+        }
     }
 }

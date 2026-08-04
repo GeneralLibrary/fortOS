@@ -40,7 +40,7 @@ public static class MiscCommands
             {
                 using var client = CommandRuntime.Client(p, options);
                 using var doc = await client.PostAsync("api/auth/login", new { username = user, password }, ct);
-                var token = FindString(doc.RootElement, "token") ?? FindString(doc.RootElement, "accessToken") ?? FindString(doc.RootElement, "jwt");
+                var token = JsonHelpers.FindString(doc.RootElement, "token") ?? JsonHelpers.FindString(doc.RootElement, "accessToken") ?? JsonHelpers.FindString(doc.RootElement, "jwt");
                 AuthStore.Save(client.Server, token);
                 if (CommandRuntime.IsJson(p, options)) CommandRuntime.PrintJson(doc); else AnsiConsole.MarkupLine("[green]Login successful, token saved.[/]");
                 return 0;
@@ -100,18 +100,5 @@ public static class MiscCommands
             }, t), cancellationToken: ct)
             : Task.FromResult(2));
         root.Add(start); return root;
-    }
-
-    private static string? FindString(JsonElement element, string name)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var p in element.EnumerateObject())
-            {
-                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == JsonValueKind.String) return p.Value.GetString();
-                var nested = FindString(p.Value, name); if (nested is not null) return nested;
-            }
-        }
-        return null;
     }
 }
