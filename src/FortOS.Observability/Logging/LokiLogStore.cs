@@ -7,14 +7,22 @@ namespace FortOS.Observability.Logging;
 /// <summary>Optional Loki Push API log store.</summary>
 public sealed class LokiLogStore : ILogStore
 {
+    // This store is fed by the LogPipeline's DispatchStage. Any log line it emits would be
+    // routed straight back into the pipeline and then into this store again, so a missing or
+    // unreachable Loki would cause an unbounded self-feedback loop. Failures are therefore
+    // reported at most once per process instead of once per call.
+    private static int _reportedFailure;
+
     private readonly HttpClient _httpClient;
     private readonly string? _url;
+    private readonly bool _enabled;
     private readonly ILogger<LokiLogStore>? _logger;
 
     /// <summary>Initialize Loki log store.</summary>
     public LokiLogStore(IFortOSConfiguration? configuration = null, HttpClient? httpClient = null, ILogger<LokiLogStore>? logger = null)
     {
         _url = configuration?.GetValue("logging:loki:url");
+        _enabled = !string.IsNullOrWhiteSpace(_url);
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
         _logger = logger;
     }
@@ -22,15 +30,14 @@ public sealed class LokiLogStore : ILogStore
     /// <inheritdoc />
     public async Task AppendAsync(LogEntry entry, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_url))
+        if (!_enabled)
         {
-            _logger?.LogWarning("Loki not configured, skipping log push.");
-            return;
+            return; // Not configured: silent no-op (never log here, see class doc).
         }
 
         try
         {
-            var endpoint = new Uri(new Uri(_url.TrimEnd('/') + "/"), "loki/api/v1/push");
+            var endpoint = new Uri(new Uri(_url!.TrimEnd('/') + "/"), "loki/api/v1/push");
             var labels = new Dictionary<string, string>
             {
                 ["category"] = entry.Category.ToString().ToLowerInvariant(),
@@ -51,12 +58,20 @@ public sealed class LokiLogStore : ILogStore
             using var response = await _httpClient.PostAsJsonAsync(endpoint, payload, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                _logger?.LogWarning("Loki push failed: {StatusCode}", response.StatusCode);
+                ReportFailureOnce($"Loki push failed: {response.StatusCode}");
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger?.LogWarning(ex, "Loki unreachable, skipping log push.");
+            ReportFailureOnce("Loki unreachable, skipping log push.", ex);
+        }
+    }
+
+    private void ReportFailureOnce(string message, Exception? ex = null)
+    {
+        if (Interlocked.Exchange(ref _reportedFailure, 1) == 0)
+        {
+            _logger?.LogWarning(ex, "{Message}", message);
         }
     }
 
