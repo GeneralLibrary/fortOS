@@ -1,0 +1,30 @@
+# Git & IDE
+.git
+.gitattributes
+.gitignore
+.idea
+.github
+
+# .NET build artifacts
+**/bin
+**/obj
+TestResults
+artifacts
+
+# Frontend
+**/node_modules
+
+# FortOS runtime data & config
+data
+mnt
+
+# Temp / local scripts
+*.tmp.*
+.kill-qemu.tmp.sh
+.login-probe.tmp.exp
+.offline-assert.tmp.sh
+.run-e2e*.tmp.sh
+
+# Reasonix workspace config
+.reasonix
+reasonix.toml
