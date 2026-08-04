@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using FortOS.Core;
 using FortOS.Security.Models;
 using Microsoft.Data.Sqlite;
@@ -21,7 +22,9 @@ public sealed class NasTokenMiddleware
     /// <summary>Process request.</summary>
     public async Task InvokeAsync(HttpContext context, ITokenManager tokenManager, IDatabaseProvider database, IConfiguration configuration)
     {
-        if (ShouldSkip(context.Request.Path))
+        // CORS preflight (OPTIONS) carries no Authorization header; it must reach UseCors()
+        // upstream of this middleware without being rejected (the CorsMiddleware answers it).
+        if (HttpMethods.IsOptions(context.Request.Method) || ShouldSkip(context.Request.Path))
         {
             await next(context).ConfigureAwait(false);
             return;

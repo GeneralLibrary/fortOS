@@ -79,6 +79,7 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<TraceIdMiddleware>();
 app.UseMiddleware<ApiVersionCompatibilityMiddleware>();
 app.UseRouting();
+app.UseCors();
 app.UseMiddleware<NasTokenMiddleware>();
 app.UseMiddleware<AuditMiddleware>();
 app.UseMiddleware<RateLimitMiddleware>();
