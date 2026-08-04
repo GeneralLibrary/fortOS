@@ -344,6 +344,15 @@ public sealed class AgentLogCollector : BackgroundService
             var entry = JsonSerializer.Deserialize<LogEntry>(line, JsonOptions);
             if (entry is not null)
             {
+                // Volume log lines usually omit "category". The enum's default is System (0),
+                // which would mis-route such entries to the System log file and filters; default
+                // them to Agent instead. An explicitly declared category (including null, which
+                // keeps the producer's intent) is preserved.
+                if (!HasCategoryField(line))
+                {
+                    entry = entry with { Category = LogCategory.Agent };
+                }
+
                 return Enrich(entry with { AgentId = entry.AgentId ?? agentId, SourceComponent = string.IsNullOrWhiteSpace(entry.SourceComponent) ? source : entry.SourceComponent });
             }
         }
@@ -363,9 +372,19 @@ public sealed class AgentLogCollector : BackgroundService
 
     private LogEntry Enrich(LogEntry entry) => entry with
     {
-        Category = LogCategory.Agent,
+        // Deliberately does NOT force Category = Agent: the API push path (PushAsync) can carry
+        // Audit/System entries that must keep their original category. Producers set the category
+        // explicitly; this only fills in the trace id.
         TraceId = string.IsNullOrWhiteSpace(entry.TraceId) ? Activity.Current?.TraceId.ToString() : entry.TraceId,
     };
+
+    /// <summary>Returns true when the JSON line declares a "category" property (any casing, even as null).</summary>
+    private static bool HasCategoryField(string line)
+    {
+        using var document = JsonDocument.Parse(line);
+        return document.RootElement.ValueKind == JsonValueKind.Object
+            && document.RootElement.EnumerateObject().Any(property => property.NameEquals("category"));
+    }
 
     private bool Remember(string logId)
     {
