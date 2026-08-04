@@ -36,10 +36,12 @@ public sealed class BackupExecutionService
         if (lease is null) throw new BackupExecutionException("BACKUP_LEASE_CONFLICT", "This backup task is already held by another executor.");
 
         var queued = new BackupRunRecord { RunId = runId, TaskId = task.TaskId, Operation = operation, State = BackupRunState.Queued, StartedAt = started, LeaseToken = lease.FencingToken };
-        await _runs.AppendAsync(queued, ct).ConfigureAwait(false);
         string? checkpoint = null;
         try
         {
+            // The queued record is written inside the try so the finally block below always releases
+            // the lease — a DB failure here must not leave the task locked for the whole lease TTL.
+            await _runs.AppendAsync(queued, ct).ConfigureAwait(false);
             Preflight(source, target, operation, dryRun);
             if (operation == "restore" && !dryRun)
             {
@@ -87,6 +89,27 @@ public sealed class BackupExecutionService
             var failed = queued with { State = state, FinishedAt = DateTimeOffset.UtcNow, Stderr = ex.Message, ExitCode = ex.Result?.ExitCode ?? 1, Report = new BackupRunReport { ErrorCode = ex.Code, CheckpointPath = checkpoint } };
             await _runs.AppendAsync(failed, ct).ConfigureAwait(false);
             await _events.PublishAsync($"backup.task.{operation}.failed", "backup.task.failed", JsonSerializer.Serialize(new { task.TaskId, runId, code = ex.Code }), ct).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Any unexpected failure (DB/IO error, serializer error, ...) must still close out the
+            // run record and remove the checkpoint — otherwise the run stays "Running" forever and
+            // the checkpoint directory leaks. Cleanup is best-effort so it cannot mask the original
+            // exception.
+            var state = checkpoint is not null && RestoreCheckpoint(target, checkpoint) ? BackupRunState.RolledBack : BackupRunState.Failed;
+            var failed = queued with { State = state, FinishedAt = DateTimeOffset.UtcNow, Stderr = ex.Message, ExitCode = 1, Report = new BackupRunReport { ErrorCode = "BACKUP_EXECUTION_ERROR", CheckpointPath = checkpoint } };
+            try
+            {
+                await _runs.AppendAsync(failed, CancellationToken.None).ConfigureAwait(false);
+                await _events.PublishAsync($"backup.task.{operation}.failed", "backup.task.failed", JsonSerializer.Serialize(new { task.TaskId, runId, code = "BACKUP_EXECUTION_ERROR" }), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception cleanupEx)
+            {
+                // Best effort only: surface the original failure; log the cleanup failure separately.
+                Console.Error.WriteLine($"Backup run {runId} failure cleanup also failed: {cleanupEx.Message}");
+            }
+
             throw;
         }
         finally
@@ -178,7 +201,13 @@ public sealed class BackupExecutionService
     {
         if (!Directory.Exists(target)) return Task.CompletedTask;
         var cutoff = DateTime.UtcNow.AddDays(-Math.Max(1, task.RetentionDays));
-        foreach (var checkpoint in Directory.EnumerateDirectories(target + ".fortos-checkpoint-*"))
+        // Checkpoint directories live NEXT TO the target (sibling) as "<target>.fortos-checkpoint-*",
+        // so the search pattern must be passed as the pattern argument — concatenating it into the
+        // path argument would never match anything and checkpoints would accumulate forever.
+        var parent = Path.GetDirectoryName(target);
+        var pattern = Path.GetFileName(target) + ".fortos-checkpoint-*";
+        if (string.IsNullOrEmpty(parent)) return Task.CompletedTask;
+        foreach (var checkpoint in Directory.EnumerateDirectories(parent, pattern))
             if (Directory.GetLastWriteTimeUtc(checkpoint) < cutoff) Directory.Delete(checkpoint, recursive: true);
         return Task.CompletedTask;
     }

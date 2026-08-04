@@ -34,7 +34,11 @@ public sealed class RsyncBackupService
     }
 
     private static string EnsureTrailingSlash(string path) => path.EndsWith('/') ? path : path + "/";
-    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}";
+
+    // rsync receives the path as a single shell-style quoted token inside a pre-built argument
+    // string, so quotes must both open and close (and embedded quotes be escaped) or a path
+    // containing spaces would be split into multiple arguments.
+    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
     private static void Validate(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);

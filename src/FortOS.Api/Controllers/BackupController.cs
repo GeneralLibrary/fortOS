@@ -64,7 +64,7 @@ public sealed class BackupController : FortOSControllerBase
         var removed = tasks.RemoveAll(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
         if (removed == 0)
         {
-            throw new InvalidOperationException($"Backup task does not exist: {taskId}");
+            throw new ServiceNotFoundException($"Backup task does not exist: {taskId}", "BACKUP_TASK_NOT_FOUND");
         }
 
         await _backupModule.SaveTasksAsync(tasks, ct).ConfigureAwait(false);
@@ -103,7 +103,7 @@ public sealed class BackupController : FortOSControllerBase
 
     private async Task<BackupTask> GetTaskAsync(string taskId, CancellationToken ct)
         => (await _backupModule.ListTasksAsync(ct).ConfigureAwait(false)).FirstOrDefault(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase))
-           ?? throw new InvalidOperationException($"Backup task does not exist: {taskId}");
+           ?? throw new ServiceNotFoundException($"Backup task does not exist: {taskId}", "BACKUP_TASK_NOT_FOUND");
 
     private void EnsureCapability(string requiredCapability)
     {
