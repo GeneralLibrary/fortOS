@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json;
 using FortOS.Core;
+using Microsoft.Extensions.Logging;
 
 namespace FortOS.Observability.Logging;
 
@@ -13,15 +14,17 @@ public sealed class FileLogStore : ILogStore
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _root;
     private readonly long _maxShardBytes;
+    private readonly ILogger<FileLogStore>? _logger;
     private readonly ConcurrentDictionary<LogCategory, SemaphoreSlim> _locks = new();
     private DateOnly _lastSweepDate = DateOnly.MinValue;
 
     /// <summary>Initialize file log store.</summary>
-    public FileLogStore(IFortOSConfiguration? configuration = null, string? dataRoot = null, long maxShardBytes = DefaultShardBytes)
+    public FileLogStore(IFortOSConfiguration? configuration = null, string? dataRoot = null, long maxShardBytes = DefaultShardBytes, ILogger<FileLogStore>? logger = null)
     {
         var root = dataRoot ?? configuration?.GetValue("logging:data_root") ?? Environment.GetEnvironmentVariable("FortOS_DATA_ROOT") ?? "/srv/nas";
         _root = Path.Combine(Path.GetFullPath(root), "logs");
         _maxShardBytes = maxShardBytes;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -35,7 +38,7 @@ public sealed class FileLogStore : ILogStore
             if (_lastSweepDate != today)
             {
                 _lastSweepDate = today;
-                _ = CompressOldFilesAsync(CancellationToken.None);
+                _ = SweepOldLogsAsync();
             }
 
             var path = GetWritablePath(entry.Category, DateOnly.FromDateTime(entry.Timestamp.LocalDateTime));
@@ -76,6 +79,24 @@ public sealed class FileLogStore : ILogStore
             .Skip(Math.Max(0, query.Offset))
             .Take(Math.Max(0, query.Limit))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Fire-and-forget sweep wrapper: compression is background work and must never break log
+    /// writes. On failure the sweep date is reset so the next write retries instead of skipping
+    /// compression for the rest of the day.
+    /// </summary>
+    private async Task SweepOldLogsAsync()
+    {
+        try
+        {
+            await CompressOldFilesAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _lastSweepDate = DateOnly.MinValue;
+            _logger?.LogWarning(ex, "Old log compression failed; will retry on the next write.");
+        }
     }
 
     /// <summary>Compress log files older than seven days.</summary>

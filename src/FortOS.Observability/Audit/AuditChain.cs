@@ -86,6 +86,14 @@ VALUES ($log_id, $timestamp, $action, $resource, $user_id, $granted, $previous_h
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
         {
             total++;
+            // Chain verification, in three steps:
+            //  1. Continuity — this row's previous_hash must equal the previous row's current_hash
+            //     (the first row of the selected range has no predecessor, so it is exempt).
+            //  2. Integrity  — the stored current_hash must match a recomputation of the row's own
+            //     fields (previous_hash + timestamp + action + resource + user + granted + after-state).
+            //  3. Authenticity — the stored chain_signature must match a fresh HMAC over that hash.
+            // Steps 2 and 3 use constant-time comparisons so a tampered chain cannot be probed by
+            // timing side channels.
             var sequence = reader.GetInt64(0);
             var previousHash = reader.GetString(2);
             var currentHash = reader.GetString(3);

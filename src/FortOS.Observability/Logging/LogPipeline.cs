@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace FortOS.Observability.Logging;
 
-/// <summary>Five-stage log pipeline based on bounded channels.</summary>
+/// <summary>Bounded-channel log pipeline: an independent raw-text parse stage followed by four stages (enrich, classify, filter, dispatch).</summary>
 public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
 {
     private readonly Channel<LogEntry> _channel;
@@ -14,6 +14,7 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     private readonly IReadOnlyList<ILogStage> _stages;
     private readonly ILogger<LogPipeline>? _logger;
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly object _consumerLock = new();
     private Task? _consumer;
     private int _disposed;
 
@@ -40,7 +41,13 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _consumer ??= Task.Run(() => ConsumeAsync(_shutdown.Token), CancellationToken.None);
+        // Guarded because the consumer is a single reader: two racing first callers must not both
+        // spin up a consumer over the same channel.
+        lock (_consumerLock)
+        {
+            _consumer ??= Task.Run(() => ConsumeAsync(_shutdown.Token), CancellationToken.None);
+        }
+
         return Task.CompletedTask;
     }
 

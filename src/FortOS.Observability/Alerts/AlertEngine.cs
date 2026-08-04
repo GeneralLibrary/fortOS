@@ -242,6 +242,12 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
             if (existing is not null)
             {
                 if (!_pendingActiveNotifications.TryGetValue(instanceKey, out var pending) || pending.Count == 0) return;
+                // Retry failed deliveries at most once per cooldown window: without this, a broken
+                // notifier (e.g. an unreachable mail server) would be hammered on every sampling
+                // tick. CooldownSeconds defaults to 300 but is user-tunable, so floor it at 30s.
+                var retryAfter = Math.Max(rule.CooldownSeconds, 30);
+                if (_lastFired.TryGetValue(instanceKey, out var last) && now - last < TimeSpan.FromSeconds(retryAfter)) return;
+                _lastFired[instanceKey] = now;
                 alert = existing;
             }
             else
