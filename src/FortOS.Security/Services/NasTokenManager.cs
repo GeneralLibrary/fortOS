@@ -137,13 +137,16 @@ public sealed class NasTokenManager : ITokenManager
                 ExpiresAt = payload.Exp,
             };
         }
-        catch (SecurityTokenExpiredException ex)
+        catch (SecurityTokenExpiredException)
         {
-            return Failed("Token has expired.", ex);
+            return Failed("Token has expired.");
         }
         catch (Exception ex) when (ex is SecurityTokenException or ArgumentException or FormatException or CryptographicException)
         {
-            return Failed($"Token validation failed: {ex.Message}", ex);
+            // Deliberately opaque: ErrorMessage is returned to HTTP clients verbatim, so
+            // exception internals must never leak into it. Detailed diagnostics belong in
+            // logs at the call site.
+            return Failed("Token validation failed.");
         }
     }
 
@@ -326,10 +329,12 @@ CREATE TABLE IF NOT EXISTS resource_acls (
 
     private string GetIssuer() => _configuration?.GetValue("security:issuer") ?? "nas://local";
 
-    private static FortOS.Core.TokenValidationResult Failed(string message, Exception? exception = null, string? jti = null) => new()
+    // Kept opaque on purpose: ErrorMessage is surfaced to HTTP clients verbatim (see the
+    // generic validation catch above), so the optional exception is not rendered anywhere.
+    private static FortOS.Core.TokenValidationResult Failed(string message, string? jti = null) => new()
     {
         IsValid = false,
-        ErrorMessage = exception is null ? message : message,
+        ErrorMessage = message,
         Jti = jti,
     };
 }
