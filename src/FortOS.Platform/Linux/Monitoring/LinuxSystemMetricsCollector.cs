@@ -62,7 +62,7 @@ public sealed class LinuxSystemMetricsCollector : ISystemMetricsCollector
             var tcpText = await File.ReadAllTextAsync(Path.Combine(procRoot, "net", "snmp"), ct).ConfigureAwait(false);
             var runtime = LinuxProcParsers.ParseRuntime(uptimeText, loadText, now);
             var cpuCounters = LinuxProcParsers.ParseCpuCounters(cpuText);
-            var diskCounters = LinuxProcParsers.ParseDiskCounters(diskText);
+            var diskCounters = LinuxProcParsers.ParseDiskCounters(diskText, sysRoot);
             var networkCounters = LinuxProcParsers.ParseNetworkCounters(networkText);
             var tcpCounters = LinuxProcParsers.ParseTcpCounters(tcpText);
             var oomKills = LinuxProcParsers.ParseOomKillCount(vmStatText);

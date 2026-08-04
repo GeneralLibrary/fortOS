@@ -33,7 +33,7 @@ public sealed partial class LinuxUserAccount : IUserAccount
     public Task DeleteUserAsync(string username, CancellationToken ct)
     {
         ValidateName(username, nameof(username));
-        return ExecuteIgnoreAsync("userdel", $"--remove {Quote(username)}", ct);
+        return _executor.ExecuteAsync("userdel", $"--remove {Quote(username)}", ct);
     }
 
     /// <inheritdoc />
@@ -41,7 +41,7 @@ public sealed partial class LinuxUserAccount : IUserAccount
     {
         ValidateName(username, nameof(username));
         ValidateName(group, nameof(group));
-        return ExecuteIgnoreAsync("usermod", $"-aG {Quote(group)} {Quote(username)}", ct);
+        return _executor.ExecuteAsync("usermod", $"-aG {Quote(group)} {Quote(username)}", ct);
     }
 
     /// <inheritdoc />
@@ -54,16 +54,13 @@ public sealed partial class LinuxUserAccount : IUserAccount
             FilePermission.Read => "444",
             FilePermission.Write => "222",
             FilePermission.ReadWrite => "664",
-            FilePermission.FullControl => "775",
+            // Full control means every principal may read, write and execute; 775 would deny
+            // writes to non-root users once the file is chowned to root:root below.
+            FilePermission.FullControl => "777",
             _ => "664",
         };
         await _executor.ExecuteAsync("chmod", $"{mode} {Quote(path)}", ct).ConfigureAwait(false);
         await _executor.ExecuteAsync("chown", $"root:root {Quote(path)}", ct).ConfigureAwait(false);
-    }
-
-    private async Task ExecuteIgnoreAsync(string command, string arguments, CancellationToken ct)
-    {
-        await _executor.ExecuteAsync(command, arguments, ct).ConfigureAwait(false);
     }
 
     private static void ValidateName(string value, string parameterName)

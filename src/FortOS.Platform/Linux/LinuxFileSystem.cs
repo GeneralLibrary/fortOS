@@ -33,7 +33,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
         ValidatePath(device, nameof(device));
         ValidatePath(mountPoint, nameof(mountPoint));
         ValidateFsType(fsType);
-        await ExecuteIgnoreAsync("mount", $"-t {Quote(fsType)} {Quote(device)} {Quote(mountPoint)}", ct).ConfigureAwait(false);
+        await _executor.ExecuteAsync("mount", $"-t {Quote(fsType)} {Quote(device)} {Quote(mountPoint)}", ct).ConfigureAwait(false);
         await PersistFstabAsync(content => FstabEditor.UpsertEntry(content, device, mountPoint, fsType.ToLowerInvariant()), ct).ConfigureAwait(false);
     }
 
@@ -41,7 +41,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
     public async Task UnmountAsync(string mountPoint, CancellationToken ct)
     {
         ValidatePath(mountPoint, nameof(mountPoint));
-        await ExecuteIgnoreAsync("umount", Quote(mountPoint), ct).ConfigureAwait(false);
+        await _executor.ExecuteAsync("umount", Quote(mountPoint), ct).ConfigureAwait(false);
         await PersistFstabAsync(content => FstabEditor.RemoveEntry(content, mountPoint), ct).ConfigureAwait(false);
     }
 
@@ -50,7 +50,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
     {
         ValidatePath(device, nameof(device));
         ValidateFsType(fsType);
-        return ExecuteIgnoreAsync($"mkfs.{fsType.ToLowerInvariant()}", Quote(device), ct);
+        return _executor.ExecuteAsync($"mkfs.{fsType.ToLowerInvariant()}", Quote(device), ct);
     }
 
     /// <inheritdoc />
@@ -82,11 +82,6 @@ public sealed partial class LinuxFileSystem : IFileSystem
         }
 
         return new FsInfo { MountPoint = mountPoint, FileSystemType = fsType, TotalBytes = total, UsedBytes = used, AvailableBytes = available };
-    }
-
-    private async Task ExecuteIgnoreAsync(string command, string arguments, CancellationToken ct)
-    {
-        await _executor.ExecuteAsync(command, arguments, ct).ConfigureAwait(false);
     }
 
     /// <summary>

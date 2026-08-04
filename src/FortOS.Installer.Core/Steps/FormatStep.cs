@@ -70,6 +70,10 @@ public sealed class FormatStep : IInstallStep
         var swapSpec = context.SystemPartitions.FirstOrDefault(s => s.TypeCode == GptTypeCode.LinuxSwap);
         if (swapSpec is not null)
         {
+            // Swap is intentionally NOT mounted during install: the live environment has its own
+            // memory profile, and mounting the target's swap here would be pointless work. The UUID
+            // is still collected so ChrootStep can write a correct fstab entry; swapon -a activates
+            // it on first boot of the installed system.
             await CollectUuidAsync(context, "swap", context.SystemPartitionDevices[swapSpec.Number], ct).ConfigureAwait(false);
         }
 

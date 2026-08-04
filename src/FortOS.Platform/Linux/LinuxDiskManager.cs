@@ -84,14 +84,49 @@ public sealed partial class LinuxDiskManager : IDiskManager
     public async Task<PartitionResult> CreatePartitionAsync(string diskPath, PartitionSpec spec, CancellationToken ct)
     {
         ValidateDevicePath(diskPath);
+        if (spec.SizeBytes.HasValue && !spec.StartBytes.HasValue)
+        {
+            // parted's mkpart models the partition as absolute start + absolute end, so a bare
+            // size cannot be expressed; refusing beats silently ignoring the size and extending
+            // the partition to 100% of the disk.
+            throw new ArgumentException("SizeBytes requires StartBytes; a size alone cannot locate the partition end.", nameof(spec));
+        }
+
         var start = spec.StartBytes.HasValue ? $"{spec.StartBytes.Value}B" : "1MiB";
-        var end = spec.SizeBytes.HasValue && spec.StartBytes.HasValue
-            ? $"{spec.StartBytes.Value + spec.SizeBytes.Value}B"
-            : "100%";
+        var end = spec.SizeBytes.HasValue ? $"{spec.StartBytes!.Value + spec.SizeBytes.Value}B" : "100%";
         var fsType = string.IsNullOrWhiteSpace(spec.FileSystem) ? "ext4" : ValidateFs(spec.FileSystem);
         var args = $"--script {Quote(diskPath)} mklabel gpt mkpart {Quote(spec.Name)} {Quote(fsType)} {Quote(start)} {Quote(end)}";
-        var result = await _executor.ExecuteAsync("parted", args, ct).ConfigureAwait(false);
-        return new PartitionResult { Success = true, PartitionPath = diskPath, Message = result.Stdout };
+        await _executor.ExecuteAsync("parted", args, ct).ConfigureAwait(false);
+
+        // parted does not echo the created partition's device path; read it back with lsblk so
+        // callers receive a usable path (e.g. /dev/sda1) instead of the disk itself.
+        var partitionPath = await ReadNewestPartitionPathAsync(diskPath, ct).ConfigureAwait(false);
+        return new PartitionResult { Success = true, PartitionPath = partitionPath, Message = "Partition created." };
+    }
+
+    /// <summary>
+    /// Returns the device path of the newest partition on <paramref name="diskPath"/>
+    /// (lsblk lists children in partition order), or null if it cannot be determined.
+    /// </summary>
+    private async Task<string?> ReadNewestPartitionPathAsync(string diskPath, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _executor.ExecuteAsync("lsblk", $"--json -o NAME {Quote(diskPath)}", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
+            using var document = JsonDocument.Parse(result.Stdout);
+            var devices = document.RootElement.GetProperty("blockdevices");
+            if (devices.GetArrayLength() == 0 || !devices[0].TryGetProperty("children", out var children) || children.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var name = children[children.GetArrayLength() - 1].GetProperty("name").GetString();
+            return string.IsNullOrWhiteSpace(name) ? null : Path.Combine("/dev", name);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or CommandExecutionException or PlatformException)
+        {
+            return null;
+        }
     }
 
     /// <inheritdoc />

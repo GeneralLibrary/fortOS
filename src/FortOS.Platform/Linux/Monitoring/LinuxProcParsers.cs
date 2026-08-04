@@ -111,15 +111,22 @@ internal static partial class LinuxProcParsers
         };
     }
 
-    internal static IReadOnlyDictionary<string, DiskCounters> ParseDiskCounters(string content)
+    internal static IReadOnlyDictionary<string, DiskCounters> ParseDiskCounters(string content, string sysRoot)
     {
         var result = new Dictionary<string, DiskCounters>(StringComparer.Ordinal);
+        // /proc/diskstats line format (whitespace separated), field indexes:
+        //   0 major, 1 minor, 2 device name, 3 reads completed, 4 reads merged, 5 sectors read,
+        //   6 read ms, 7 writes completed, 8 writes merged, 9 sectors written, 10 write ms,
+        //   11 in-flight IOs, 12 IO ms, 13 weighted IO ms.
         foreach (var line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (fields.Length < 14) continue;
             var device = fields[2];
-            if (!Directory.Exists($"/sys/block/{device}")) continue;
+            // Exclude partitions (they have no /sys/block entry). The sysfs root must match the
+            // proc root: when the collector reads the host's /host/proc from inside a container,
+            // the host disks only exist under /host/sys, not under the container's own /sys.
+            if (!Directory.Exists($"{sysRoot}/block/{device}")) continue;
             result[device] = new DiskCounters(
                 ParseLong(fields[3]),
                 ParseLong(fields[5]) * SectorBytes,
@@ -172,6 +179,9 @@ internal static partial class LinuxProcParsers
     internal static IReadOnlyDictionary<string, NetworkCounters> ParseNetworkCounters(string content)
     {
         var result = new Dictionary<string, NetworkCounters>(StringComparer.Ordinal);
+        // /proc/net/dev line format (first two lines are headers), field indexes after the iface:
+        //   0 rx bytes, 1 rx packets, 2 rx errs, 3 rx drop, ... 8 tx bytes, 9 tx packets,
+        //   10 tx errs, 11 tx drop.
         foreach (var line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2))
         {
             var separator = line.IndexOf(':');

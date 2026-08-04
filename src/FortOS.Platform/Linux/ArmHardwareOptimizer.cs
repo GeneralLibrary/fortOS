@@ -86,8 +86,16 @@ public sealed class ArmHardwareOptimizer
             var source = line?.Split(' ')[0];
             if (string.IsNullOrWhiteSpace(source) || !source.StartsWith("/dev/", StringComparison.Ordinal)) return null;
             var name = Path.GetFileName(source);
+            // Strip the partition number (e.g. sda1 -> sda, nvme0n1p1 -> nvme0n1p).
             while (name.Length > 0 && char.IsDigit(name[^1])) name = name[..^1];
-            if (name.EndsWith('p')) name = name[..^1];
+            // nvme/mmc devices use "<device>p<partition>", but plain sd devices may legitimately be
+            // named "/dev/sdp" — only strip a trailing 'p' when the remainder is itself a block
+            // device (verified against sysfs), never unconditionally.
+            if (name.EndsWith("p", StringComparison.Ordinal) && Directory.Exists($"/sys/block/{name[..^1]}"))
+            {
+                name = name[..^1];
+            }
+
             return name;
         }
         catch
