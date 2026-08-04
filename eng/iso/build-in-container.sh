@@ -143,17 +143,18 @@ configure_live_image() {
     # installer/GUI services never start. Recreate symlinks from the git
     # index so the squashfs ships real symlinks regardless of checkout OS.
     if git -C /workspace rev-parse --git-dir >/dev/null 2>&1; then
-        git -C /workspace ls-files -s eng/iso/config/includes.chroot | \
-            awk '$1 == "120000" {print $4}' | while read -r rel; do
-            src="${LIVE_ROOT}/config/${rel#eng/iso/config/}"
-            if [[ -e "${src}" && ! -L "${src}" ]]; then
-                target="$(cat "${src}" 2>/dev/null || true)"
-                if [[ -n "${target}" && "${target}" != *$'\r'* ]]; then
-                    rm -f "${src}"
-                    ln -s "${target}" "${src}"
+        while read -r mode hash stage rel; do
+            if [[ "${mode}" == "120000" && -n "${rel}" ]]; then
+                src="${LIVE_ROOT}/config/${rel#eng/iso/config/}"
+                if [[ -e "${src}" && ! -L "${src}" ]]; then
+                    target="$(cat "${src}" 2>/dev/null || true)"
+                    if [[ -n "${target}" && "${target}" != *$'\r'* ]]; then
+                        rm -f "${src}"
+                        ln -s "${target}" "${src}"
+                    fi
                 fi
             fi
-        done
+        done < <(git -C /workspace ls-files -s eng/iso/config/includes.chroot 2>/dev/null || true)
     fi
 
     # -----------------------------------------------------------------
