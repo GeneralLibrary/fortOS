@@ -83,7 +83,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next, IConfiguration c
     private static async Task<string> FingerprintAsync(HttpRequest request, CancellationToken ct)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hash.AppendData(Encoding.UTF8.GetBytes($"{request.Method}\n{request.Path}\n"));
+        // Include the query string: two requests with the same key, method and body but different
+        // query parameters are distinct operations and must not be treated as a replay.
+        hash.AppendData(Encoding.UTF8.GetBytes($"{request.Method}\n{request.Path}{request.QueryString}\n"));
         var buffer = new byte[81920];
         int read;
         while ((read = await request.Body.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0) hash.AppendData(buffer, 0, read);
