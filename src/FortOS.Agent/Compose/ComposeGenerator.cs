@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using FortOS.Agent.Infrastructure;
 using FortOS.Core;
 using Scriban;
@@ -14,6 +15,11 @@ namespace FortOS.Agent.Compose;
 /// </summary>
 public sealed class ComposeGenerator : IComposeGenerator
 {
+    // The agent id is used verbatim as a directory name under AgentPaths.AgentsRoot and as a
+    // compose project name. Refuse anything that could escape the agents root even when a caller
+    // bypasses AgentModule's own validation (defense in depth).
+    private static readonly Regex AgentIdPattern = new(@"^[a-z][a-z0-9-]{0,63}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private readonly ITokenBroker _tokenBroker;
     private readonly IFortOSConfiguration? _configuration;
 
@@ -31,6 +37,10 @@ public sealed class ComposeGenerator : IComposeGenerator
     {
         ArgumentNullException.ThrowIfNull(template);
         ArgumentNullException.ThrowIfNull(config);
+        if (!AgentIdPattern.IsMatch(config.AgentId))
+        {
+            throw new ArgumentException($"AgentId must match ^[a-z][a-z0-9-]{{0,63}}$ (got '{config.AgentId}').", nameof(config));
+        }
 
         var tokenResult = await _tokenBroker.IssueAgentTokenAsync(config, ownerToken, ct).ConfigureAwait(false);
         var apiEndpoint = _configuration?.GetValue("agent:api_endpoint") ?? Environment.GetEnvironmentVariable("FortOS_API_ENDPOINT") ?? "http://host.docker.internal:5000";

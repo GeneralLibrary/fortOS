@@ -57,14 +57,15 @@ public sealed class AgentModule : NasModuleBase
     }
 
     /// <summary>Start an agent.</summary>
-    public Task StartAgentAsync(string agentId, CancellationToken ct) => RequiredService<IServiceSupervisor>().StartAsync(ServiceId(agentId), ct);
+    public Task StartAgentAsync(string agentId, CancellationToken ct) => RequiredService<IServiceSupervisor>().StartAsync(ServiceId(ValidateAgentId(agentId)), ct);
 
     /// <summary>Stop an agent.</summary>
-    public Task StopAgentAsync(string agentId, CancellationToken ct) => RequiredService<IServiceSupervisor>().StopAsync(ServiceId(agentId), ct);
+    public Task StopAgentAsync(string agentId, CancellationToken ct) => RequiredService<IServiceSupervisor>().StopAsync(ServiceId(ValidateAgentId(agentId)), ct);
 
     /// <summary>Remove an agent.</summary>
     public async Task RemoveAgentAsync(string agentId, CancellationToken ct)
     {
+        ValidateAgentId(agentId);
         var serviceId = ServiceId(agentId);
         var supervisor = RequiredService<IServiceSupervisor>();
         var registry = RequiredService<IServiceRegistry>();
@@ -137,6 +138,7 @@ public sealed class AgentModule : NasModuleBase
     public async Task<AgentAccessInfo> GetAgentAccessAsync(string agentId, CancellationToken ct)
     {
         var id = NormalizeAgentId(agentId);
+        ValidateAgentId(id);
         var path = Path.Combine(AgentPaths.AgentsRoot, id, "agent.json");
         if (!File.Exists(path))
         {
@@ -244,6 +246,25 @@ public sealed class AgentModule : NasModuleBase
         return agentId.StartsWith("agent-", StringComparison.OrdinalIgnoreCase) ? agentId : $"agent-{agentId}";
     }
 
+    // Agent ids are used verbatim as directory names under AgentPaths.AgentsRoot and as
+    // docker-compose project names. A hostile id such as ".." or "../.." would escape the
+    // agents root and allow arbitrary directory deletion (RemoveAgentAsync) or file writes
+    // (ComposeGenerator). Enforce the same DNS-style charset used for catalog template ids
+    // at every entry point that reaches the filesystem or Compose.
+    private static readonly Regex AgentIdPattern = new(@"^[a-z][a-z0-9-]{0,63}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>Validates an agent id is safe to use as a filesystem/compose project name.</summary>
+    /// <exception cref="ArgumentException">When the id contains characters outside <c>^[a-z][a-z0-9-]{0,63}$</c>.</exception>
+    private static string ValidateAgentId(string agentId)
+    {
+        if (!AgentIdPattern.IsMatch(agentId))
+        {
+            throw new ArgumentException($"AgentId must match ^[a-z][a-z0-9-]{{0,63}}$ (got '{agentId}').", nameof(agentId));
+        }
+
+        return agentId;
+    }
+
     /// <summary>
     /// Normalize agent configuration and fill in default data volumes.
     /// </summary>
@@ -254,6 +275,8 @@ public sealed class AgentModule : NasModuleBase
         {
             throw new ArgumentException("AgentId cannot be empty.", nameof(config));
         }
+
+        ValidateAgentId(config.AgentId);
 
         if (string.IsNullOrWhiteSpace(config.ImageName))
         {
