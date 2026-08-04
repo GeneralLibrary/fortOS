@@ -137,6 +137,25 @@ configure_live_image() {
     find "${LIVE_ROOT}/config" -type f -exec sed -i 's/\r$//' {} +
     find "${LIVE_ROOT}/config/hooks" -type f -name '*.hook.chroot' -exec chmod 0755 {} +
 
+    # Windows checkouts may also materialize git symlinks as regular files
+    # (core.symlinks=false). systemd then rejects the pre-created
+    # multi-user.target.wants drop-ins ("not a symlink, ignoring") and the
+    # installer/GUI services never start. Recreate symlinks from the git
+    # index so the squashfs ships real symlinks regardless of checkout OS.
+    if git -C /workspace rev-parse --git-dir >/dev/null 2>&1; then
+        git -C /workspace ls-files -s eng/iso/config/includes.chroot | \
+            awk '$1 == "120000" {print $4}' | while read -r rel; do
+            src="${LIVE_ROOT}/config/${rel#eng/iso/config/}"
+            if [[ -e "${src}" && ! -L "${src}" ]]; then
+                target="$(cat "${src}" 2>/dev/null || true)"
+                if [[ -n "${target}" && "${target}" != *$'\r'* ]]; then
+                    rm -f "${src}"
+                    ln -s "${target}" "${src}"
+                fi
+            fi
+        done
+    fi
+
     # -----------------------------------------------------------------
     # Package staging — use local cache when available. This replaces
     # per-package 'apt-get download' calls with pre-resolved transitive
