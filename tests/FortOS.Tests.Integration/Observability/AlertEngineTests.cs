@@ -160,7 +160,7 @@ public sealed class AlertEngineTests
 
     [Fact]
     [Trait("Category", "Unit")]
-    public async Task EvaluateMetricAsync_NotifierFailureDoesNotBlockOtherChannelsAndRetries()
+    public async Task EvaluateMetricAsync_NotifierFailureDoesNotBlockOtherChannelsAndThrottlesRetries()
     {
         var failing = new FailingNotifier();
         var successful = new TestNotifier();
@@ -176,9 +176,16 @@ public sealed class AlertEngineTests
 
         var metric = new MetricData { MetricName = "cpu.usage", Unit = "percent", Value = 95 };
         await engine.EvaluateMetricAsync(metric, CancellationToken.None);
-        await engine.EvaluateMetricAsync(metric, CancellationToken.None);
 
-        Assert.Equal(2, failing.Attempts);
+        // First sample: the failing channel is attempted once (and kept pending), the successful
+        // channel notifies exactly once.
+        Assert.Equal(1, failing.Attempts);
+        Assert.Single(successful.Alerts);
+
+        // Second sample within the retry cooldown: the failed channel must NOT be re-attempted —
+        // a broken notifier would otherwise be hammered on every sampling tick.
+        await engine.EvaluateMetricAsync(metric, CancellationToken.None);
+        Assert.Equal(1, failing.Attempts);
         Assert.Single(successful.Alerts);
     }
 
