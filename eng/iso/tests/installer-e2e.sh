@@ -191,22 +191,30 @@ lappend cmd \
     -kernel "$vmlinuz" -initrd "$initrd" \
     -append "boot=live components hostname=fortos console=tty0 console=ttyS0,115200n8 user-autologin" \
     -nic user,model=virtio-net-pci \
-    -serial "file:$serial_log" \
     -nographic -no-reboot
+
+# guest 串口(ttyS0)经 -nographic 走 QEMU stdio,expect 从这里交互并匹配
+# 登录提示;不能用 -serial file:,否则 guest 输出全部落入文件、stdio 上
+# 只有 "(qemu)" monitor 提示符,expect 永远匹配不到登录提示。
+log_file "$serial_log"
 
 spawn {*}$cmd
 
+# live 系统串口无自动登录,需手动登录;用户为 user(密码 live,
+# live-build 默认 --password live),root 登录需要密码且非交互场景不适用。
 expect {
-    -re "fortos login:" { send "root\r"; exp_continue }
+    -re "fortos login:" { send "user\r"; exp_continue }
+    -re "Password:" { send "live\r"; exp_continue }
     -re {[#$] $} { }
     timeout { puts "TIMEOUT waiting for live shell"; exit 2 }
 }
 
 # 挂载配置盘(最后附加的 virtio 盘,按内容定位;mount 需 root)。
-# 注意:\$d 在 Tcl 层转义为字面 $d,由 guest 的 sh 循环变量替换。
-send "sudo sh -c 'mkdir -p /mnt/cfg; for d in /dev/vd?; do mount \$d /mnt/cfg 2>/dev/null && [ -f /mnt/cfg/install.yaml ] && exit 0; umount /mnt/cfg 2>/dev/null; done; exit 1'\r"
+# 注意:\$d 在 Tcl 层转义为字面 $d,由 guest 的 sh 循环变量替换;
+# 用 test -f 而非 [ -f ],避免 Tcl 把 [ 当作命令替换解析。
+send "sudo sh -c 'mkdir -p /mnt/cfg; for d in /dev/vd?; do mount \$d /mnt/cfg 2>/dev/null && test -f /mnt/cfg/install.yaml && exit 0; umount /mnt/cfg 2>/dev/null; done; exit 1'\r"
 expect {
-    -re {password for user:} { send "user\r"; exp_continue }
+    -re {password for user:} { send "live\r"; exp_continue }
     -re {[#$] $} { }
     timeout { puts "TIMEOUT mounting config"; exit 2 }
 }
@@ -247,6 +255,13 @@ fi
 qemu-nbd --connect=/dev/nbd0 "${SYSTEM_DISK}"
 trap 'umount "${RESULT_DIR}/rootfs" 2>/dev/null || true; qemu-nbd --disconnect /dev/nbd0 >/dev/null 2>&1 || true' EXIT
 mkdir -p "${RESULT_DIR}/rootfs"
+# nbd 连接后分区节点(nbd0p3)可能尚未创建:触发内核重新扫描分区表,
+# 并等待节点出现,再挂载。
+partprobe /dev/nbd0 2>/dev/null || partx -a /dev/nbd0 2>/dev/null || true
+for _ in $(seq 1 20); do
+    [[ -b /dev/nbd0p3 ]] && break
+    sleep 1
+done
 mount /dev/nbd0p3 "${RESULT_DIR}/rootfs"
 
 python3 - "${RESULT_DIR}/rootfs" <<'PY'
