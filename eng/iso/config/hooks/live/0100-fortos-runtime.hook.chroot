@@ -14,19 +14,23 @@ chmod 0755 /opt/fortos/api/FortOS.Api /opt/fortos/cli/FortOS.Cli
 ln -sf /opt/fortos/cli/FortOS.Cli /usr/local/bin/fortos
 
 # --- 2. Enable FortOS-required services ---
+# 注意:#15 已在 includes.chroot 预创建 multi-user.target.wants symlink,
+# 在有 systemd 运行的构建环境(如本地 WSL)中 systemctl enable 会因
+# "already exists" 报错;在无 systemd 的 Docker 构建容器中则 exit 0。
+# 统一加容错 —— symlink 已由预创建保障,enable 失败无需中断构建。
 echo "Enabling FortOS services..."
-systemctl enable docker.service
-systemctl enable containerd.service
-systemctl enable smbd.service
-systemctl enable nmbd.service
-systemctl enable nfs-server.service
-systemctl enable nfs-mountd.service
-systemctl enable rpcbind.service
-systemctl enable vsftpd.service
-systemctl enable ssh.service
-systemctl enable NetworkManager.service
+systemctl enable docker.service || true
+systemctl enable containerd.service || true
+systemctl enable smbd.service || true
+systemctl enable nmbd.service || true
+systemctl enable nfs-server.service || true
+systemctl enable nfs-mountd.service || true
+systemctl enable rpcbind.service || true
+systemctl enable vsftpd.service || true
+systemctl enable ssh.service || true
+systemctl enable NetworkManager.service || true
 systemctl enable nut-monitor.service 2>/dev/null || true
-systemctl enable fortos.service
+systemctl enable fortos.service || true
 
 # --- 3. FortOS tmpfiles ---
 systemd-tmpfiles --create /etc/tmpfiles.d/fortos.conf

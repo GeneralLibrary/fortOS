@@ -58,8 +58,8 @@ if [ -n "${missing_libs}" ]; then
     exit 1
 fi
 
-systemctl enable fortos-installer.service
+systemctl enable fortos-installer.service || true
 # CI 冒烟诊断服务(QEMU 引导测试经 ttyS1 断言 GUI 状态)。
-systemctl enable fortos-installer-diag.service
+systemctl enable fortos-installer-diag.service || true
 
 echo "=== FortOS Installer GUI Hook Complete ==="
