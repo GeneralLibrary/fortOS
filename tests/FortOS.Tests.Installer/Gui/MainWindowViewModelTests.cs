@@ -125,12 +125,14 @@ public class MainWindowViewModelTests
     public async Task BeginInstall_WithoutSystemDisk_DoesNothing()
     {
         var vm = await CreateViewModelAsync();
+        vm.DiskLayout.SelectedSystemDisk = null; // 模拟无盘环境(自动选中不生效)
         vm.Wizard.JumpTo(4); // Install(即便绕过校验链)
 
         await vm.BeginInstallCommand.ExecuteAsync(null);
 
         // 防御:未选系统盘时不启动安装。
         Assert.IsType<InstallViewModel>(vm.Wizard.CurrentPage);
+        Assert.False(vm.Install.IsFailed); // 未执行任何安装
     }
 
     [Fact]

@@ -94,6 +94,13 @@ public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
             {
                 Disks.Add(disk);
             }
+
+            // 傻瓜式流程:加载后自动选中第一块盘,用户可改;无盘时保持未选。
+            if (Disks.Count > 0 && SelectedSystemDisk is null)
+            {
+                SelectedSystemDisk = Disks[0];
+            }
+
             Error = Disks.Count == 0 ? L["disk.noDisks"] : string.Empty;
             _loaded = true;
         }

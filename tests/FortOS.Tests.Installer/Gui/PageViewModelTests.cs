@@ -38,6 +38,9 @@ public class PageViewModelTests
         var vm = new DiskLayoutViewModel(new LsblkTool(runner));
         await vm.LoadAsync();
 
+        Assert.NotNull(vm.SelectedSystemDisk); // 自动选中第一块盘(傻瓜式默认)
+
+        vm.SelectedSystemDisk = null;
         Assert.False(vm.IsValid); // 未选系统盘
 
         vm.SelectedSystemDisk = vm.Disks[0];
@@ -52,6 +55,18 @@ public class PageViewModelTests
         vm.SelectedDataDisk = vm.Disks[1];
         Assert.True(vm.IsValid);
         Assert.True(vm.ShowDataDiskPanel);
+    }
+
+    [Fact]
+    public async Task DiskLayout_LoadAsync_AutoSelectsFirstDisk()
+    {
+        var runner = new FakeRunner { StdoutResolver = (_, _) => DisksJson };
+        var vm = new DiskLayoutViewModel(new LsblkTool(runner));
+
+        await vm.LoadAsync();
+
+        Assert.Equal("/dev/sda", vm.SelectedSystemDisk?.Path);
+        Assert.True(vm.IsValid);
     }
 
     [Fact]
