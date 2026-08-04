@@ -22,6 +22,9 @@ internal static class Program
         {
             if (!Console.IsOutputRedirected)
             {
+                WelcomeCommand.PrintBanner();
+                // Give the banner a moment before the TUI redraws over it.
+                await Task.Delay(1200);
                 using var client = new FortOSApiClient();
                 return await new TuiRenderer().RunAsync(client);
             }
@@ -59,6 +62,7 @@ internal static class Program
         root.Add(MiscCommands.Config(options));
         root.Add(MiscCommands.Ups(options));
         root.Add(MiscCommands.Recovery(options));
+        root.Add(WelcomeCommand.Create(options));
         return root;
     }
 }
