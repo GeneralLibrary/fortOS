@@ -46,7 +46,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         var apiEndpoint = _configuration?.GetValue("agent:api_endpoint") ?? Environment.GetEnvironmentVariable("FortOS_API_ENDPOINT") ?? "http://host.docker.internal:5000";
         var rendered = RenderTemplate(template, config, tokenResult, apiEndpoint);
         var yaml = ParseYaml(rendered);
-        InjectComposeSettings(yaml, config, tokenResult, apiEndpoint);
+        InjectComposeSettings(yaml, config, tokenResult, apiEndpoint, AllowedHostRoots());
         var composeText = SerializeYaml(yaml);
         if (composeText.Contains(tokenResult.Token, StringComparison.Ordinal))
         {
@@ -116,7 +116,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         return writer.ToString();
     }
 
-    private static void InjectComposeSettings(YamlStream stream, AgentConfig config, AgentTokenResult tokenResult, string apiEndpoint)
+    private static void InjectComposeSettings(YamlStream stream, AgentConfig config, AgentTokenResult tokenResult, string apiEndpoint, IReadOnlyList<string> allowedRoots)
     {
         if (stream.Documents.Count == 0 || stream.Documents[0].RootNode is not YamlMappingNode root)
         {
@@ -131,7 +131,7 @@ public sealed class ComposeGenerator : IComposeGenerator
 
         foreach (var child in services.Children.Values.OfType<YamlMappingNode>())
         {
-            ValidateUntrustedService(child);
+            ValidateUntrustedService(child, allowedRoots);
             InjectService(child, config, tokenResult, apiEndpoint);
         }
     }
@@ -159,7 +159,6 @@ public sealed class ComposeGenerator : IComposeGenerator
             mergedTmpfs.Add(new YamlScalarNode("/tmp:rw,noexec,nosuid,size=64m"));
         }
         service.Children[new YamlScalarNode("tmpfs")] = mergedTmpfs;
-        service.Children.Remove(new YamlScalarNode("volumes"));
         service.Children[new YamlScalarNode("env_file")] = new YamlSequenceNode(new YamlScalarNode(".env"));
         var environment = GetOrAddMapping(service, "environment");
         environment.Children[new YamlScalarNode("NAS_TOKEN")] = new YamlScalarNode("${NAS_TOKEN}");
@@ -167,13 +166,29 @@ public sealed class ComposeGenerator : IComposeGenerator
         environment.Children[new YamlScalarNode("AGENT_CAPABILITIES")] = new YamlScalarNode(string.Join(',', tokenResult.Capabilities));
         environment.Children[new YamlScalarNode("TZ")] = new YamlScalarNode(Environment.GetEnvironmentVariable("TZ") ?? "UTC");
 
-        if (config.VolumeMapping.Length > 0)
+        // Merge caller volume mappings into the template's own volumes instead of replacing the
+        // list: dropping the template volumes would silently remove template-declared data volumes
+        // whenever the caller supplies no VolumeMapping, losing data on every container recreation.
+        // A caller mapping on the same container path REPLACES the template entry — duplicate
+        // targets would otherwise make Docker silently pick one of the two mounts.
+        var volumes = GetOrAddSequence(service, "volumes");
+        var templateEntries = new Dictionary<string, YamlNode>(StringComparer.Ordinal);
+        foreach (var child in volumes.Children)
         {
-            var volumes = GetOrAddSequence(service, "volumes");
-            foreach (var mapping in config.VolumeMapping)
+            if (GetVolumeTarget(child) is { } target)
             {
-                volumes.Add(new YamlScalarNode($"{mapping.HostPath}:{mapping.ContainerPath}:{(mapping.ReadOnly ? "ro" : "rw")}"));
+                templateEntries[target] = child;
             }
+        }
+
+        foreach (var mapping in config.VolumeMapping)
+        {
+            if (templateEntries.Remove(mapping.ContainerPath))
+            {
+                volumes.Children.Remove(templateEntries[mapping.ContainerPath]);
+            }
+
+            volumes.Add(new YamlScalarNode($"{mapping.HostPath}:{mapping.ContainerPath}:{(mapping.ReadOnly ? "ro" : "rw")}"));
         }
 
         if (config.PortMapping.Length > 0)
@@ -192,7 +207,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         }
     }
 
-    private static void ValidateUntrustedService(YamlMappingNode service)
+    private static void ValidateUntrustedService(YamlMappingNode service, IReadOnlyList<string> allowedRoots)
     {
         RejectTrue(service, "privileged");
         RejectHostNamespace(service, "network_mode");
@@ -204,13 +219,94 @@ public sealed class ComposeGenerator : IComposeGenerator
             throw new InvalidDataException("Agent compose may not add dangerous Linux capabilities.");
         if (service.Children.TryGetValue(new YamlScalarNode("volumes"), out var volumes) && volumes is YamlSequenceNode volumeList)
         {
-            foreach (var volume in volumeList.Children.OfType<YamlScalarNode>())
+            foreach (var volume in volumeList.Children)
             {
-                var source = (volume.Value ?? string.Empty).Split(':', 2)[0];
+                // Both compose short-form ("host:container:ro") and long-form (type/source/target
+                // mapping) entries must be checked: the long form is a YamlMappingNode.
+                string? source;
+                if (volume is YamlScalarNode scalar)
+                {
+                    source = (scalar.Value ?? string.Empty).Split(':', 2)[0];
+                }
+                else if (volume is YamlMappingNode mapping
+                    && mapping.Children.TryGetValue(new YamlScalarNode("source"), out var src) && src is YamlScalarNode srcScalar)
+                {
+                    source = srcScalar.Value;
+                }
+                else
+                {
+                    continue; // Anonymous volumes / entries without a source have nothing to validate.
+                }
+
+                if (string.IsNullOrWhiteSpace(source)) continue;
                 if (source == "/" || source.Contains("docker.sock", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Agent compose may not mount the Docker socket or host root.");
+                if (source.StartsWith("/", StringComparison.Ordinal))
+                {
+                    // Absolute-path sources are host bind mounts: they must stay within the allowed
+                    // roots, mirroring the AgentModule.NormalizeVolumeMapping check for caller
+                    // mappings so a malicious template cannot mount arbitrary host paths.
+                    if (!allowedRoots.Any(root => IsPathUnderRoot(source, root)))
+                        throw new InvalidDataException($"Agent compose volume source {source} is not within an allowed directory.");
+                }
+                else if (source is "." or ".." || source.Contains('/'))
+                {
+                    // Relative sources ("./data", "../..", "." / "..") resolve against the compose
+                    // project directory and can traverse out of it; only pure named volumes (no
+                    // slash) are acceptable from templates.
+                    throw new InvalidDataException($"Agent compose volume source '{source}' must be an absolute path within an allowed directory.");
+                }
             }
         }
+    }
+
+    /// <summary>Returns true when <paramref name="path"/> is <paramref name="root"/> itself or lives below it.</summary>
+    private static bool IsPathUnderRoot(string path, string root)
+    {
+        var full = Path.GetFullPath(path);
+        var normalizedRoot = Path.GetFullPath(root).TrimEnd('/', '\\');
+        return string.Equals(full, normalizedRoot, StringComparison.Ordinal)
+            || full.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Extracts the container-side target of a volume entry in either compose syntax
+    /// (short-form "source:target[:mode]" or long-form mapping with a "target" key).
+    /// </summary>
+    private static string? GetVolumeTarget(YamlNode volume)
+    {
+        if (volume is YamlScalarNode scalar)
+        {
+            var parts = (scalar.Value ?? string.Empty).Split(':', 3);
+            return parts.Length >= 2 ? parts[1] : null;
+        }
+
+        if (volume is YamlMappingNode mapping
+            && mapping.Children.TryGetValue(new YamlScalarNode("target"), out var target) && target is YamlScalarNode targetScalar)
+        {
+            return targetScalar.Value;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves the host-path roots allowed for volume bind mounts, using the same configuration
+    /// keys (and the same data-root fallback) as AgentModule.ResolveAllowedRoots.
+    /// </summary>
+    private IReadOnlyList<string> AllowedHostRoots()
+    {
+        var configured = _configuration?.GetArray("agent:allowed_volume_roots") ?? [];
+        if (configured.Length == 0 && _configuration?.GetValue("agent:allowed_volume_roots") is { Length: > 0 } value)
+        {
+            configured = value.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        var roots = configured.Length == 0
+            ? [Environment.GetEnvironmentVariable("FortOS_DATA_ROOT") is { Length: > 0 } dataRoot && !string.IsNullOrWhiteSpace(dataRoot) ? dataRoot : "/srv/nas"]
+            : configured;
+
+        return roots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static void RejectTrue(YamlMappingNode service, string key)
