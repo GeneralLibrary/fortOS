@@ -301,11 +301,9 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
 
     private TimeSpan GetRestartDelay(ServiceDefinition definition)
     {
-        if (definition.RestartPolicy is RestartPolicy.Always or RestartPolicy.OnFailure)
-        {
-            return TimeSpan.Zero;
-        }
-
+        // Every restart policy (except Never, which the caller already filtered) goes through the
+        // same exponential backoff: a crash-looping service must not hammer the host with
+        // zero-delay restarts. The counter resets after 10 minutes of stability.
         if (_startedAt.TryGetValue(definition.ServiceId, out var start) && DateTimeOffset.UtcNow - start >= TimeSpan.FromMinutes(10))
         {
             _backoffAttempts[definition.ServiceId] = 0;
