@@ -112,7 +112,7 @@ configure_live_image() {
         echo "    To create the cache: cd 'fortos debian12' && bash scripts/bootstrap-debian12.sh debs"
     fi
 
-    local live_boot_append="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8"
+    local live_boot_append="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8 noautologin"
 
     lb config \
         --mode debian \

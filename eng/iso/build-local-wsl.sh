@@ -94,7 +94,7 @@ lb config \
     --debian-installer live \
     --debian-installer-distribution bookworm \
     --debian-installer-gui true \
-    --bootappend-live "boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8" \
+    --bootappend-live "boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8 noautologin" \
     --iso-application "FortOS Debian 12 Installer" \
     --iso-publisher "FortOS Project" \
     --iso-volume "FortOS_${SAFE_VERSION:0:20}" \
