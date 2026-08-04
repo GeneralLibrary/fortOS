@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using FortOS.Core;
+using Microsoft.Extensions.Logging;
 
 namespace FortOS.Modules.Backup.Services;
 
@@ -12,14 +13,16 @@ public sealed class BackupExecutionService
     private readonly IEventBus _events;
     private readonly BackupRunHistoryStore _runs;
     private readonly SqliteLeaseService _leases;
+    private readonly ILogger<BackupExecutionService> _logger;
     private readonly string _owner = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.CreateVersion7():N}";
 
-    public BackupExecutionService(IProcessManager process, IEventBus events, BackupRunHistoryStore runs, SqliteLeaseService leases)
+    public BackupExecutionService(IProcessManager process, IEventBus events, BackupRunHistoryStore runs, SqliteLeaseService leases, ILogger<BackupExecutionService> logger)
     {
         _process = process;
         _events = events;
         _runs = runs;
         _leases = leases;
+        _logger = logger;
     }
 
     public Task<BackupRunRecord> RunAsync(BackupTask task, CancellationToken ct)
@@ -107,7 +110,7 @@ public sealed class BackupExecutionService
             catch (Exception cleanupEx)
             {
                 // Best effort only: surface the original failure; log the cleanup failure separately.
-                Console.Error.WriteLine($"Backup run {runId} failure cleanup also failed: {cleanupEx.Message}");
+                _logger.LogWarning(cleanupEx, "Backup run {RunId} failure cleanup also failed.", runId);
             }
 
             throw;

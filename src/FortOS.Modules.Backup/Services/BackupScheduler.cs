@@ -93,10 +93,23 @@ public sealed class BackupScheduler
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
         {
-            var tasks = await tasksProvider().ConfigureAwait(false);
-            foreach (var task in tasks.Where(t => IsDue(t, DateTimeOffset.UtcNow)))
+            try
             {
-                await RunTaskAsync(task, ct).ConfigureAwait(false);
+                var tasks = await tasksProvider().ConfigureAwait(false);
+                foreach (var task in tasks.Where(t => IsDue(t, DateTimeOffset.UtcNow)))
+                {
+                    await RunTaskAsync(task, ct).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // A single failed tick must not kill the scheduler — this loop is the only driver
+                // of every scheduled backup. Log and continue with the next minute.
+                logger.LogError(ex, "Backup scheduler tick failed; continuing with the next tick.");
             }
         }
     }
@@ -112,10 +125,21 @@ public sealed class BackupScheduler
                 logger.LogWarning("Backup task {TaskId} execution failed.", task.TaskId);
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (BackupExecutionException ex)
         {
             lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
             logger.LogWarning(ex, "Backup task {TaskId} execution failed, error code {ErrorCode}.", task.TaskId, ex.Code);
+        }
+        catch (Exception ex)
+        {
+            // Never let one task's unexpected failure (DB error, IO error, ...) kill the scheduler
+            // or skip the remaining tasks of this tick.
+            lastRuns[task.TaskId] = DateTimeOffset.UtcNow;
+            logger.LogWarning(ex, "Backup task {TaskId} execution failed: {Message}", task.TaskId, ex.Message);
         }
     }
 }
