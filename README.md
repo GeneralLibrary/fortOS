@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="logo/banner_logo.png" alt="FortOS" width="35%">
+  <img src="logo/banner_logo.png" alt="FortOS" width="15%">
 </p>
+
 
 <p align="center">
   <em>A modern, security-first <strong>Linux NAS operating system</strong>, built on <strong>.NET 10</strong>.</em>
