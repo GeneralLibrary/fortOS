@@ -68,13 +68,15 @@ public sealed class ModuleHost : IModuleHost, IDisposable
             foreach (var path in remaining.ToArray())
             {
                 ct.ThrowIfCancellationRequested();
+                LoadedModule? candidate = null;
                 try
                 {
-                    var candidate = CreateCandidate(path);
+                    candidate = CreateCandidate(path);
                     if (candidate.Module.Version is null)
                     {
                         logger.LogError("Skipping module {Path}: Version is null.", path);
                         candidate.Dispose();
+                        candidate = null;
                         remaining.Remove(path);
                         progressed = true;
                         continue;
@@ -83,6 +85,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
                     if (candidate.Module.Dependencies.Any(d => !loaded.ContainsKey(d)))
                     {
                         candidate.Dispose();
+                        candidate = null;
                         continue;
                     }
 
@@ -93,6 +96,9 @@ public sealed class ModuleHost : IModuleHost, IDisposable
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Failed to load module {Path}.", path);
+                    // 初始化失败必须释放 AssemblyLoadContext，否则 ALC 泄漏导致
+                    // 多次热替换后内存膨胀；candidate 已成功注册时此处为 null。
+                    candidate?.Dispose();
                     remaining.Remove(path);
                     progressed = true;
                 }
@@ -150,8 +156,16 @@ public sealed class ModuleHost : IModuleHost, IDisposable
             loaded.Remove(moduleId);
         }
 
-        await entry.Module.ShutdownAsync(ct).ConfigureAwait(false);
-        entry.Dispose();
+        try
+        {
+            await entry.Module.ShutdownAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            // ShutdownAsync 失败也必须释放模块资源（AssemblyLoadContext、事件订阅等），
+            // 否则已从 loaded 移除的旧模块继续运行，与重载后的新模块重复调度备份/事件。
+            entry.Dispose();
+        }
     }
 
     /// <inheritdoc />
@@ -185,7 +199,12 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         {
             try
             {
-                entry.Module.ShutdownAsync(CancellationToken.None).GetAwaiter().GetResult();
+                // 带超时的关闭：模块挂起（如等待外部服务）时宿主退出不能无限阻塞。
+                var shutdownTask = entry.Module.ShutdownAsync(CancellationToken.None);
+                if (!shutdownTask.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    logger.LogWarning("Module {ModuleId} shutdown timed out after 5 seconds; unloading its assembly anyway.", entry.Module.ModuleId);
+                }
             }
             catch (Exception ex)
             {

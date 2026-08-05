@@ -98,8 +98,12 @@ public sealed class NasTokenManager : ITokenManager
             {
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = validationKey,
-                ValidateIssuer = false,
-                ValidateAudience = false,
+                // 校验 issuer 与 audience：即使签名密钥泄露，其他发行方签发的
+                // token（错误的 iss/aud）也无法通过 —— 第二道防线。
+                ValidateIssuer = true,
+                ValidIssuer = GetIssuer(),
+                ValidateAudience = true,
+                ValidAudience = GetAudience(),
                 ValidateLifetime = true,
                 RequireExpirationTime = true,
                 RequireSignedTokens = true,
@@ -243,6 +247,8 @@ public sealed class NasTokenManager : ITokenManager
         var descriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
+            Issuer = payload.Iss,
+            Audience = GetAudience(),
             Expires = payload.Exp.UtcDateTime,
             NotBefore = (payload.Exp > payload.Iat ? payload.Iat : payload.Exp.AddSeconds(-1)).UtcDateTime,
             IssuedAt = payload.Iat.UtcDateTime,
@@ -328,6 +334,9 @@ CREATE TABLE IF NOT EXISTS resource_acls (
     }
 
     private string GetIssuer() => _configuration?.GetValue("security:issuer") ?? "nas://local";
+
+    /// <summary>令牌受众：与 issuer 配套，可由 security:audience 覆盖。</summary>
+    private string GetAudience() => _configuration?.GetValue("security:audience") ?? "fortos";
 
     // Kept opaque on purpose: ErrorMessage is surfaced to HTTP clients verbatim (see the
     // generic validation catch above), so the optional exception is not rendered anywhere.

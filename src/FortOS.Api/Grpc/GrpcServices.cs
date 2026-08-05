@@ -43,6 +43,12 @@ public sealed class StorageGrpcService : Proto.StorageService.StorageServiceBase
     /// <inheritdoc />
     public override async Task<Proto.StorageOperationResult> CreatePartition(Proto.CreatePartitionRequest request, ServerCallContext context)
     {
+        // 修改分区表属于破坏性操作：与 HTTP 端一致，必须显式确认，防止误调清空数据。
+        if (!request.Confirm)
+        {
+            return new Proto.StorageOperationResult { Success = false, Message = "Creating a partition modifies the disk partition table; explicit confirmation is required.", ErrorCode = Proto.ErrorCode.InvalidArgument };
+        }
+
         var result = await storage.CreatePartitionAsync(request.DiskPath, new PartitionSpec { Name = request.Name, FileSystem = request.Filesystem, StartBytes = request.StartBytes, SizeBytes = request.SizeBytes }, context.CancellationToken).ConfigureAwait(false);
         return new Proto.StorageOperationResult { Success = result.Success, ResourceId = result.PartitionPath ?? string.Empty, Message = result.Message ?? string.Empty, ErrorCode = result.Success ? Proto.ErrorCode.Ok : Proto.ErrorCode.InvalidArgument };
     }
@@ -50,6 +56,12 @@ public sealed class StorageGrpcService : Proto.StorageService.StorageServiceBase
     /// <inheritdoc />
     public override async Task<Proto.StorageOperationResult> CreateRaid(Proto.CreateRaidRequest request, ServerCallContext context)
     {
+        // 创建 RAID 会擦除所选磁盘数据：与 HTTP 端一致，必须显式确认。
+        if (!request.Confirm)
+        {
+            return new Proto.StorageOperationResult { Success = false, Message = "Creating a RAID array erases disk data; explicit confirmation is required.", ErrorCode = Proto.ErrorCode.InvalidArgument };
+        }
+
         var result = await storage.CreateRaidAsync(ToCore(request.Level), request.DiskPaths.ToArray(), context.CancellationToken).ConfigureAwait(false);
         return new Proto.StorageOperationResult { Success = result.Success, ResourceId = result.PoolId ?? string.Empty, Message = result.Message ?? string.Empty, ErrorCode = result.Success ? Proto.ErrorCode.Ok : Proto.ErrorCode.RaidCreateFailed };
     }
@@ -104,7 +116,27 @@ public sealed class ShareGrpcService : Proto.ShareService.ShareServiceBase
 
     /// <inheritdoc />
     public override Task GetConnectedClients(Proto.ClientsRequest request, IServerStreamWriter<Proto.ConnectedClient> responseStream, ServerCallContext context)
-        => StreamEventsAsync(events, $"share.{request.ShareId}.client.*", async e => await responseStream.WriteAsync(new Proto.ConnectedClient { ClientId = e.EventId.ToString(), ClientIp = string.Empty, Protocol = "unknown", ConnectedAtUnix = e.Timestamp.ToUnixTimeSeconds() }, context.CancellationToken).ConfigureAwait(false), context.CancellationToken);
+        => StreamEventsAsync(events, $"share.{request.ShareId}.client.*", async e =>
+        {
+            // 从事件载荷解析真实来源信息（若事件携带）；非法 JSON 只跳过该事件，不中断整条流。
+            string clientIp = string.Empty;
+            string protocol = "unknown";
+            if (!string.IsNullOrWhiteSpace(e.DataJson))
+            {
+                try
+                {
+                    using var document = System.Text.Json.JsonDocument.Parse(e.DataJson);
+                    if (document.RootElement.TryGetProperty("clientIp", out var ip)) clientIp = ip.GetString() ?? string.Empty;
+                    if (document.RootElement.TryGetProperty("protocol", out var proto)) protocol = proto.GetString() ?? "unknown";
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // 事件载荷非 JSON：保留占位值继续推送。
+                }
+            }
+
+            await responseStream.WriteAsync(new Proto.ConnectedClient { ClientId = e.EventId.ToString(), ClientIp = clientIp, Protocol = protocol, ConnectedAtUnix = e.Timestamp.ToUnixTimeSeconds() }, context.CancellationToken).ConfigureAwait(false);
+        }, context.CancellationToken);
 
     private static ShareDefinition ToCore(Proto.ShareDefinition share) => new() { ShareId = share.ShareId, Name = share.Name, Path = share.Path, Description = share.Description, ReadOnly = share.ReadOnly, Protocols = share.Protocols.Select(p => p.ToString().Replace("ShareProtocol", string.Empty).ToLowerInvariant()).ToArray() };
     private static Proto.ShareDefinition ToProto(ShareDefinition share)
@@ -155,10 +187,20 @@ public sealed class AgentGrpcService : Proto.AgentService.AgentServiceBase
     public override async Task GetAgentLogs(Proto.AgentLogRequest request, IServerStreamWriter<ProtoLogEntry> responseStream, ServerCallContext context)
     {
         var entries = await logs.QueryAsync(new LogQuery { AgentId = request.AgentId, Limit = request.TailLines > 0 ? request.TailLines : 100 }, context.CancellationToken).ConfigureAwait(false);
-        foreach (var entry in entries.OrderBy(e => e.Timestamp)) await responseStream.WriteAsync(GrpcMappings.ToProto(entry), context.CancellationToken).ConfigureAwait(false);
+        var ordered = entries.OrderBy(e => e.Timestamp).ToArray();
+        foreach (var entry in ordered) await responseStream.WriteAsync(GrpcMappings.ToProto(entry), context.CancellationToken).ConfigureAwait(false);
+
+        // follow 模式：轮询查询新日志并推送（此前循环只 Delay 不推任何日志，流式语义名存实亡）。
+        var from = ordered.Length > 0 ? ordered[^1].Timestamp : DateTimeOffset.UtcNow;
         while (request.Follow && !context.CancellationToken.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(2), context.CancellationToken).ConfigureAwait(false);
+            var fresh = await logs.QueryAsync(new LogQuery { AgentId = request.AgentId, From = from.AddTicks(1), Limit = 100 }, context.CancellationToken).ConfigureAwait(false);
+            foreach (var entry in fresh.OrderBy(e => e.Timestamp))
+            {
+                await responseStream.WriteAsync(GrpcMappings.ToProto(entry), context.CancellationToken).ConfigureAwait(false);
+                from = entry.Timestamp;
+            }
         }
     }
 
@@ -260,7 +302,29 @@ public sealed class AuditGrpcService : Proto.AuditService.AuditServiceBase
     /// <inheritdoc />
     public override async Task ExportAuditChain(Proto.ExportRequest request, IServerStreamWriter<Proto.ExportChunk> responseStream, ServerCallContext context)
     {
-        await responseStream.WriteAsync(new Proto.ExportChunk { Content = ByteString.Empty, Sequence = 0, Last = true }, context.CancellationToken).ConfigureAwait(false);
+        // IAuditChain.ExportAsync 按日期导出到文件；读回并分块流式发送（此前是空实现）。
+        var date = request.DateUnix > 0
+            ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(request.DateUnix).UtcDateTime)
+            : DateOnly.FromDateTime(DateTime.UtcNow);
+        var tempPath = Path.Combine(Path.GetTempPath(), $"fortos-audit-{Guid.CreateVersion7():N}.json");
+        try
+        {
+            await chain.ExportAsync(date, tempPath, context.CancellationToken).ConfigureAwait(false);
+            await using var stream = File.OpenRead(tempPath);
+            var buffer = new byte[64 * 1024];
+            int sequence = 0;
+            int read;
+            while ((read = await stream.ReadAsync(buffer, context.CancellationToken).ConfigureAwait(false)) > 0)
+            {
+                await responseStream.WriteAsync(new Proto.ExportChunk { Content = ByteString.CopyFrom(buffer, 0, read), Sequence = sequence++, Last = false }, context.CancellationToken).ConfigureAwait(false);
+            }
+
+            await responseStream.WriteAsync(new Proto.ExportChunk { Content = ByteString.Empty, Sequence = sequence, Last = true }, context.CancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
     }
 }
 

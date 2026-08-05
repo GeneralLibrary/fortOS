@@ -95,7 +95,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next, IConfiguration c
     private static async Task<(bool Acquired, string Code, IdempotencyReplay? Replay)> AcquireAsync(IDatabaseProvider database, string key, string subject, string method, PathString path, string hash, TimeSpan ttl, CancellationToken ct)
     {
         await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var transaction = connection.BeginTransaction();
+        // BEGIN IMMEDIATE：并发携带相同 Idempotency-Key 的请求必须在写前串行化，
+        // 否则两个请求同时读到「无记录」并各自 INSERT，触发主键冲突（500）。
+        await using var transaction = connection.BeginTransaction(deferred: false);
         var now = DateTimeOffset.UtcNow;
         await using var lookup = connection.CreateCommand();
         lookup.Transaction = transaction;
@@ -114,12 +116,16 @@ public sealed class IdempotencyMiddleware(RequestDelegate next, IConfiguration c
         await reader.DisposeAsync().ConfigureAwait(false);
         await using var insert = connection.CreateCommand();
         insert.Transaction = transaction;
-        insert.CommandText = "INSERT INTO idempotency_records(idempotency_key,subject,method,path,status_code,response_json,expires_at,request_hash,state,updated_at) VALUES($key,$subject,$method,$path,0,'',$expires,$hash,'pending',$now);";
+        insert.CommandText = "INSERT OR IGNORE INTO idempotency_records(idempotency_key,subject,method,path,status_code,response_json,expires_at,request_hash,state,updated_at) VALUES($key,$subject,$method,$path,0,'',$expires,$hash,'pending',$now);";
         insert.Parameters.AddWithValue("$key", key); insert.Parameters.AddWithValue("$subject", subject); insert.Parameters.AddWithValue("$method", method); insert.Parameters.AddWithValue("$path", path.ToString());
         insert.Parameters.AddWithValue("$expires", now.Add(ttl).ToString("O")); insert.Parameters.AddWithValue("$hash", hash); insert.Parameters.AddWithValue("$now", now.ToString("O"));
-        await insert.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        // INSERT OR IGNORE 在 key 已存在（并发窗口）时静默跳过并返回 0 行：
+        // 视为冲突由调用方返回 409，而不是让主键约束异常冒泡成 500。
+        var inserted = await insert.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         await transaction.CommitAsync(ct).ConfigureAwait(false);
-        return (true, string.Empty, null);
+        return inserted == 0
+            ? (false, "IDEMPOTENCY_KEY_REUSED", null)
+            : (true, string.Empty, null);
     }
 
     private static async Task CompleteAsync(IDatabaseProvider database, string key, string subject, string method, PathString path, int status, string response, CancellationToken ct)

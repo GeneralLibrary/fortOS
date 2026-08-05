@@ -38,6 +38,10 @@ public sealed class BackupExecutionService
         var lease = await _leases.AcquireAsync($"backup:{task.TaskId}", _owner, TimeSpan.FromMinutes(15), ct).ConfigureAwait(false);
         if (lease is null) throw new BackupExecutionException("BACKUP_LEASE_CONFLICT", "This backup task is already held by another executor.");
 
+        // 执行期间持续续租：rsync 可能远超 15 分钟租约 TTL，不续租会让租约过期后
+        // 被其他执行者抢占，导致同一任务并发双写目标。
+        using var leaseRenewal = StartLeaseRenewal(lease, ct);
+
         var queued = new BackupRunRecord { RunId = runId, TaskId = task.TaskId, Operation = operation, State = BackupRunState.Queued, StartedAt = started, LeaseToken = lease.FencingToken };
         string? checkpoint = null;
         try
@@ -76,19 +80,43 @@ public sealed class BackupExecutionService
                 await ApplyRetentionAsync(task, target, ct).ConfigureAwait(false);
             }
 
-            if (checkpoint is not null) DeleteCheckpoint(checkpoint);
+            // 成功记录必须先落盘并确认，然后才允许清理 checkpoint：若先删 checkpoint
+            // 再写记录，任何 DB/IO 异常都会让 catch 分支尝试从已删除的 checkpoint
+            // 回滚 —— 恢复数据与备份副本同时丢失（数据双丢）。
             var succeeded = queued with
             {
                 State = BackupRunState.Succeeded, Success = true, ExitCode = result.ExitCode, Stdout = result.Stdout, Stderr = result.Stderr,
                 FinishedAt = DateTimeOffset.UtcNow, Report = new BackupRunReport { AttemptCount = attempts + 1, ChecksumManifestPath = manifest, ChecksumVerified = verified, CheckpointPath = checkpoint }
             };
             await _runs.AppendAsync(succeeded, ct).ConfigureAwait(false);
-            await _events.PublishAsync($"backup.task.{operation}.completed", "backup.task.completed", JsonSerializer.Serialize(new { task.TaskId, runId, lease = lease.FencingToken }), ct).ConfigureAwait(false);
+
+            // 记录确认后 checkpoint 才可清理；清理是 best-effort，失败不能掩盖
+            // 已确认的成功结果（残留的 checkpoint 由保留策略回收）。
+            if (checkpoint is not null) DeleteCheckpointBestEffort(checkpoint);
+
+            // 完成事件是通知语义：发布失败只记日志，绝不能把已成功的备份
+            // 拖入 catch 分支触发回滚。
+            try
+            {
+                await _events.PublishAsync($"backup.task.{operation}.completed", "backup.task.completed", JsonSerializer.Serialize(new { task.TaskId, runId, lease = lease.FencingToken }), ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Backup run {RunId} succeeded but the completion event could not be published.", runId);
+            }
             return succeeded;
         }
         catch (BackupExecutionException ex)
         {
-            var state = checkpoint is not null && RestoreCheckpoint(target, checkpoint) ? BackupRunState.RolledBack : BackupRunState.Failed;
+            // 业务失败（命令失败、清单校验失败等）发生在成功记录写入之前，checkpoint
+            // 此时必然仍在；仍加存在性检查以防保留策略恰好并发回收。只有真正回滚成功
+            // 才标记 RolledBack，否则如实标记 Failed。
+            var state = BackupRunState.Failed;
+            if (checkpoint is not null && Directory.Exists(checkpoint) && RestoreCheckpoint(target, checkpoint))
+            {
+                state = BackupRunState.RolledBack;
+            }
+
             var failed = queued with { State = state, FinishedAt = DateTimeOffset.UtcNow, Stderr = ex.Message, ExitCode = ex.Result?.ExitCode ?? 1, Report = new BackupRunReport { ErrorCode = ex.Code, CheckpointPath = checkpoint } };
             await _runs.AppendAsync(failed, ct).ConfigureAwait(false);
             await _events.PublishAsync($"backup.task.{operation}.failed", "backup.task.failed", JsonSerializer.Serialize(new { task.TaskId, runId, code = ex.Code }), ct).ConfigureAwait(false);
@@ -100,7 +128,14 @@ public sealed class BackupExecutionService
             // run record and remove the checkpoint — otherwise the run stays "Running" forever and
             // the checkpoint directory leaks. Cleanup is best-effort so it cannot mask the original
             // exception.
-            var state = checkpoint is not null && RestoreCheckpoint(target, checkpoint) ? BackupRunState.RolledBack : BackupRunState.Failed;
+            // 只有 checkpoint 仍然存在时才尝试回滚：成功路径已在写记录后清理 checkpoint，
+            // 若此时它已不存在，如实标记 Failed（标记 RolledBack 会误导审计与用户）。
+            var state = BackupRunState.Failed;
+            if (checkpoint is not null && Directory.Exists(checkpoint) && RestoreCheckpoint(target, checkpoint))
+            {
+                state = BackupRunState.RolledBack;
+            }
+
             var failed = queued with { State = state, FinishedAt = DateTimeOffset.UtcNow, Stderr = ex.Message, ExitCode = 1, Report = new BackupRunReport { ErrorCode = "BACKUP_EXECUTION_ERROR", CheckpointPath = checkpoint } };
             try
             {
@@ -123,7 +158,7 @@ public sealed class BackupExecutionService
 
     private async Task<CommandResult> SyncAsync(BackupTask task, string source, string target, bool dryRun, CancellationToken ct)
         => IsLocal(task.Target.Type)
-            ? await new RsyncBackupService(_process).SyncAsync(source, target, dryRun, ct).ConfigureAwait(false)
+            ? await new RsyncBackupService(_process).SyncAsync(source, target, dryRun, ct, task.ExcludePatterns).ConfigureAwait(false)
             : dryRun
                 ? new CommandResult { ExitCode = 2, Stderr = "Cloud backup restore does not support dry-run." }
                 : await new CloudBackupService(_process).SyncAsync(source, target, ct).ConfigureAwait(false);
@@ -140,6 +175,67 @@ public sealed class BackupExecutionService
         var drive = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(parent))!);
         if (drive.AvailableFreeSpace < 1024 * 1024)
             throw new BackupExecutionException("BACKUP_PRECHECK_SPACE", "Insufficient available space on target.");
+    }
+
+    /// <summary>
+    /// 启动租约后台续期：每隔 5 分钟调用 <see cref="SqliteLeaseService.RenewAsync"/> 续一次
+    /// （TTL 15 分钟，留有充足余量）。续期失败只记警告并继续尝试，不中断主流程。
+    /// </summary>
+    private IDisposable StartLeaseRenewal(LeaseHandle lease, CancellationToken ct)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var task = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(cts.Token).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        var renewed = await _leases.RenewAsync(lease, TimeSpan.FromMinutes(15), cts.Token).ConfigureAwait(false);
+                        if (!renewed)
+                        {
+                            _logger.LogWarning("Backup lease {Lease} renewal was rejected; another executor may hold it.", lease.Name);
+                        }
+                    }
+                    catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Backup lease {Lease} renewal failed; retrying on next tick.", lease.Name);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // 正常取消。
+            }
+        }, CancellationToken.None);
+        return new LeaseRenewalHandle(task, cts);
+    }
+
+    /// <summary>租约续期任务句柄：Dispose 时取消续期并等待任务收敛。</summary>
+    private sealed class LeaseRenewalHandle(Task task, CancellationTokenSource cts) : IDisposable
+    {
+        public void Dispose()
+        {
+            cts.Cancel();
+            try
+            {
+                task.Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex) when (ex is AggregateException or TimeoutException)
+            {
+                // best-effort：续期任务退出失败不阻塞主流程。
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
     }
 
     private static bool IsLocal(BackupTargetType type) => type is BackupTargetType.Local or BackupTargetType.RemoteNas;
@@ -164,9 +260,17 @@ public sealed class BackupExecutionService
         catch { return false; }
     }
 
-    private static void DeleteCheckpoint(string checkpoint)
+    /// <summary>删除 checkpoint 目录；失败仅记警告，不向上传播（清理不得掩盖成功结果）。</summary>
+    private void DeleteCheckpointBestEffort(string checkpoint)
     {
-        if (Directory.Exists(checkpoint)) Directory.Delete(checkpoint, recursive: true);
+        try
+        {
+            if (Directory.Exists(checkpoint)) Directory.Delete(checkpoint, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Failed to clean up checkpoint directory {Checkpoint}; it will be reclaimed by retention policy.", checkpoint);
+        }
     }
 
     private static async Task<string> WriteManifestAsync(string root, CancellationToken ct)

@@ -18,7 +18,11 @@ public sealed class QuotaService
     {
         ShareValidation.ValidatePath(path);
         var tool = fileSystemType.Equals("btrfs", StringComparison.OrdinalIgnoreCase) ? "btrfs" : "xfs_quota";
-        var args = tool == "btrfs" ? $"qgroup limit {bytes} {Quote(path)}" : $"-x -c 'limit -p bhard={bytes} {Quote(path)}' {Quote(path)}";
+        // 注意：CommandExecutor 无 shell，参数经 ProcessStartInfo.Arguments 解析，
+        // 单引号不会被移除而是作为字面字符传给工具；含空格的 -c 子命令必须用双引号分组。
+        var args = tool == "btrfs"
+            ? $"qgroup limit {bytes} {Quote(path)}"
+            : $"-x -c {Quote($"limit -p bhard={bytes} {path}")} {Quote(path)}";
         try
         {
             return await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = tool, Arguments = args }, ct).ConfigureAwait(false);
@@ -29,5 +33,6 @@ public sealed class QuotaService
         }
     }
 
-    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}";
+    /// <summary>完整双引号包裹：先转义内部引号，再闭合尾引号（历史实现只开不闭，命令必然失败）。</summary>
+    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }

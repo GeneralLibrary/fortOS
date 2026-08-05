@@ -246,7 +246,7 @@ public sealed class ComposeGenerator : IComposeGenerator
                     // Absolute-path sources are host bind mounts: they must stay within the allowed
                     // roots, mirroring the AgentModule.NormalizeVolumeMapping check for caller
                     // mappings so a malicious template cannot mount arbitrary host paths.
-                    if (!allowedRoots.Any(root => IsPathUnderRoot(source, root)))
+                    if (!allowedRoots.Any(root => FortOS.Core.PathSafety.IsPathUnderRoot(source, root)))
                         throw new InvalidDataException($"Agent compose volume source {source} is not within an allowed directory.");
                 }
                 else if (source is "." or ".." || source.Contains('/'))
@@ -258,15 +258,6 @@ public sealed class ComposeGenerator : IComposeGenerator
                 }
             }
         }
-    }
-
-    /// <summary>Returns true when <paramref name="path"/> is <paramref name="root"/> itself or lives below it.</summary>
-    private static bool IsPathUnderRoot(string path, string root)
-    {
-        var full = Path.GetFullPath(path);
-        var normalizedRoot = Path.GetFullPath(root).TrimEnd('/', '\\');
-        return string.Equals(full, normalizedRoot, StringComparison.Ordinal)
-            || full.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -17,7 +17,10 @@ public sealed class SqliteLeaseService
 
         await _database.InitializeAsync(ct).ConfigureAwait(false);
         await using var connection = await _database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var transaction = connection.BeginTransaction();
+        // BEGIN IMMEDIATE：在首次读取之前就获取写锁，使「读-判-写」整体原子化。
+        // 默认的 deferred 事务下，两个并发获取者会同时读到「无记录」并各自写入
+        // 重复的 fencing token，导致同一任务被并发执行或请求 500（SQLITE_BUSY_SNAPSHOT）。
+        await using var transaction = connection.BeginTransaction(deferred: false);
         var now = DateTimeOffset.UtcNow;
         var expires = now.Add(ttl);
         long token;

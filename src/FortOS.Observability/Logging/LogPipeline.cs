@@ -13,7 +13,7 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     private readonly ParseStage _parseStage;
     private readonly IReadOnlyList<ILogStage> _stages;
     private readonly ILogger<LogPipeline>? _logger;
-    private readonly CancellationTokenSource _shutdown = new();
+    private CancellationTokenSource _shutdown = new();
     private readonly object _consumerLock = new();
     private Task? _consumer;
     private int _disposed;
@@ -41,11 +41,23 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        // Guarded because the consumer is a single reader: two racing first callers must not both
-        // spin up a consumer over the same channel.
+        // 单读者通道：加锁防止并发首次调用重复启动消费者。
         lock (_consumerLock)
         {
-            _consumer ??= Task.Run(() => ConsumeAsync(_shutdown.Token), CancellationToken.None);
+            // 宿主重启（StopAsync 后再 StartAsync）时取消源已触发，必须重建，
+            // 否则新消费者立即因已取消的 token 退出。
+            if (_shutdown.IsCancellationRequested)
+            {
+                _shutdown.Dispose();
+                _shutdown = new CancellationTokenSource();
+            }
+
+            // 消费者若已退出（stage 异常导致循环结束），必须重建 ——
+            // 否则 channel 无人消费，写满后全部日志写入方永久阻塞。
+            if (_consumer is null || _consumer.IsCompleted)
+            {
+                _consumer = Task.Run(() => ConsumeAsync(_shutdown.Token), CancellationToken.None);
+            }
         }
 
         return Task.CompletedTask;
@@ -90,15 +102,31 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
 
     private async Task ConsumeAsync(CancellationToken ct)
     {
-        try
+        // 外层循环保证消费者不会因单个 stage 的异常/超时而永久退出：
+        // 消费者静默死亡后 channel 无人读取，写满时所有日志写入方（含 Serilog）
+        // 会永久阻塞，整个系统日志静默停摆。
+        while (!ct.IsCancellationRequested)
         {
-            await foreach (var entry in _channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            try
             {
-                await ProcessThroughStagesAsync(entry, ct).ConfigureAwait(false);
+                await foreach (var entry in _channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                {
+                    await ProcessThroughStagesAsync(entry, ct).ConfigureAwait(false);
+                }
+
+                // 只有 channel 被正常关闭（StopAsync）才会走到这里。
+                return;
             }
-        }
-        catch (OperationCanceledException)
-        {
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // 正常停机。
+                return;
+            }
+            catch (OperationCanceledException ex)
+            {
+                // 非停机触发的取消（防御：stage 内部超时漏出）：记录并重启消费循环。
+                _logger?.LogError(ex, "Log pipeline consumer aborted unexpectedly; restarting consumer loop.");
+            }
         }
     }
 
@@ -116,9 +144,11 @@ public sealed class LogPipeline : ILogPipeline, IHostedService, IAsyncDisposable
             {
                 current = await stage.ProcessAsync(current, ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex)
             {
-                _logger?.LogError(ex, "Log pipeline stage processing failed.");
+                // 任何 stage 失败（含 Loki 推送的内部 3s 超时）都不能杀死消费者：
+                // 记录并跳过该条日志，消费者继续消费。
+                _logger?.LogError(ex, "Log pipeline stage processing failed; dropping the log entry.");
                 return;
             }
         }

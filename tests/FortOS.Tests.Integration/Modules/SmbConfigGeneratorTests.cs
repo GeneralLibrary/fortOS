@@ -9,21 +9,21 @@ public sealed class SmbConfigGeneratorTests
     [Trait("Category", "Unit")]
     public void Generate_ValidShare_ContainsExpectedLines()
     {
-        var share = new ShareDefinition { ShareId = "media", Name = "media", Path = "/mnt/nas/data/media", ReadOnly = true, Protocols = ["smb"] };
+        var share = new ShareDefinition { ShareId = "media", Name = "media", Path = "/srv/nas/data/media", ReadOnly = true, Protocols = ["smb"] };
 
         var conf = new SmbConfigGenerator().Generate([share]);
 
         Assert.Contains("[media]", conf);
-        Assert.Contains("path = /mnt/nas/data/media", conf);
+        Assert.Contains("path = /srv/nas/data/media", conf);
         Assert.Contains("read only = yes", conf);
     }
 
     [Theory]
     [Trait("Category", "Unit")]
-    [InlineData("../bad", "/mnt/nas/data/media")]
-    [InlineData("bad\nname", "/mnt/nas/data/media")]
-    [InlineData("media", "/mnt/nas/../etc")]
-    [InlineData("media", "/mnt/nas/data\npath")]
+    [InlineData("../bad", "/srv/nas/data/media")]
+    [InlineData("bad\nname", "/srv/nas/data/media")]
+    [InlineData("media", "/srv/nas/../etc")]
+    [InlineData("media", "/srv/nas/data\npath")]
     public void Generate_InvalidShare_RejectsInjection(string name, string path)
     {
         var share = new ShareDefinition { ShareId = "x", Name = name, Path = path, Protocols = ["smb"] };

@@ -425,33 +425,70 @@ public sealed partial class FileManagerService
             throw new ArgumentException("Path cannot contain newlines.", nameof(path));
         }
 
-        var fullPath = Path.GetFullPath(path);
-        var normalizedPath = NormalizePath(fullPath);
+        // 先解析真实路径（含符号链接）：共享目录内的 symlink 可指向外部目录，
+        // 仅做字符串前缀校验时 /share/link-to-/etc 会被误判为在允许根内。
+        var resolvedPath = await ResolveRealPathAsync(Path.GetFullPath(path), ct).ConfigureAwait(false);
         var allowedRoots = await GetAllowedRootsAsync(ct).ConfigureAwait(false);
-        if (!allowedRoots.Any(root => IsPathUnderRoot(normalizedPath, root)))
+        if (!allowedRoots.Any(root => PathSafety.IsPathUnderRoot(resolvedPath, root)))
         {
             throw new PermissionDeniedException($"Path exceeds allowed directories: {path}");
         }
 
-        return fullPath;
+        // 返回真实路径：后续所有 IO 都基于它，避免校验后 symlink 被替换的 TOCTOU 窗口。
+        return resolvedPath;
     }
+
+    /// <summary>
+    /// 解析路径的真实形式：用 realpath -m 展开已存在组件的符号链接（-m 不要求路径
+    /// 存在，覆盖新建文件的场景）。realpath 不可用（如容器缺工具）或执行失败时退回
+    /// 归一化路径，至少保留对 ".." 的防护。
+    /// </summary>
+    private async Task<string> ResolveRealPathAsync(string path, CancellationToken ct)
+    {
+        if (_processManager is null)
+        {
+            return PathSafety.NormalizePath(path);
+        }
+
+        try
+        {
+            var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
+            {
+                ExecutablePath = "realpath",
+                Arguments = "-m " + QuoteForShell(path),
+                TimeoutSeconds = 5,
+            }, ct).ConfigureAwait(false);
+            if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Stdout))
+            {
+                return PathSafety.NormalizePath(result.Stdout.Trim());
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // best-effort：realpath 不可用时退回归一化路径，不阻断文件操作。
+        }
+
+        return PathSafety.NormalizePath(path);
+    }
+
+    private static string QuoteForShell(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 
     private async Task<IReadOnlyList<string>> GetAllowedRootsAsync(CancellationToken ct)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            NormalizePath(GetDataRoot()),
+            PathSafety.NormalizePath(GetDataRoot()),
         };
         foreach (var root in ReadConfiguredRoots())
         {
-            roots.Add(NormalizePath(root));
+            roots.Add(PathSafety.NormalizePath(root));
         }
 
         if (_shareModule is not null)
         {
             foreach (var share in await SafeListSharesAsync(ct).ConfigureAwait(false))
             {
-                roots.Add(NormalizePath(Path.GetFullPath(share.Path)));
+                roots.Add(PathSafety.NormalizePath(Path.GetFullPath(share.Path)));
             }
         }
 
@@ -492,13 +529,6 @@ public sealed partial class FileManagerService
         return string.IsNullOrWhiteSpace(value) ? "/srv/nas" : value;
     }
 
-    private static string NormalizePath(string path)
-        => path.Replace('\\', '/').TrimEnd('/');
-
-    private static bool IsPathUnderRoot(string normalizedPath, string normalizedRoot)
-        => string.Equals(normalizedPath, normalizedRoot, StringComparison.OrdinalIgnoreCase)
-           || normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase);
-
     private async Task<string> MoveToRecycleAsync(string path, string requestedBy, CancellationToken ct)
     {
         var root = await ResolveRecycleRootAsync(path, ct).ConfigureAwait(false);
@@ -536,11 +566,11 @@ public sealed partial class FileManagerService
 
         candidates.Add(GetDataRoot());
         var fullPath = Path.GetFullPath(path);
-        var normalizedPath = NormalizePath(fullPath);
+        var normalizedPath = PathSafety.NormalizePath(fullPath);
         var root = candidates
             .Select(Path.GetFullPath)
-            .Select(p => new { Original = p, Normalized = NormalizePath(p) })
-            .Where(c => IsPathUnderRoot(normalizedPath, c.Normalized))
+            .Select(p => new { Original = p, Normalized = PathSafety.NormalizePath(p) })
+            .Where(c => PathSafety.IsPathUnderRoot(normalizedPath, c.Normalized))
             .OrderByDescending(c => c.Normalized.Length)
             .FirstOrDefault();
         if (root is null)
@@ -627,6 +657,12 @@ public sealed partial class FileManagerService
     {
         var value = string.IsNullOrWhiteSpace(requestedBy) ? "unknown" : requestedBy;
         value = value.Replace('\\', '_').Replace('/', '_').Replace(':', '_');
+        // 拒绝路径穿越段：用户名必须是单一目录段，".." 会让回收站目录逃逸出共享根。
+        if (value.Contains("..", StringComparison.Ordinal))
+        {
+            return "unknown";
+        }
+
         return value;
     }
 

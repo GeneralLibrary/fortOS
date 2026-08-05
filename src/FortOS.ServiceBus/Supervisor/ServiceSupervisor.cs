@@ -22,6 +22,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
     private readonly ConcurrentDictionary<string, int> _backoffAttempts = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _startedAt = new(StringComparer.Ordinal);
     private readonly IDisposable _crashSubscription;
+    private readonly IDisposable _agentCrashSubscription;
 
     /// <summary>
     /// Initialize the service supervisor.
@@ -39,6 +40,8 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         _serviceProvider = serviceProvider;
         _logger = logger;
         _crashSubscription = _eventBus.Subscribe("service.*.crashed", OnCrashedAsync);
+        // agent 容器崩溃同样走崩溃重启策略（此前只订阅 service.*，agent 崩溃不触发重启）。
+        _agentCrashSubscription = _eventBus.Subscribe("agent.*.crashed", OnCrashedAsync);
     }
 
     /// <inheritdoc />
@@ -279,8 +282,17 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         {
             var definition = await _registry.GetAsync(serviceId, ct).ConfigureAwait(false)
                 ?? throw new ServiceNotFoundException($"Service does not exist: {serviceId}");
+
+            // 显式停止后到达的迟到/回放 crash 事件：保持 Stopped 状态，绝不「复活」
+            // 用户已停止的服务。
+            if (IsExplicitlyStopped(serviceId))
+            {
+                return;
+            }
+
+            var autoRestart = definition.Startup == ServiceStartup.Automatic;
             SetStatus(definition, ServiceStatus.Failed, "Service crashed.");
-            if (definition.RestartPolicy == RestartPolicy.Never)
+            if (!autoRestart || definition.RestartPolicy == RestartPolicy.Never)
             {
                 return;
             }
@@ -298,6 +310,10 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
             _logger.LogError(ex, "Failed to process service crash: {Topic}", envelope.Topic);
         }
     }
+
+    /// <summary>判断服务是否被显式停止（用户操作或依赖停止导致）。</summary>
+    private bool IsExplicitlyStopped(string serviceId)
+        => _statuses.TryGetValue(serviceId, out var status) && status.Status == ServiceStatus.Stopped;
 
     private TimeSpan GetRestartDelay(ServiceDefinition definition)
     {
@@ -353,6 +369,17 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
     private static string? ExtractServiceId(string topic)
     {
         var parts = topic.Split('.');
-        return parts.Length >= 3 && parts[0] == "service" ? parts[1] : null;
+        if (parts.Length < 3)
+        {
+            return null;
+        }
+
+        return parts[0] switch
+        {
+            "service" => parts[1],
+            // agent.{AgentId}.crashed：Agent 注册的 ServiceId 为 agent-{AgentId}。
+            "agent" => "agent-" + parts[1],
+            _ => null,
+        };
     }
 }

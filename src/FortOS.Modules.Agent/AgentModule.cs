@@ -462,8 +462,8 @@ public sealed class AgentModule : NasModuleBase
             throw new ArgumentException("Volume mapping container path must be a Unix absolute path.", nameof(mapping));
         }
 
-        var normalizedHostPath = NormalizePath(mapping.HostPath);
-        if (!allowedRoots.Any(root => IsPathUnderRoot(normalizedHostPath, root)))
+        var normalizedHostPath = FortOS.Core.PathSafety.NormalizePath(mapping.HostPath);
+        if (!allowedRoots.Any(root => FortOS.Core.PathSafety.IsPathUnderRoot(normalizedHostPath, root)))
         {
             throw new ArgumentException($"Volume mapping path {mapping.HostPath} is not within an allowed directory.", nameof(mapping));
         }
@@ -495,7 +495,7 @@ public sealed class AgentModule : NasModuleBase
             ? [GetDataRoot()]
             : configured;
 
-        return roots.Select(NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return roots.Select(FortOS.Core.PathSafety.NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static string GetDataRoot()
@@ -506,29 +506,6 @@ public sealed class AgentModule : NasModuleBase
 
     private static bool IsAbsolutePath(string path)
         => Path.IsPathFullyQualified(path) || path.StartsWith("/", StringComparison.Ordinal);
-
-    private static string NormalizePath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new ArgumentException("Path cannot be empty.", nameof(path));
-        }
-
-        var unix = path.Replace('\\', '/');
-        if (unix.StartsWith("/", StringComparison.Ordinal))
-        {
-            return TrimTrailingSlash(Regex.Replace(unix, "/{2,}", "/"));
-        }
-
-        return TrimTrailingSlash(Path.GetFullPath(path).Replace('\\', '/'));
-    }
-
-    private static bool IsPathUnderRoot(string path, string root)
-        => string.Equals(path, root, StringComparison.OrdinalIgnoreCase)
-           || path.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase);
-
-    private static string TrimTrailingSlash(string path)
-        => path.Length > 1 ? path.TrimEnd('/') : path;
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }

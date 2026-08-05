@@ -54,5 +54,27 @@ public static class ShareValidation
         {
             throw new ArgumentException("Share path must not contain path traversal.", nameof(path));
         }
+
+        // 共享路径必须位于数据根之下：否则 /、/etc、/home 等系统目录会被直接
+        // 暴露为 SMB/NFS/FTP 共享，整机文件可读。数据根与 FortOS_DATA_ROOT
+        // 环境变量一致（缺省 /srv/nas）。
+        var root = ResolveDataRoot();
+        var normalizedPath = NormalizeForComparison(path);
+        var normalizedRoot = NormalizeForComparison(root);
+        if (!string.Equals(normalizedPath, normalizedRoot, StringComparison.Ordinal)
+            && !normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Share path must be located under the data root ({root}).", nameof(path));
+        }
     }
+
+    /// <summary>解析数据根：优先环境变量 <c>FortOS_DATA_ROOT</c>，缺省 <c>/srv/nas</c>。</summary>
+    public static string ResolveDataRoot()
+    {
+        var value = Environment.GetEnvironmentVariable("FortOS_DATA_ROOT");
+        return string.IsNullOrWhiteSpace(value) ? "/srv/nas" : value.TrimEnd('/', '\\');
+    }
+
+    private static string NormalizeForComparison(string value)
+        => value.Replace('\\', '/').TrimEnd('/');
 }

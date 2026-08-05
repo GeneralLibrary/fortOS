@@ -75,6 +75,9 @@ public sealed class IdentityService : IIdentityService
 
         await UpdateLoginStateAsync(connection, username, 0, null, ct).ConfigureAwait(false);
         var capabilities = await ResolveCapabilitiesAsync(connection, user.RolesJson, ct).ConfigureAwait(false);
+        // 会话令牌一律附带刷新能力：刷新自己的 token 是已认证用户的自服务操作，
+        // 不应要求管理员权限（此前 CapabilityConvention 默认 admin:** 导致普通用户 403）。
+        capabilities = [.. capabilities, NAbilityConstants.SessionRefresh];
         var token = await _tokenManager.IssueTokenAsync($"user:{username}", TokenType.Session, capabilities, 3, TimeSpan.FromHours(8), [$"user:{username}"], null, ct).ConfigureAwait(false);
         var validation = await _tokenManager.ValidateTokenAsync(token, ct).ConfigureAwait(false);
         return new AuthResult { Success = true, NasToken = token, TokenPayload = validation.Payload };

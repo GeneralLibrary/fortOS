@@ -10,6 +10,9 @@ namespace FortOS.ServiceBus.Events;
 /// </summary>
 public sealed class EventBus : IEventBus, IDisposable
 {
+    /// <summary>每个订阅的事件队列容量：消费者缓慢/挂起时丢弃新事件而非无界积压。</summary>
+    private const int SubscriptionCapacity = 256;
+
     private readonly ConcurrentDictionary<Guid, Subscription> _subscriptions = new();
     private readonly ILogger<EventBus> _logger;
     private bool _disposed;
@@ -31,7 +34,17 @@ public sealed class EventBus : IEventBus, IDisposable
         {
             if (TopicMatcher.IsMatch(subscription.Pattern, envelope.Topic))
             {
-                subscription.Writer.TryWrite(envelope);
+                // 有界背压：消费者缓慢/挂起时 TryWrite 失败则丢弃新事件并计数
+                // （限频告警），避免无界 channel 让内存无限增长拖垮宿主。
+                // 事件多为状态/进度通知，丢中间值优于丢整个订阅。
+                if (!subscription.Writer.TryWrite(envelope))
+                {
+                    var dropped = Interlocked.Increment(ref subscription.Dropped);
+                    if (dropped == 1 || dropped % 1000 == 0)
+                    {
+                        _logger.LogWarning("Event subscription {Pattern} is saturated; {Dropped} events have been dropped.", subscription.Pattern, dropped);
+                    }
+                }
             }
         }
 
@@ -50,8 +63,11 @@ public sealed class EventBus : IEventBus, IDisposable
         ArgumentNullException.ThrowIfNull(handler);
 
         var id = Guid.NewGuid();
-        var channel = Channel.CreateUnbounded<EventEnvelope>(new UnboundedChannelOptions
+        // 有界队列 + DropWrite：满时丢弃新事件（由 PublishAsync 计数并告警），
+        // 防止慢消费者（邮件/Webhook/磁盘写）导致事件在内存中无限积压。
+        var channel = Channel.CreateBounded<EventEnvelope>(new BoundedChannelOptions(SubscriptionCapacity)
         {
+            FullMode = BoundedChannelFullMode.DropWrite,
             SingleReader = true,
             SingleWriter = false,
             AllowSynchronousContinuations = false,
@@ -113,9 +129,16 @@ public sealed class EventBus : IEventBus, IDisposable
         }
     }
 
-    private sealed record Subscription(Guid Id, string Pattern, ChannelWriter<EventEnvelope> Writer, CancellationTokenSource Cancellation)
+    private sealed class Subscription(Guid id, string pattern, ChannelWriter<EventEnvelope> writer, CancellationTokenSource cancellation)
     {
+        public Guid Id { get; } = id;
+        public string Pattern { get; } = pattern;
+        public ChannelWriter<EventEnvelope> Writer { get; } = writer;
+        public CancellationTokenSource Cancellation { get; } = cancellation;
         public Task? Consumer { get; set; }
+
+        /// <summary>因队列满而被丢弃的事件计数（用于限频告警）。</summary>
+        public long Dropped;
     }
 
     private sealed class SubscriptionHandle : IDisposable

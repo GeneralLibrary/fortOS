@@ -38,9 +38,8 @@ public class PageViewModelTests
         var vm = new DiskLayoutViewModel(new LsblkTool(runner));
         await vm.LoadAsync();
 
-        Assert.NotNull(vm.SelectedSystemDisk); // 自动选中第一块盘(傻瓜式默认)
-
-        vm.SelectedSystemDisk = null;
+        // 安全默认：系统盘将被整盘清空，绝不自动预选，必须由用户显式选择。
+        Assert.Null(vm.SelectedSystemDisk);
         Assert.False(vm.IsValid); // 未选系统盘
 
         vm.SelectedSystemDisk = vm.Disks[0];
@@ -58,15 +57,17 @@ public class PageViewModelTests
     }
 
     [Fact]
-    public async Task DiskLayout_LoadAsync_AutoSelectsFirstDisk()
+    public async Task DiskLayout_LoadAsync_DoesNotAutoSelectDisk()
     {
         var runner = new FakeRunner { StdoutResolver = (_, _) => DisksJson };
         var vm = new DiskLayoutViewModel(new LsblkTool(runner));
 
         await vm.LoadAsync();
 
-        Assert.Equal("/dev/sda", vm.SelectedSystemDisk?.Path);
-        Assert.True(vm.IsValid);
+        // 系统盘会被整盘清空（sgdisk --zap-all），自动选中第一块盘在多盘机器上
+        // 极易误清装有数据的盘；加载后必须保持未选，由用户显式确认目标盘。
+        Assert.Null(vm.SelectedSystemDisk);
+        Assert.False(vm.IsValid);
     }
 
     [Fact]

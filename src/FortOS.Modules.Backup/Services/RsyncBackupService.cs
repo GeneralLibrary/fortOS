@@ -1,3 +1,4 @@
+using System.Text;
 using FortOS.Core;
 
 namespace FortOS.Modules.Backup.Services;
@@ -14,14 +15,35 @@ public sealed class RsyncBackupService
     }
 
     /// <summary>Performs incremental sync.</summary>
-    public async Task<CommandResult> SyncAsync(string source, string target, bool dryRun, CancellationToken ct)
+    public async Task<CommandResult> SyncAsync(string source, string target, bool dryRun, CancellationToken ct, string[]? excludePatterns = null)
     {
         Validate(source);
         Validate(target);
-        var args = $"-a --delete {(dryRun ? "--dry-run " : string.Empty)}{Quote(EnsureTrailingSlash(source))} {Quote(target)}";
+
+        // 数据保护：源目录不存在或为空时拒绝同步。配合无条件 --delete，空源会把
+        // 目标目录整个清空 —— 空源通常是挂载失败/路径错误，宁可失败也不可清空目标。
+        if (!Directory.Exists(source))
+        {
+            return new CommandResult { ExitCode = 3, Stderr = $"Source directory does not exist; refusing to sync: {source}" };
+        }
+
+        if (!new DirectoryInfo(source).EnumerateFileSystemInfos().Any())
+        {
+            return new CommandResult { ExitCode = 3, Stderr = $"Source directory is empty; refusing to sync with --delete: {source}" };
+        }
+
+        var args = new StringBuilder("-a --delete ");
+        if (dryRun) args.Append("--dry-run ");
+        foreach (var pattern in excludePatterns ?? [])
+        {
+            // 每个 pattern 一个 --exclude 参数；pattern 由管理员配置，作为 rsync
+            // 过滤模式原样传入（--exclude=value 不会被 rsync 重新解析为选项）。
+            args.Append("--exclude=").Append(Quote(pattern)).Append(' ');
+        }
+        args.Append(Quote(EnsureTrailingSlash(source))).Append(' ').Append(Quote(target));
         try
         {
-            return await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "rsync", Arguments = args, TimeoutSeconds = 3600 }, ct).ConfigureAwait(false);
+            return await processManager.ExecuteCommandAsync(new ProcessStartConfig { ExecutablePath = "rsync", Arguments = args.ToString(), TimeoutSeconds = 3600 }, ct).ConfigureAwait(false);
         }
         catch (CommandExecutionException ex)
         {

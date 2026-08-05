@@ -9,6 +9,8 @@ public abstract class NasModuleBase : INasModule
 {
     private ModuleContext? context;
     private ILogger? logger;
+    // 生命周期状态：0=Idle, 1=Initialized, 2=Shutdown。用整数位保证线程安全。
+    private int lifecycleState;
 
     /// <inheritdoc />
     public abstract string ModuleId { get; }
@@ -41,15 +43,36 @@ public abstract class NasModuleBase : INasModule
     public async Task InitializeAsync(ModuleContext context, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(context);
+        // 幂等保护：重复初始化会创建重复的后台服务（调度器/监控循环），必须拒绝。
+        if (Interlocked.CompareExchange(ref lifecycleState, 1, 0) != 0)
+        {
+            throw new InvalidOperationException($"Module {ModuleId} has already been initialized or shut down.");
+        }
+
         this.context = context;
         logger = context.LoggerFactory.CreateLogger(GetType());
         Directory.CreateDirectory(context.DataDirectory);
-        await OnInitializeAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await OnInitializeAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 初始化失败回滚状态，允许宿主重试（或安全卸载）。
+            Interlocked.Exchange(ref lifecycleState, 0);
+            throw;
+        }
     }
 
     /// <inheritdoc />
     public async Task ShutdownAsync(CancellationToken ct)
     {
+        // 幂等：重复关闭无害（宿主重载路径可能对同一实例调用多次）。
+        if (Interlocked.Exchange(ref lifecycleState, 2) == 2)
+        {
+            return;
+        }
+
         await OnShutdownAsync(ct).ConfigureAwait(false);
     }
 

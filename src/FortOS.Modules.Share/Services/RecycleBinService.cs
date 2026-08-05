@@ -1,3 +1,5 @@
+using FortOS.Core;
+
 namespace FortOS.Modules.Share.Services;
 
 /// <summary>Share recycle bin service, provides deletion migration and retention cleanup.</summary>
@@ -11,7 +13,8 @@ public sealed class RecycleBinService
         ShareValidation.ValidateName(username);
         var root = Path.GetFullPath(sharePath);
         var source = Path.GetFullPath(filePath);
-        if (!source.StartsWith(root, StringComparison.Ordinal))
+        // 带分隔符边界的根校验：/share 不允许 /share2 的文件进入其回收站。
+        if (!PathSafety.IsPathUnderRoot(source, root))
         {
             throw new ArgumentException("File must be located within the share directory.", nameof(filePath));
         }
@@ -33,7 +36,9 @@ public sealed class RecycleBinService
             return 0;
         }
 
-        var cutoff = DateTimeOffset.UtcNow.AddDays(-retentionDays);
+        // retentionDays 负值会把 cutoff 推到未来，导致整目录被清空：限制在 [0, 3650]。
+        var days = Math.Clamp(retentionDays, 0, 3650);
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-days);
         var count = 0;
         foreach (var file in Directory.EnumerateFiles(recycle, "*", SearchOption.AllDirectories))
         {

@@ -58,7 +58,8 @@ public sealed class ShareModule : NasModuleBase
     public async Task<ShareDefinition> CreateShareAsync(ShareDefinition share, CancellationToken ct)
     {
         ShareValidation.ValidateShare(share);
-        RenderedShareConfigs rendered;
+        // 整个「读-改-写-应用」在锁内串行：Apply（重启/重载 SMB/NFS 服务）若在锁外，
+        // 两个并发操作会互相覆盖配置应用状态，导致静默配置不一致。
         await sync.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -70,14 +71,14 @@ public sealed class ShareModule : NasModuleBase
 
             shares.Add(share);
             await WriteSharesAsync(shares, ct).ConfigureAwait(false);
-            rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+            var rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+            await ApplyRenderedConfigsAsync(rendered, ct).ConfigureAwait(false);
         }
         finally
         {
             sync.Release();
         }
 
-        await ApplyRenderedConfigsAsync(rendered, ct).ConfigureAwait(false);
         await PublishAsync("share.created", "share.created", share, ct).ConfigureAwait(false);
         return share;
     }
@@ -85,9 +86,9 @@ public sealed class ShareModule : NasModuleBase
     /// <summary>Delete share and refresh service configuration.</summary>
     public async Task DeleteShareAsync(string shareId, CancellationToken ct)
     {
+        // 与 Create 相同：Apply 在锁内串行，避免并发删除互相覆盖应用状态。
         await sync.WaitAsync(ct).ConfigureAwait(false);
         ShareDefinition? removed;
-        RenderedShareConfigs? rendered = null;
         try
         {
             var shares = await ReadSharesAsync(ct).ConfigureAwait(false);
@@ -99,16 +100,12 @@ public sealed class ShareModule : NasModuleBase
 
             shares.Remove(removed);
             await WriteSharesAsync(shares, ct).ConfigureAwait(false);
-            rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+            var rendered = await WriteRenderedConfigsAsync(shares, ct).ConfigureAwait(false);
+            await ApplyRenderedConfigsAsync(rendered, ct).ConfigureAwait(false);
         }
         finally
         {
             sync.Release();
-        }
-
-        if (rendered is not null)
-        {
-            await ApplyRenderedConfigsAsync(rendered, ct).ConfigureAwait(false);
         }
 
         await PublishAsync("share.deleted", "share.deleted", removed, ct).ConfigureAwait(false);

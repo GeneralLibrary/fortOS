@@ -19,6 +19,7 @@ using FortOS.Platform;
 using FortOS.Security;
 using FortOS.ServiceBus;
 using Microsoft.AspNetCore.Http.Json;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json.Serialization;
 
 if (!OperatingSystem.IsLinux())
@@ -27,6 +28,10 @@ if (!OperatingSystem.IsLinux())
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 运行时配置覆盖（api_config 表）接入 IConfiguration 读取链：
+// 必须在 appsettings 之后注册，使覆盖值优先于静态配置文件生效。
+builder.Configuration.Add<FortOS.Core.Configuration.SqliteConfigurationSource>(null);
 
 #region Service Registration
 builder.Services.AddFortOSCore();
@@ -62,7 +67,12 @@ builder.Services.AddControllers(options => { options.Filters.Add<FortOSException
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+// CORS 白名单：默认仅本地来源；部署时用 cors:allowed_origins（逗号分隔）显式放开。
+// 不再 AllowAnyOrigin —— NAS token 走 Authorization 头（非 cookie），跨站脚本无法
+// 直接携带，但收紧仍是纵深防御，防止 require_auth=false 的部署被任意网页调用管理 API。
+var allowedOrigins = (builder.Configuration.GetValue<string>("cors:allowed_origins") ?? "http://localhost:5000,http://127.0.0.1:5000")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 #endregion

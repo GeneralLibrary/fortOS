@@ -95,12 +95,9 @@ public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
                 Disks.Add(disk);
             }
 
-            // 傻瓜式流程:加载后自动选中第一块盘,用户可改;无盘时保持未选。
-            if (Disks.Count > 0 && SelectedSystemDisk is null)
-            {
-                SelectedSystemDisk = Disks[0];
-            }
-
+            // 安全优先：绝不自动预选系统盘。系统盘将被整盘清空（PartitionStep 执行
+            // sgdisk --zap-all），自动选中第一块盘在多盘机器上极易误清装有数据的盘；
+            // 必须由用户在确认目标盘路径后显式选择，IsValid 才会放行进入下一步。
             Error = Disks.Count == 0 ? L["disk.noDisks"] : string.Empty;
             _loaded = true;
         }

@@ -30,7 +30,10 @@ public class AgentCatalogTests
     public async Task InstallTemplateRejectsInvalidYaml()
     {
         using var root = new AgentTestDataRoot(nameof(InstallTemplateRejectsInvalidYaml));
-        var source = Path.Combine(root.Root, "bad.template.yaml");
+        // 源文件必须位于 catalog 目录内（安全白名单：本地源禁止读取目录外文件）。
+        var catalogDir = Path.Combine(root.Root, "agents", "catalog");
+        Directory.CreateDirectory(catalogDir);
+        var source = Path.Combine(catalogDir, "bad.template.yaml");
         await File.WriteAllTextAsync(source, "id: X\nname: Bad\nversion: nope\ncompose: [");
         var catalog = new AgentCatalog();
 

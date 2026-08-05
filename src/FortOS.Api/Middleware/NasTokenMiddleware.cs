@@ -54,7 +54,10 @@ public sealed class NasTokenMiddleware
         var validation = await tokenManager.ValidateTokenAsync(token, context.RequestAborted).ConfigureAwait(false);
         if (!validation.IsValid)
         {
-            await UnauthorizedAsync(context, validation.ErrorMessage ?? "Invalid token.", "TOKEN_INVALID").ConfigureAwait(false);
+            // 对外统一返回固定文案，避免泄露内部状态（密钥存在性、吊销机制、
+            // 设备绑定策略等可被攻击者用于枚举探测）；详细原因仅写入日志。
+            logger.LogDebug("Token validation failed for request {Method} {Path}: {Reason}", context.Request.Method, context.Request.Path, validation.ErrorMessage);
+            await UnauthorizedAsync(context, "Invalid token.", "TOKEN_INVALID").ConfigureAwait(false);
             return;
         }
 
@@ -76,7 +79,10 @@ public sealed class NasTokenMiddleware
             || value.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("/grpc.reflection", StringComparison.OrdinalIgnoreCase);
+            || value.StartsWith("/grpc.reflection", StringComparison.OrdinalIgnoreCase)
+            // /metrics 由端点自身依据 metrics:allow_anonymous 决定是否放行匿名访问；
+            // 若在中间件层拦截，该配置永远不生效（Prometheus 采集不到数据）。
+            || value.Equals("/metrics", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractToken(HttpRequest request)

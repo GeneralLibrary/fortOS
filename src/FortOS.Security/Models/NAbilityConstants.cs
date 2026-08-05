@@ -29,4 +29,6 @@ public static class NAbilityConstants
     public const string DataInternal = "data:level:internal";
     /// <summary>Sensitive data access permission.</summary>
     public const string DataSensitive = "data:level:sensitive";
+    /// <summary>Session token refresh permission：已认证用户刷新自己会话令牌的自服务能力，随登录令牌签发。</summary>
+    public const string SessionRefresh = "auth:session:refresh";
 }

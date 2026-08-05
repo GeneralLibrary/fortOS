@@ -9,11 +9,14 @@ namespace FortOS.Observability.Logging;
 public sealed class FortOSSerilogSink : ILogEventSink
 {
     private readonly ILogPipeline _pipeline;
+    private readonly ILogger<FortOSSerilogSink>? _logger;
+    private long _dropped;
 
     /// <summary>Initialize Serilog sink.</summary>
-    public FortOSSerilogSink(ILogPipeline pipeline)
+    public FortOSSerilogSink(ILogPipeline pipeline, ILogger<FortOSSerilogSink>? logger = null)
     {
         _pipeline = pipeline;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -40,7 +43,15 @@ public sealed class FortOSSerilogSink : ILogEventSink
             return;
         }
 
-        _ = Task.Run(() => _pipeline.ProcessAsync(entry, CancellationToken.None));
+        // 管道饱和（消费者慢/挂起）时的有界溢出策略：丢弃并计数。绝不逐条
+        // spawn Task 重试 —— 那会在线程池中堆积无界阻塞任务（Task 风暴），
+        // 放大内存与调度压力，最终拖垮整个宿主。
+        var dropped = Interlocked.Increment(ref _dropped);
+        if (dropped == 1 || dropped % 1000 == 0)
+        {
+            // 按数量阈值限频记录，避免「每丢一条打一条日志」反而加剧拥塞。
+            _logger?.LogWarning("Log pipeline is saturated; {Dropped} log entries have been dropped so far.", dropped);
+        }
     }
 
     private static LogLevel MapLevel(LogEventLevel level) => level switch
