@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo/banner_logo.png" alt="FortOS" width="55%">
+  <img src="logo/banner_logo.png" alt="FortOS" width="35%">
 </p>
 
 <p align="center">
