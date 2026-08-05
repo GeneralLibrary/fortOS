@@ -16,6 +16,7 @@ namespace FortOS.Platform.Linux;
 public sealed partial class LinuxDiskManager : IDiskManager
 {
     private readonly CommandExecutor _executor;
+    private readonly ILogger<LinuxDiskManager> _logger;
 
     /// <summary>按磁盘路径串行化分区操作：probe→mklabel→mkpart 窗口无锁时，两个并发操作
     /// 作用于全新盘会让后者的 mklabel gpt 销毁前者刚建的分区表。</summary>
@@ -25,6 +26,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
     /// <param name="logger">Logger.</param>
     public LinuxDiskManager(ILogger<LinuxDiskManager> logger)
     {
+        _logger = logger;
         _executor = new CommandExecutor(logger);
     }
 
@@ -198,6 +200,9 @@ public sealed partial class LinuxDiskManager : IDiskManager
         foreach (var diskPath in diskPaths)
         {
             ValidateDevicePath(diskPath);
+            // 创建 RAID 会向成员盘写入超级块并抹除盘上数据:拒绝已挂载的磁盘
+            // (纵深防御,不依赖调用方确认),防止物理机上误选正在使用的系统盘。
+            await LinuxMountProbe.EnsureNotMountedAsync(_executor, diskPath, ct).ConfigureAwait(false);
         }
 
         var raidLevel = level switch
@@ -217,12 +222,76 @@ public sealed partial class LinuxDiskManager : IDiskManager
             // 先扫描活动阵列，分配下一个可用的 mdN 设备名。
             var device = await FindNextMdDeviceAsync(ct).ConfigureAwait(false);
             var result = await _executor.ExecuteAsync("mdadm", $"--create {device} --level={raidLevel} --raid-devices={diskPaths.Length} {devices}", ct).ConfigureAwait(false);
+            await PersistRaidAssemblyAsync(ct).ConfigureAwait(false);
             return new RaidResult { Success = true, PoolId = device, Message = result.Stdout };
         }
         catch (Exception ex) when (ex is PlatformException or CommandExecutionException)
         {
             // Surface execution failures as a structured result instead of a 500.
             return new RaidResult { Success = false, ErrorCode = "RAID_CREATE_FAILED", Message = ex.Message };
+        }
+    }
+
+    /// <summary>mdadm.conf 写入互斥:并发创建 RAID 时,read-modify-write 不能交错丢行。</summary>
+    private static readonly SemaphoreSlim MdadmConfigGate = new(1, 1);
+
+    /// <summary>
+    /// 将新创建的阵列注册到 /etc/mdadm/mdadm.conf 并刷新 initramfs，保证重启后
+    /// initramfs/系统启动阶段能自动装配（不依赖 udev 增量扫描的发行版默认行为）。
+    /// 持久化失败（如只读 /etc、容器环境）只记日志，不掩盖创建成功的结果。
+    /// </summary>
+    private async Task PersistRaidAssemblyAsync(CancellationToken ct)
+    {
+        const string configPath = "/etc/mdadm/mdadm.conf";
+        try
+        {
+            var scan = await _executor.ExecuteAsync("mdadm", "--detail --scan", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
+            if (scan.ExitCode != 0 || string.IsNullOrWhiteSpace(scan.Stdout))
+            {
+                _logger.LogWarning("mdadm --detail --scan failed (exit {ExitCode}); RAID array will not be registered for auto-assembly.", scan.ExitCode);
+                return;
+            }
+
+            await MdadmConfigGate.WaitAsync(ct).ConfigureAwait(false);
+            var tempPath = configPath + ".tmp";
+            try
+            {
+                var existing = File.Exists(configPath) ? await File.ReadAllTextAsync(configPath, ct).ConfigureAwait(false) : string.Empty;
+                var lines = scan.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var missing = lines.Where(line => !existing.Contains(line, StringComparison.Ordinal)).ToArray();
+                if (missing.Length > 0)
+                {
+                    // 临时文件 + rename 原子写入，避免写一半截断 mdadm.conf。
+                    var updated = existing.TrimEnd() + (existing.TrimEnd().Length > 0 ? "\n" : string.Empty) + string.Join('\n', missing) + "\n";
+                    await File.WriteAllTextAsync(tempPath, updated, ct).ConfigureAwait(false);
+                    File.Move(tempPath, configPath, overwrite: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 清理残留临时文件（best-effort），不掩盖原始异常。
+                try
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+                catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(cleanupEx, "Unable to clean up stale mdadm.conf temporary file {TempPath}.", tempPath);
+                }
+
+                _logger.LogWarning(ex, "Unable to persist RAID array to {ConfigPath}; the array will rely on udev incremental assembly after reboot.", configPath);
+            }
+            finally
+            {
+                MdadmConfigGate.Release();
+            }
+
+            // 刷新 initramfs，让阵列在 initramfs 阶段即可装配（失败容忍）。
+            await _executor.ExecuteAsync("update-initramfs", "-u", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is PlatformException or CommandExecutionException)
+        {
+            _logger.LogWarning(ex, "Unable to run mdadm --detail --scan / update-initramfs; RAID array will rely on udev incremental assembly after reboot.");
         }
     }
 
@@ -286,6 +355,40 @@ public sealed partial class LinuxDiskManager : IDiskManager
     }
 
     /// <inheritdoc />
+    public async Task<DeviceStatus> GetDeviceStatusAsync(string path, CancellationToken ct)
+    {
+        ValidateDevicePath(path);
+        var result = await _executor.ExecuteAsync("lsblk", $"--json -b -o NAME,TYPE,FSTYPE,MOUNTPOINT,SIZE {Quote(path)}", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
+        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.Stdout))
+        {
+            return new DeviceStatus { Path = path };
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(result.Stdout);
+            if (!document.RootElement.TryGetProperty("blockdevices", out var devices) || devices.GetArrayLength() == 0)
+            {
+                return new DeviceStatus { Path = path };
+            }
+
+            var block = devices[0];
+            return new DeviceStatus
+            {
+                Path = path,
+                Exists = true,
+                FileSystem = GetString(block, "fstype"),
+                MountPoint = GetString(block, "mountpoint"),
+                SizeBytes = GetLong(block, "size"),
+            };
+        }
+        catch (JsonException)
+        {
+            return new DeviceStatus { Path = path };
+        }
+    }
+
+    /// <inheritdoc />
     public async Task WipeDiskAsync(string diskPath, CancellationToken ct)
     {
         ValidateDevicePath(diskPath);
@@ -300,6 +403,13 @@ public sealed partial class LinuxDiskManager : IDiskManager
         if (string.Equals(type, "disk", StringComparison.OrdinalIgnoreCase))
         {
             var mountPoint = GetString(block, "mountpoint");
+            // 整盘节点无挂载点时,聚合子分区的挂载点(典型如系统盘根分区挂载在
+            // /dev/nvme0n1p2),否则前端无法识别「使用中」的整盘并禁选。
+            if (string.IsNullOrWhiteSpace(mountPoint) && block.TryGetProperty("children", out var childNodes))
+            {
+                mountPoint = FindMountedChild(childNodes);
+            }
+
             disks.Add(new DiskInfo
             {
                 Path = "/dev/" + GetString(block, "name"),
@@ -311,6 +421,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
                 SmartStatus = "Unknown",
                 TemperatureCelsius = 0,
                 UsedPercent = ParsePercent(GetString(block, "fsuse%")),
+                MountPoint = mountPoint,
             });
         }
 
@@ -321,6 +432,26 @@ public sealed partial class LinuxDiskManager : IDiskManager
                 AddDisk(child, disks);
             }
         }
+    }
+
+    /// <summary>递归查找第一个已挂载的子分区挂载点。</summary>
+    private static string? FindMountedChild(JsonElement children)
+    {
+        foreach (var child in children.EnumerateArray())
+        {
+            var mountPoint = GetString(child, "mountpoint");
+            if (!string.IsNullOrWhiteSpace(mountPoint))
+            {
+                return mountPoint;
+            }
+
+            if (child.TryGetProperty("children", out var nested) && FindMountedChild(nested) is { } nestedMount)
+            {
+                return nestedMount;
+            }
+        }
+
+        return null;
     }
 
     private static string? GetString(JsonElement element, string name)

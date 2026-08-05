@@ -23,6 +23,23 @@ public record DiskInfo
     public int TemperatureCelsius { get; init; }
     /// <summary>Used percentage.</summary>
     public double UsedPercent { get; init; }
+    /// <summary>Mount point if the disk (or a partition on it) is in use; null otherwise.</summary>
+    public string? MountPoint { get; init; }
+}
+
+/// <summary>Block-device status for arbitrary devices (e.g. md RAID arrays), used to decide whether a device has been formatted/mounted.</summary>
+public record DeviceStatus
+{
+    /// <summary>Device path.</summary>
+    public required string Path { get; init; }
+    /// <summary>Whether the device currently exists in the kernel block layer.</summary>
+    public bool Exists { get; init; }
+    /// <summary>Detected filesystem type (e.g. ext4, btrfs); null when unformatted.</summary>
+    public string? FileSystem { get; init; }
+    /// <summary>Mount point; null when not mounted.</summary>
+    public string? MountPoint { get; init; }
+    /// <summary>Capacity in bytes.</summary>
+    public long SizeBytes { get; init; }
 }
 
 /// <summary>Service definition describing a service managed by the Service Bus.</summary>

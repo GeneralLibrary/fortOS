@@ -8,10 +8,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
-import { listDisks, listRaids, createRaid, getRaidCapability } from '@/api/disks'
+import { listDisks, listRaids, createRaid, getRaidCapability, getDeviceStatus, formatDevice, mountDevice, unmountDevice } from '@/api/disks'
+import { ApiError } from '@/api/client'
 import { formatBytes, formatTemperature } from '@/utils/format'
 import EmptyState from '@/components/common/EmptyState.vue'
-import type { DiskInfo, RaidMetrics, RaidCapability } from '@/types'
+import type { DiskInfo, RaidMetrics, RaidCapability, DeviceStatus } from '@/types'
 import { RaidLevel } from '@/types'
 
 const { t } = useI18n()
@@ -23,6 +24,17 @@ const loading = ref(false)
 const creating = ref(false)
 /** null = capability not yet loaded; available=false = mdadm missing on host. */
 const capability = ref<RaidCapability | null>(null)
+
+/** Per-array block-device status (filesystem / mount point), keyed by array name. */
+const statuses = ref<Record<string, DeviceStatus>>({})
+/** Array currently being initialized (format + mount), or null. */
+const initPool = ref<string | null>(null)
+const initFsType = ref('ext4')
+const initMountPoint = ref('')
+const initializing = ref(false)
+
+/** File systems the backend can create (mirrors LinuxFileSystem.AllowedFileSystems). */
+const FS_TYPES = ['ext4', 'xfs', 'btrfs'] as const
 
 const selectedLevel = ref<RaidLevel | null>(null)
 const selectedDisks = ref<string[]>([])
@@ -43,11 +55,27 @@ async function load(): Promise<void> {
     disks.value = diskList
     raids.value = raidList
     capability.value = cap
+    await loadRaidStatuses()
   } catch {
     message.error(t('settings.storage.loadFailed'))
   } finally {
     loading.value = false
   }
+}
+
+/** Query filesystem / mount status of each active md array (best-effort). */
+async function loadRaidStatuses(): Promise<void> {
+  const entries = await Promise.all(
+    raids.value.map(async raid => {
+      const status = await getDeviceStatus(`/dev/${raid.name}`).catch(() => null)
+      return [raid.name, status] as const
+    }),
+  )
+  const result: Record<string, DeviceStatus> = {}
+  for (const [name, status] of entries) {
+    if (status) result[name] = status
+  }
+  statuses.value = result
 }
 
 onMounted(load)
@@ -63,6 +91,9 @@ const needMore = computed(() => {
 const canCreate = computed(() => selectedLevel.value !== null && needMore.value === 0)
 
 function toggleDisk(path: string): void {
+  const disk = disks.value.find(d => d.path === path)
+  // 挂载中的磁盘(如系统盘)禁止选为 RAID 成员:后端同样会拒绝。
+  if (disk?.mountPoint != null) return
   if (selectedDisks.value.includes(path)) {
     selectedDisks.value = selectedDisks.value.filter(p => p !== path)
   } else {
@@ -80,6 +111,9 @@ async function handleCreate(): Promise<void> {
       selectedLevel.value = null
       selectedDisks.value = []
       await load()
+      // 引导闭环:创建成功后直接打开「格式化并挂载」面板。
+      const poolName = result.poolId?.replace(/^\/dev\//, '') ?? ''
+      if (poolName) openInit(poolName)
     } else {
       message.error(result.message ?? t('settings.storage.raidFailed'))
     }
@@ -87,6 +121,55 @@ async function handleCreate(): Promise<void> {
     message.error(t('settings.storage.raidFailed'))
   } finally {
     creating.value = false
+  }
+}
+
+function openInit(poolName: string): void {
+  initPool.value = poolName
+  initFsType.value = 'ext4'
+  initMountPoint.value = `/srv/nas/raid-${poolName}`
+}
+
+const canInitialize = computed(() => {
+  if (!initPool.value || !initMountPoint.value) return false
+  return initMountPoint.value.startsWith('/srv/nas/')
+})
+
+/** Format (if needed) then mount the array; persists to fstab. */
+async function handleInitialize(): Promise<void> {
+  const pool = initPool.value
+  if (!pool || !canInitialize.value) return
+  initializing.value = true
+  try {
+    const device = `/dev/${pool}`
+    const status = statuses.value[pool]
+    // 仅在明确检测到未格式化时执行破坏性的格式化;状态未知/设备不可见时直接尝试挂载,
+    // 避免在无法确认设备内容的情况下清盘。
+    if (status && !status.fileSystem) {
+      await formatDevice(device, initFsType.value)
+    }
+    await mountDevice(device, initMountPoint.value, initFsType.value)
+    message.success(t('settings.storage.initialized', { pool, mount: initMountPoint.value }))
+    initPool.value = null
+    initMountPoint.value = ''
+    await load()
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : t('settings.storage.initFailed'))
+  } finally {
+    initializing.value = false
+  }
+}
+
+/** Unmount an array (removes its fstab entry too). */
+async function handleUnmount(poolName: string): Promise<void> {
+  const status = statuses.value[poolName]
+  if (!status?.mountPoint) return
+  try {
+    await unmountDevice(status.mountPoint)
+    message.success(t('settings.storage.unmounted'))
+    await load()
+  } catch (error) {
+    message.error(error instanceof ApiError ? error.message : t('settings.storage.unmountFailed'))
   }
 }
 </script>
@@ -116,6 +199,51 @@ async function handleCreate(): Promise<void> {
             >
               {{ raid.operation }} {{ Math.round(raid.progressPercent) }}%
             </NProgress>
+            <!-- Format / mount state -->
+            <div class="raid-item-status">
+              <template v-if="statuses[raid.name]">
+                <template v-if="statuses[raid.name].mountPoint">
+                  <NTag size="tiny" type="success" :bordered="false">
+                    {{ t('settings.storage.mountedAt', { mount: statuses[raid.name].mountPoint }) }}
+                  </NTag>
+                  <NButton size="tiny" quaternary type="error" @click="handleUnmount(raid.name)">
+                    {{ t('settings.storage.unmount') }}
+                  </NButton>
+                </template>
+                <template v-else-if="statuses[raid.name].fileSystem">
+                  <span class="raid-item-state">{{ t('settings.storage.formattedNotMounted', { fs: statuses[raid.name].fileSystem }) }}</span>
+                  <NButton size="tiny" secondary @click="openInit(raid.name)">{{ t('settings.storage.mount') }}</NButton>
+                </template>
+                <template v-else>
+                  <NTag size="tiny" type="warning" :bordered="false">{{ t('settings.storage.noRaidInit') }}</NTag>
+                  <NButton size="tiny" secondary @click="openInit(raid.name)">{{ t('settings.storage.initialize') }}</NButton>
+                </template>
+              </template>
+              <span v-else class="raid-item-state">{{ t('settings.storage.noRaidStatus') }}</span>
+            </div>
+            <!-- Initialize (format + mount) form -->
+            <div v-if="initPool === raid.name" class="raid-init-form">
+              <NSelect
+                v-model:value="initFsType"
+                size="small"
+                class="raid-init-fs"
+                :options="FS_TYPES.map(fs => ({ label: fs.toUpperCase(), value: fs }))"
+              />
+              <NInput v-model:value="initMountPoint" size="small" class="raid-init-mount" placeholder="/srv/nas/raid-md0" />
+              <NPopconfirm
+                :positive-text="t('settings.storage.confirmInitOk')"
+                :negative-text="t('common.cancel')"
+                @positive-click="handleInitialize"
+              >
+                <template #trigger>
+                  <NButton size="small" type="primary" :disabled="!canInitialize" :loading="initializing">
+                    {{ t('settings.storage.initialize') }}
+                  </NButton>
+                </template>
+                {{ t('settings.storage.confirmInitDesc', { pool: raid.name }) }}
+              </NPopconfirm>
+              <span v-if="!canInitialize" class="raid-init-hint">{{ t('settings.storage.mountPointHint') }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -158,14 +286,21 @@ async function handleCreate(): Promise<void> {
           :key="disk.path"
           type="button"
           class="disk-card"
-          :class="{ selected: selectedDisks.includes(disk.path) }"
+          :class="{ selected: selectedDisks.includes(disk.path), disabled: disk.mountPoint != null }"
+          :disabled="disk.mountPoint != null"
+          :title="disk.mountPoint ? t('settings.storage.diskInUse', { mount: disk.mountPoint }) : undefined"
           @click="toggleDisk(disk.path)"
         >
           <div class="disk-card-head">
             <code>{{ disk.path }}</code>
-            <NTag size="tiny" :bordered="false" :type="disk.isSsd ? 'info' : 'default'">
-              {{ disk.isSsd ? t('settings.storage.ssd') : t('settings.storage.hdd') }}
-            </NTag>
+            <span class="disk-card-tags">
+              <NTag v-if="disk.mountPoint" size="tiny" :bordered="false" type="warning">
+                {{ t('settings.storage.inUse') }}
+              </NTag>
+              <NTag size="tiny" :bordered="false" :type="disk.isSsd ? 'info' : 'default'">
+                {{ disk.isSsd ? t('settings.storage.ssd') : t('settings.storage.hdd') }}
+              </NTag>
+            </span>
           </div>
           <div class="disk-card-model">{{ disk.model || t('common.unknown') }}</div>
           <div class="disk-card-meta">
@@ -265,6 +400,46 @@ async function handleCreate(): Promise<void> {
   margin-top: 6px;
   font-size: 12px;
   color: var(--zs-text-tertiary);
+}
+
+.raid-item-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.raid-item-state {
+  font-size: 12px;
+  color: var(--zs-text-tertiary);
+}
+
+.raid-init-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--zs-bg-card);
+  border: 1px dashed var(--zs-border);
+  border-radius: var(--zs-radius);
+  flex-wrap: wrap;
+}
+
+.raid-init-fs {
+  width: 110px;
+}
+
+.raid-init-mount {
+  flex: 1;
+  min-width: 180px;
+}
+
+.raid-init-hint {
+  font-size: 11px;
+  color: var(--zs-text-tertiary);
+  width: 100%;
 }
 
 .raid-item .n-progress {
@@ -373,11 +548,22 @@ async function handleCreate(): Promise<void> {
   box-shadow: var(--zs-shadow-sm);
 }
 
+.disk-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .disk-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.disk-card-tags {
+  display: inline-flex;
+  gap: 4px;
+  min-width: 0;
 }
 
 .disk-card-head code {

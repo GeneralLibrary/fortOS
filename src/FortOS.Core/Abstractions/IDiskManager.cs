@@ -13,6 +13,8 @@ public interface IDiskManager
     Task<RaidResult> CreateRaidAsync(RaidLevel level, string[] diskPaths, CancellationToken ct);
     /// <summary>List active MD RAID arrays.</summary>
     Task<IReadOnlyList<RaidMetrics>> ListRaidsAsync(CancellationToken ct);
+    /// <summary>Read block-device status (filesystem, mount point) for an arbitrary device.</summary>
+    Task<DeviceStatus> GetDeviceStatusAsync(string path, CancellationToken ct);
     /// <summary>Read SMART data.</summary>
     Task<SmartData> GetSmartDataAsync(string diskPath, CancellationToken ct);
     /// <summary>Wipe a disk.</summary>

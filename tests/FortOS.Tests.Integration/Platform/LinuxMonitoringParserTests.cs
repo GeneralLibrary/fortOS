@@ -69,6 +69,54 @@ public sealed class LinuxMonitoringParserTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void RaidParser_ReportsInactiveArray()
+    {
+        // 未装配的阵列(mdstat inactive):必须可见且标记为不健康,不能静默消失。
+        var arrays = LinuxProcParsers.ParseRaid("""
+            Personalities : [raid1]
+            md127 : inactive sda[0](S) sdb[1](S)
+            """);
+
+        var raid = Assert.Single(arrays);
+        Assert.Equal("md127", raid.Name);
+        Assert.Equal("inactive", raid.Level);
+        Assert.False(raid.Healthy);
+        Assert.Equal(0, raid.ActiveDevices);
+        Assert.Equal(0, raid.TotalDevices);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void RaidParser_HandlesAutoReadOnlyState()
+    {
+        // 内核刚装配的阵列会标记 active(auto-read-only),直到第一次写入;级别必须仍被解析。
+        var arrays = LinuxProcParsers.ParseRaid("""
+            Personalities : [raid1]
+            md0 : active(auto-read-only) raid1 sda[0] sdb[1]
+                  976630336 blocks super 1.2 [2/2] [UU]
+            """);
+
+        var raid = Assert.Single(arrays);
+        Assert.Equal("raid1", raid.Level);
+        Assert.True(raid.Healthy);
+        Assert.Equal(2, raid.ActiveDevices);
+        Assert.Equal(2, raid.TotalDevices);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void RaidParser_IgnoresNonArrayLines()
+    {
+        var arrays = LinuxProcParsers.ParseRaid("""
+            Personalities : [linear] [raid0] [raid1] [raid10] [raid6] [raid5] [raid4]
+            unused devices: <none>
+            """);
+
+        Assert.Empty(arrays);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void DockerStatsParser_ConvertsBinaryAndDecimalSizes()
     {
         var containers = DockerStatsParser.Parse("""

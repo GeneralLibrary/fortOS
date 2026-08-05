@@ -6,6 +6,12 @@ namespace FortOS.Api.Controllers;
 public sealed record PathRequest(string Path);
 /// <summary>Create RAID request. <see cref="CreateRaidRequest.Confirm"/> acknowledges that disk data is erased.</summary>
 public sealed record CreateRaidRequest(RaidLevel Level, string[] DiskPaths, bool Confirm);
+/// <summary>Format a block device. Destructive: wipes all data on the device.</summary>
+public sealed record FormatRequest(string Device, string FsType);
+/// <summary>Mount a block device and persist the entry in /etc/fstab.</summary>
+public sealed record MountRequest(string Device, string MountPoint, string FsType);
+/// <summary>Unmount a filesystem and remove its /etc/fstab entry.</summary>
+public sealed record UnmountRequest(string MountPoint);
 /// <summary>Snapshot request.</summary>
 public sealed record SnapshotRequest(string Target, string? Name);
 /// <summary>Restore snapshot request.</summary>

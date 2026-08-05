@@ -123,6 +123,8 @@ export interface DiskInfo {
   smartStatus: string
   temperatureCelsius: number
   usedPercent: number
+  /** Non-null when the disk (or a partition on it) is mounted and in use. */
+  mountPoint: string | null
 }
 
 export interface HealthCheckConfig {
@@ -627,6 +629,15 @@ export interface RaidResult {
 export interface RaidCapability {
   available: boolean
   tool: string
+}
+
+/** Block-device status (mirrors FortOS.Core.DeviceStatus). */
+export interface DeviceStatus {
+  path: string
+  exists: boolean
+  fileSystem: string | null
+  mountPoint: string | null
+  sizeBytes: number
 }
 
 export interface ServiceRuntimeMetrics {

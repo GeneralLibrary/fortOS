@@ -133,6 +133,77 @@ public sealed class RaidApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task DeviceStatus_UnknownDevice_ReturnsExistsFalse()
+    {
+        using var factory = await RaidTestFactory.CreateAsync(nameof(DeviceStatus_UnknownDevice_ReturnsExistsFalse));
+        await factory.InitializeModulesAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/disks/device-status?path=/dev/md-unknown");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("/dev/md-unknown", body.GetProperty("path").GetString());
+        Assert.False(body.GetProperty("exists").GetBoolean());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Format_UnsafeDevice_ReturnsBadRequest()
+    {
+        using var factory = await RaidTestFactory.CreateAsync(nameof(Format_UnsafeDevice_ReturnsBadRequest));
+        await factory.InitializeModulesAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/disks/format",
+            new { device = "/tmp/not-a-device", fsType = "ext4" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Format_UnsupportedFileSystem_ReturnsBadRequest()
+    {
+        using var factory = await RaidTestFactory.CreateAsync(nameof(Format_UnsupportedFileSystem_ReturnsBadRequest));
+        await factory.InitializeModulesAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/disks/format",
+            new { device = "/dev/sda", fsType = "fat32" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Mount_UnsafeDevice_ReturnsBadRequest()
+    {
+        using var factory = await RaidTestFactory.CreateAsync(nameof(Mount_UnsafeDevice_ReturnsBadRequest));
+        await factory.InitializeModulesAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/disks/mount",
+            new { device = "/tmp/x", mountPoint = "/srv/nas/test", fsType = "ext4" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Unmount_EmptyMountPoint_ReturnsBadRequest()
+    {
+        using var factory = await RaidTestFactory.CreateAsync(nameof(Unmount_EmptyMountPoint_ReturnsBadRequest));
+        await factory.InitializeModulesAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/disks/unmount", new { mountPoint = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private sealed class RaidTestFactory : WebApplicationFactory<Program>
     {
         private readonly string? previousDataRoot;

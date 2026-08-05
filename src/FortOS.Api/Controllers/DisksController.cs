@@ -35,6 +35,10 @@ public sealed class DisksController : FortOSControllerBase
     [HttpGet("raids")]
     public Task<IReadOnlyList<RaidMetrics>> Raids(CancellationToken ct) => storage.ListRaidsAsync(ct);
 
+    /// <summary>Query block-device status (filesystem / mount point) for an arbitrary device such as an md array.</summary>
+    [HttpGet("device-status")]
+    public Task<DeviceStatus> DeviceStatus([FromQuery] string path, CancellationToken ct) => storage.GetDeviceStatusAsync(path, ct);
+
     /// <summary>
     /// Whether the RAID tooling (mdadm) is installed on this host. The dashboard
     /// uses this to guide the user through installation when it is missing.
@@ -60,6 +64,18 @@ public sealed class DisksController : FortOSControllerBase
 
         return await storage.CreateRaidAsync(request.Level, request.DiskPaths, ct).ConfigureAwait(false);
     }
+
+    /// <summary>Format a block device (e.g. a freshly created RAID array). Destructive.</summary>
+    [HttpPost("format")]
+    public Task Format([FromBody] FormatRequest request, CancellationToken ct) => storage.FormatAsync(request.Device, request.FsType, ct);
+
+    /// <summary>Mount a formatted device and persist the mount to /etc/fstab.</summary>
+    [HttpPost("mount")]
+    public Task Mount([FromBody] MountRequest request, CancellationToken ct) => storage.MountAsync(request.Device, request.MountPoint, request.FsType, ct);
+
+    /// <summary>Unmount a filesystem and remove its /etc/fstab entry.</summary>
+    [HttpPost("unmount")]
+    public Task Unmount([FromBody] UnmountRequest request, CancellationToken ct) => storage.UnmountAsync(request.MountPoint, ct);
 
     private static string DecodePath(string value)
     {

@@ -78,6 +78,13 @@ public sealed class StorageModule : NasModuleBase
     /// <summary>List MD RAID arrays.</summary>
     public Task<IReadOnlyList<RaidMetrics>> ListRaidsAsync(CancellationToken ct) => RequiredService<IDiskManager>().ListRaidsAsync(ct);
 
+    /// <summary>Get block-device status (filesystem / mount point) for an arbitrary device.</summary>
+    public Task<DeviceStatus> GetDeviceStatusAsync(string path, CancellationToken ct)
+    {
+        ValidateDevicePath(path);
+        return RequiredService<IDiskManager>().GetDeviceStatusAsync(path, ct);
+    }
+
     /// <summary>Mount filesystem.</summary>
     public async Task MountAsync(string device, string mountPoint, string fsType, CancellationToken ct)
     {

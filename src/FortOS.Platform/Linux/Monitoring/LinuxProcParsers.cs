@@ -272,15 +272,18 @@ internal static partial class LinuxProcParsers
             var detail = string.Join(' ', detailLines);
             var state = RaidStateRegex().Match(detail);
             var operation = RaidOperationRegex().Match(detail);
+            // inactive = 阵列已创建但未装配(如重启后 udev 增量扫描未接管):必须可见,
+            // 否则用户会误以为数据盘阵列不存在,raid-degraded 告警也不会触发。
+            var isInactive = string.Equals(header.Groups[2].Value, "inactive", StringComparison.Ordinal);
             var total = state.Success ? state.Groups[1].Value.Length : 0;
             var active = state.Success ? state.Groups[1].Value.Count(character => character == 'U') : 0;
             arrays.Add(new RaidMetrics
             {
                 Name = header.Groups[1].Value,
-                Level = header.Groups[2].Value,
-                Healthy = total > 0 && active == total,
-                ActiveDevices = active,
-                TotalDevices = total,
+                Level = isInactive ? "inactive" : header.Groups[3].Value,
+                Healthy = !isInactive && total > 0 && active == total,
+                ActiveDevices = isInactive ? 0 : active,
+                TotalDevices = isInactive ? 0 : total,
                 Operation = operation.Success ? operation.Groups[1].Value : null,
                 ProgressPercent = operation.Success ? ParseDouble(operation.Groups[2].Value) : null,
             });
@@ -315,7 +318,7 @@ internal static partial class LinuxProcParsers
     [GeneratedRegex(@"^([A-Za-z0-9_()]+):\s+(\d+)\s+kB", RegexOptions.CultureInvariant)]
     private static partial Regex MemoryLineRegex();
 
-    [GeneratedRegex(@"^(\S+)\s*:\s*active\s+(\S+)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(\S+)\s*:\s*(active|inactive)(?:\([^)]*\))?(?:\s+(\S+))?", RegexOptions.CultureInvariant)]
     private static partial Regex RaidHeaderRegex();
 
     [GeneratedRegex(@"\[([U_]+)\]", RegexOptions.CultureInvariant)]
