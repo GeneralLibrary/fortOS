@@ -80,6 +80,11 @@ public static class CommandRuntime
                 }
             }
             Console.Error.WriteLine(ex.Message);
+            // 非交互环境(管道/脚本)无法走交互登录,给出明确指引。
+            if (ex.StatusCode == HttpStatusCode.Unauthorized && !ShouldPromptLogin(ex, result, options))
+            {
+                Console.Error.WriteLine("未认证。请先运行 'fortos auth login' 登录,或通过 --token / FortOS_TOKEN 提供令牌。");
+            }
             return 1;
         }
         catch (Exception ex)
@@ -91,7 +96,9 @@ public static class CommandRuntime
 
     private static bool ShouldPromptLogin(FortOSApiException ex, ParseResult result, CliOptions options)
     {
-        if (Console.IsInputRedirected)
+        // stdin 或 stdout 任一被重定向(管道/脚本)都不做交互登录:交互提示需要
+        // 真正的终端,否则 Spectre 会抛 "Failed to read input in non-interactive mode"。
+        if (Console.IsInputRedirected || Console.IsOutputRedirected)
         {
             return false;
         }

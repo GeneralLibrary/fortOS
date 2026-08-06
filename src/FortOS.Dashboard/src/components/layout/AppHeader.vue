@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useI18n } from 'vue-i18n'
+import { useMessage } from 'naive-ui'
 import { getSystemMetrics } from '@/api/metrics'
 import { listAlerts } from '@/api/alerts'
 import { formatBytes, formatUptime } from '@/utils/format'
@@ -16,7 +17,7 @@ import type { SystemMetricsSnapshot } from '@/types'
 import {
   LogOutOutline,
   SunnyOutline, MoonOutline, LanguageOutline,
-  PulseOutline, ServerOutline, SaveOutline, WifiOutline,
+  PulseOutline, ServerOutline, SaveOutline, WifiOutline, LinkOutline,
 } from '@vicons/ionicons5'
 
 defineProps<{
@@ -31,7 +32,20 @@ defineEmits<{
 const router = useRouter()
 const auth = useAuthStore()
 const theme = useThemeStore()
+const message = useMessage()
 const { t, locale } = useI18n()
+
+/** 当前 Web 管理访问地址(用户实际访问的 origin,含 IP/端口)。 */
+const accessUrl = window.location.origin
+
+async function copyAccessUrl() {
+  try {
+    await navigator.clipboard.writeText(accessUrl)
+    message.success(t('common.accessUrlCopied'))
+  } catch {
+    message.warning(t('common.accessUrlCopyFailed'))
+  }
+}
 
 // ---- Poll system metrics for header stat pills ----
 
@@ -167,6 +181,13 @@ function handleLangSelect(key: string) {
 
     <!-- Right: Controls -->
     <div class="zs-header-right">
+      <!-- Access URL: shows the management address the user reached this page on -->
+      <button class="zs-access-url" :title="accessUrl" @click="copyAccessUrl">
+        <NIcon size="15" color="currentColor"><LinkOutline /></NIcon>
+        <span class="zs-access-url-label">{{ t('common.accessUrl') }}</span>
+        <span class="zs-access-url-text">{{ accessUrl }}</span>
+      </button>
+
       <button class="zs-icon-btn" :class="{ 'zs-icon-btn--active': !theme.isDark }" @click="handleToggleTheme" :title="theme.isDark ? t('theme.light') : t('theme.dark')">
         <NIcon size="18">
           <SunnyOutline v-if="theme.isDark" />
@@ -237,6 +258,42 @@ import { NIcon, NDropdown } from 'naive-ui'
   gap: 8px;
   flex-shrink: 0;
   min-width: 0;
+}
+
+/* Access URL pill — shows the management address and copies it on click. */
+.zs-access-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--zs-radius);
+  border: 1px solid var(--zs-border);
+  background: var(--zs-bg-input);
+  color: var(--zs-text-secondary);
+  cursor: pointer;
+  max-width: 280px;
+  overflow: hidden;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.zs-access-url:hover {
+  color: var(--zs-text-primary);
+  border-color: var(--zs-primary);
+}
+
+.zs-access-url-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.zs-access-url-text {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Generic adaptive header button (language etc.) — no fixed width so content never overflows. */

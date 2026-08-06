@@ -105,6 +105,9 @@ if (app.Configuration.GetValue("dashboard:enabled", false))
     app.UseDefaultFiles();
     app.UseStaticFiles();
     // Friendly entry point: visiting the host root lands on the dashboard.
+    // 注意:不要为 /dashboard 单独注册重定向——UseDefaultFiles 对目录请求
+    // (无尾斜杠)会自动 302 到 /dashboard/,若再用 MapGet("/dashboard") 拦截,
+    // /dashboard/ 也会命中该端点重定向回自身,形成无限循环。
     app.MapGet("/", () => Results.Redirect("/dashboard/"));
 }
 

@@ -1,0 +1,13 @@
+[Unit]
+Description=FortOS management console address banner
+# 网络就绪后再打印,确保拿到的是实际 IP。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fortos-banner.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

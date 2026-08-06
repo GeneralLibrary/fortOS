@@ -329,8 +329,11 @@ CREATE TABLE IF NOT EXISTS resource_acls (
 
     private TimeSpan GetDefaultLifetime()
     {
+        // 默认 7 天:FortOS 是本地 NAS 管理,1 小时过期会导致 CLI/Web 频繁重登
+        // (CLI 的 fortos status 等命令每次都要重新交互登录)。可用
+        // security:token:lifetime_minutes 配置覆盖。
         var configured = _configuration?.GetValue("security:token:lifetime_minutes");
-        return int.TryParse(configured, out var minutes) && minutes > 0 ? TimeSpan.FromMinutes(minutes) : TimeSpan.FromHours(1);
+        return int.TryParse(configured, out var minutes) && minutes > 0 ? TimeSpan.FromMinutes(minutes) : TimeSpan.FromDays(7);
     }
 
     private string GetIssuer() => _configuration?.GetValue("security:issuer") ?? "nas://local";

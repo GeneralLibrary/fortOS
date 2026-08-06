@@ -75,7 +75,8 @@ public sealed class NasTokenMiddleware
     private static bool ShouldSkip(PathString path)
     {
         var value = path.Value ?? string.Empty;
-        return value.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
+        return value.Equals("/", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
             || value.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase)
