@@ -96,4 +96,59 @@ public class ChrootStepTests
 
         Assert.Equal(string.Empty, ChrootStep.BuildCrypttab(context));
     }
+
+    [Fact]
+    public void SeedFortosUserDb_CreatesAdminUser()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"fortos-seed-{Guid.NewGuid():N}.db");
+        try
+        {
+            ChrootStep.SeedFortosUserDb(dbPath, "admin", "MyPassw0rd!");
+
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=False"))
+            {
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT username, password_hash, roles_json FROM users WHERE username = $u;";
+                cmd.Parameters.AddWithValue("$u", "admin");
+                using var reader = cmd.ExecuteReader();
+                Assert.True(reader.Read(), "user row should exist");
+                Assert.Equal("admin", reader.GetString(0));
+                Assert.True(BCrypt.Net.BCrypt.Verify("MyPassw0rd!", reader.GetString(1)), "password hash must verify");
+                var roles = System.Text.Json.JsonSerializer.Deserialize<string[]>(reader.GetString(2));
+                Assert.Contains("admin", roles);
+                Assert.Contains("user", roles);
+            }
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void SeedFortosUserDb_IsIdempotent_KeepsOriginalHash()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"fortos-seed-{Guid.NewGuid():N}.db");
+        try
+        {
+            ChrootStep.SeedFortosUserDb(dbPath, "admin", "FirstPassw0rd!");
+            ChrootStep.SeedFortosUserDb(dbPath, "admin", "SecondPassw0rd!");
+
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=False"))
+            {
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT password_hash FROM users WHERE username = $u;";
+                cmd.Parameters.AddWithValue("$u", "admin");
+                var hash = (string)cmd.ExecuteScalar()!;
+                Assert.True(BCrypt.Net.BCrypt.Verify("FirstPassw0rd!", hash), "original password must be preserved");
+                Assert.False(BCrypt.Net.BCrypt.Verify("SecondPassw0rd!", hash), "second call must not overwrite");
+            }
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
 }

@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 # -------------------------------------------------------------------------
-# FortOS Debian ISO — 本地构建脚本(在 WSL / 任意 Debian 系主机直接运行,
-# 无需 Docker;等价于 eng/iso/build-in-container.sh 的本地执行路径)。
+# FortOS Debian ISO - native local build script (runs directly in WSL or any
+# Debian-based host; no Docker required; equivalent to the local execution
+# path of eng/iso/build-in-container.sh).
 #
-# 依赖(dotnet SDK 10 优先取 /opt/dotnet,或 PATH 中的 dotnet):
+# Dependencies (dotnet SDK 10 preferred at /opt/dotnet, or in PATH):
 #   live-build xorriso squashfs-tools curl apt-get git mtools dosfstools
 #
-# 用法:
+# Usage:
 #   bash eng/iso/build-local-wsl.sh
 #   VERSION=v1.2.3 OUTPUT_DIR=/path bash eng/iso/build-local-wsl.sh
 #
-# 说明:
-#   - 从 git index 恢复 Windows checkout 丢失的 includes.chroot symlink
-#     (core.symlinks=false 会把 symlink 物化为普通文件,systemd 会因
-#     "not a symlink" 拒绝 wants drop-in)。
-#   - Docker 包用 apt pin 强制取 bookworm 版本(WSL 等 host 的发行版
-#     版本号更高,apt 默认会解析到不存在的版本)。
-#   - 输出 ISO 与 .sha256 到 ${OUTPUT_DIR}(默认 artifacts/iso)。
+# Notes:
+#   - Restores includes.chroot symlinks lost in a Windows checkout from the
+#     git index (core.symlinks=false materializes symlinks as regular files,
+#     and systemd then rejects the wants drop-in with "not a symlink").
+#   - Docker packages are pinned to bookworm versions via apt pin (WSL and
+#     other hosts ship newer versions, and apt would otherwise try to resolve
+#     a non-existent version).
+#   - Writes the ISO and .sha256 to ${OUTPUT_DIR} (default artifacts/iso).
 # -------------------------------------------------------------------------
 set -Eeuo pipefail
 
@@ -35,7 +37,7 @@ export DOTNET_NOLOGO=1
 export DEBIAN_FRONTEND=noninteractive
 export NUGET_PACKAGES="${BUILD_ROOT}/nuget"
 
-# --- dotnet SDK(优先 /opt/dotnet,与 build-in-container.sh 一致)---
+# --- dotnet SDK (prefer /opt/dotnet, matching build-in-container.sh) ---
 if ! command -v dotnet >/dev/null 2>&1 && [[ -x /opt/dotnet/dotnet ]]; then
     export PATH="/opt/dotnet:${PATH}"
 fi
@@ -44,7 +46,7 @@ if ! command -v dotnet >/dev/null 2>&1; then
     exit 1
 fi
 
-# --- 工具检查 ---
+# --- Tool checks ---
 for cmd in lb xorriso mksquashfs curl apt-get git; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
         echo "error: ${cmd} is required (apt-get install live-build xorriso squashfs-tools ...)." >&2
@@ -52,12 +54,21 @@ for cmd in lb xorriso mksquashfs curl apt-get git; do
     fi
 done
 
-# --- 清理上次被中断构建残留的 chroot 挂载(/proc /sys /dev 等)---
+# --- Clean up chroot mounts left over from an interrupted build (/proc /sys /dev ...) ---
 mount 2>/dev/null | grep "${BUILD_ROOT}" | awk '{print $3}' | sort -r \
     | while read -r m; do umount "${m}" 2>/dev/null || umount -l "${m}" 2>/dev/null || true; done || true
 sleep 1
 
-echo "=== 1/6 dotnet publish(4 个项目,已有产物则跳过)==="
+# --- FortOS.Dashboard 前端产物由 Vite 构建生成(不入库)。缺失会导致目标
+# 系统 /dashboard 404 —— 缺失即中止,避免产出不可用的 ISO。
+readonly DASHBOARD_INDEX="${REPOSITORY_ROOT}/src/FortOS.Api/wwwroot/dashboard/index.html"
+if [[ ! -f "${DASHBOARD_INDEX}" ]]; then
+    echo "error: ${DASHBOARD_INDEX} not found — run the frontend build first:" >&2
+    echo "  cd src/FortOS.Dashboard && npm ci && npm run build" >&2
+    exit 1
+fi
+
+echo "=== 1/6 dotnet publish (4 projects, skips existing output) ==="
 mkdir -p "${PUBLISH_ROOT}/api" "${PUBLISH_ROOT}/cli" \
     "${PUBLISH_ROOT}/installer/gui" "${PUBLISH_ROOT}/installer/cli"
 
@@ -65,7 +76,7 @@ publish_if_missing() {
     local output="$1" bin="$2" extra="${3:-}"
     shift 3
     if [[ -x "${output}/${bin}" ]]; then
-        echo "  ${bin} 已存在,跳过"
+        echo "  ${bin} already exists, skipping"
         return
     fi
     dotnet publish "${REPOSITORY_ROOT}/$1" \
@@ -100,11 +111,12 @@ lb config \
     --iso-volume "FortOS_${SAFE_VERSION:0:20}" \
     --uefi-secure-boot auto
 
-echo "=== 3/6 复制 config + CRLF 归一化 + symlink 恢复 ==="
+echo "=== 3/6 Copy config + CRLF normalization + symlink restore ==="
 cp -a "${REPOSITORY_ROOT}/eng/iso/config/." "${LIVE_ROOT}/config/"
 find "${LIVE_ROOT}/config" -type f -exec sed -i 's/\r$//' {} +
 find "${LIVE_ROOT}/config/hooks" -type f -name '*.hook.chroot' -exec chmod 0755 {} +
-# 恢复 Windows checkout 物化为普通文件的 git symlink(includes.chroot)
+# Restore git symlinks (includes.chroot) materialized as regular files by a
+# Windows checkout
 while read -r mode hash stage rel; do
     if [[ "${mode}" == "120000" && -n "${rel}" ]]; then
         src="${LIVE_ROOT}/config/${rel#eng/iso/config/}"
@@ -118,7 +130,7 @@ while read -r mode hash stage rel; do
     fi
 done < <(git -C "${REPOSITORY_ROOT}" ls-files -s eng/iso/config/includes.chroot 2>/dev/null || true)
 
-echo "=== 4/6 复制 FortOS 产物到 includes.chroot ==="
+echo "=== 4/6 Copy FortOS artifacts into includes.chroot ==="
 mkdir -p "${LIVE_ROOT}/config/packages.chroot"
 mkdir -p "${LIVE_ROOT}/config/includes.chroot/opt/fortos"
 cp -a "${PUBLISH_ROOT}/api" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
@@ -126,7 +138,7 @@ cp -a "${PUBLISH_ROOT}/cli" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
 cp -a "${PUBLISH_ROOT}/installer" "${LIVE_ROOT}/config/includes.chroot/opt/fortos/"
 printf '%s\n' "${VERSION}" > "${LIVE_ROOT}/config/includes.chroot/etc/fortos/version"
 
-echo "=== 5/6 Docker 包(apt pin 强制 bookworm 版本)==="
+echo "=== 5/6 Docker packages (apt pin forces bookworm versions) ==="
 install -d -m 0755 /etc/apt/keyrings
 curl --fail --show-error --silent --location --retry 3 \
     https://download.docker.com/linux/debian/gpg \
@@ -146,15 +158,15 @@ apt-get -o Acquire::Retries=3 update >/dev/null 2>&1 || true
 )
 mkdir -p "${LIVE_ROOT}/config/includes.chroot/etc/apt/keyrings"
 cp /etc/apt/keyrings/docker.asc "${LIVE_ROOT}/config/includes.chroot/etc/apt/keyrings/docker.asc"
-echo "  Docker 包: $(ls "${LIVE_ROOT}"/config/packages.chroot/*.deb 2>/dev/null | wc -l) debs"
+echo "  Docker packages: $(ls "${LIVE_ROOT}"/config/packages.chroot/*.deb 2>/dev/null | wc -l) debs"
 
-echo "=== 6/6 lb build(完整 FortOS ISO)==="
+echo "=== 6/6 lb build (full FortOS ISO) ==="
 cd "${LIVE_ROOT}"
 lb build
 
-echo "=== 输出 ISO ==="
+echo "=== Output ISO ==="
 mkdir -p "${OUTPUT_DIR}"
 cp "${LIVE_ROOT}/live-image-amd64.hybrid.iso" "${OUTPUT_DIR}/${IMAGE_BASENAME}.iso"
 (cd "${OUTPUT_DIR}" && sha256sum "${IMAGE_BASENAME}.iso" > "${IMAGE_BASENAME}.iso.sha256")
 ls -la "${OUTPUT_DIR}/${IMAGE_BASENAME}.iso"
-echo "=== 完成:${OUTPUT_DIR}/${IMAGE_BASENAME}.iso ==="
+echo "=== Done: ${OUTPUT_DIR}/${IMAGE_BASENAME}.iso ==="

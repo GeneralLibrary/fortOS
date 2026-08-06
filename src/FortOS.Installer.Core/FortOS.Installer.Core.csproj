@@ -11,4 +11,14 @@
     <InternalsVisibleTo Include="FortOS.Tests.Installer" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 安装时把向导设置的账号密码 seed 进目标系统 FortOS 用户库(SQLite + BCrypt),
+         版本与 FortOS.Security / FortOS.Core 保持一致。 -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <!-- 覆盖 Microsoft.Data.Sqlite 传递依赖的旧 SQLitePCLRaw(2.1.x 有 GHSA-2m69-gcr7-jv3q 高危漏洞),
+         与 FortOS.Core 保持一致。 -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+  </ItemGroup>
+
 </Project>

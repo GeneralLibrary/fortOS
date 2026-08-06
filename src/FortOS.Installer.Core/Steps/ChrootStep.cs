@@ -16,7 +16,7 @@ public sealed class ChrootStep : IInstallStep
         "docker.service", "containerd.service", "smbd.service", "nmbd.service",
         "nfs-server.service", "nfs-mountd.service", "rpcbind.service",
         "vsftpd.service", "ssh.service", "NetworkManager.service", "fortos.service",
-        "nut-monitor.service",
+        "nut-monitor.service", "fortos-banner.service",
     ];
 
     private readonly ChrootRunner _chroot;
@@ -43,9 +43,18 @@ public sealed class ChrootStep : IInstallStep
         WriteFortosEnv(context, target);
 
         await ConfigureUserAsync(context, target, ct).ConfigureAwait(false);
+        // 把向导设置的账号密码写入 FortOS 用户库(/srv/nas/database/nas.db),
+        // 首次启动 Web 管理界面即可用同一账号密码登录,无需匿名注册。
+        await SeedFortosUserAsync(context, target, ct).ConfigureAwait(false);
         await EnableServicesAsync(target, ct).ConfigureAwait(false);
         await ConfigureNetworkAsync(context, target, ct).ConfigureAwait(false);
         await ConfigureRaidAsync(context, target, ct).ConfigureAwait(false);
+        // 无条件重建 initramfs(非仅 RAID 模式):目标系统必须以标准 initramfs
+        // 启动,live 环境遗留的 initrd 是 live-boot 引导专用的,复制到目标盘后
+        // 可能缺失、损坏或不含目标磁盘控制器/rootfs 驱动——grub-mkconfig 找
+        // 不到 initrd 时会静默生成无 initrd 行的 grub.cfg,重启即内核
+        // "VFS: Unable to mount root fs on unknown-block(0,0)" panic。
+        await RebuildInitramfsAsync(target, ct).ConfigureAwait(false);
         await CleanupLiveResidueAsync(target, ct).ConfigureAwait(false);
 
         context.Summary.Hostname = SanitizeHostname(config.Network.Hostname); // 记录实际写入的值
@@ -165,7 +174,20 @@ public sealed class ChrootStep : IInstallStep
 
     private static void WriteFortosEnv(InstallContext context, string target)
     {
-        WriteFile(target, "etc/fortos/fortos.env", "FortOS_DATA_ROOT=/srv/nas\n");
+        // 与 eng/iso/config/includes.chroot/etc/fortos/fortos.env 保持一致:
+        // ASPNETCORE_URLS 必须显式监听 0.0.0.0,否则 Kestrel 默认只监听
+        // localhost,局域网/虚拟机外部访问不到管理页面。
+        // dashboard__enabled=true:Web 管理界面默认开启(appsettings.json 默认
+        // false 会导致 /dashboard 404)。环境变量的 __ 对应配置节 :。
+        WriteFile(
+            target,
+            "etc/fortos/fortos.env",
+            "ASPNETCORE_URLS=http://0.0.0.0:5000\n"
+            + "ASPNETCORE_ENVIRONMENT=Production\n"
+            + "FortOS_DATA_ROOT=/srv/nas\n"
+            + "FortOS_CONFIG_PATH=/srv/nas/config/nas.yaml\n"
+            + "DOTNET_EnableDiagnostics=0\n"
+            + "dashboard__enabled=true\n");
         var version = ReadLiveFile(target, "etc/fortos/version");
         if (!string.IsNullOrEmpty(version))
         {
@@ -199,10 +221,31 @@ public sealed class ChrootStep : IInstallStep
                 "chpasswd",
                 ct,
                 standardInput: $"{username}:{context.Config.Account.Password}\n").ConfigureAwait(false);
+
+            // Samba 用户密码:seed 进 FortOS 用户库后,IdentityService 的
+            // ProvisionSystemUsersAsync(SambaUserProvisioner)不会触发,必须显式
+            // smbpasswd -a,否则 SMB 共享用同一账号密码认证失败。密码走 stdin。
+            await _chroot.RunScriptAsync(
+                target,
+                $"pdbedit -L 2>/dev/null | grep -q '^{username}' || smbpasswd -s -a {username}",
+                ct,
+                standardInput: $"{context.Config.Account.Password}\n{context.Config.Account.Password}\n").ConfigureAwait(false);
         }
 
         // sudoers:FortOS 管理员无密码 sudo。
         WriteFile(target, "etc/sudoers.d/90-fortos-admin", $"{username} ALL=(ALL) NOPASSWD:ALL\n");
+
+        // 自动登录:安装完成后首次启动直接进入系统(免输账号密码),NAS 本地
+        // 场景常见取舍。注意安全影响:物理接触控制台即获得 shell(admin 无
+        // 密码 sudo)。SSH 仍要求账号密码,不受影响。
+        WriteFile(
+            target,
+            "etc/systemd/system/getty@tty1.service.d/autologin.conf",
+            $"[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin {username} --noclear %I $TERM\n");
+        WriteFile(
+            target,
+            "etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf",
+            $"[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin {username} --noclear %I $TERM\n");
 
         if (!string.IsNullOrWhiteSpace(context.Config.Account.SshPublicKey))
         {
@@ -270,11 +313,123 @@ public sealed class ChrootStep : IInstallStep
         {
             return;
         }
-        // 记录数组供重启后自动组装(mdadm 失败必须可见),并刷新 initramfs(容忍失败)。
+        // 记录数组供重启后自动组装(mdadm 失败必须可见)。initramfs 重建由
+        // RebuildInitramfsAsync 统一负责(先写 mdadm.conf 再重建,RAID 配置进 initrd)。
         await _chroot.RunScriptAsync(
             target,
-            "mdadm --detail --scan > /etc/mdadm/mdadm.conf || { echo 'mdadm scan failed' >&2; exit 1; }; update-initramfs -u 2>/dev/null || true",
+            "mdadm --detail --scan > /etc/mdadm/mdadm.conf || { echo 'mdadm scan failed' >&2; exit 1; }",
             ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 在目标系统 chroot 内重建标准 initramfs(update-initramfs -u)。
+    /// 安装器把 live rootfs 原样 rsync 到目标盘,live 环境 /boot 里的 initrd 是
+    /// live-boot 引导专用的;必须基于目标系统自身的 /lib/modules 重新生成,才能
+    /// 保证 initrd 携带目标磁盘控制器与 rootfs 驱动,并被 grub-mkconfig 正确引用。
+    /// 重建失败(模块缺失、initramfs-tools 损坏等)必须让安装失败并给出可见错误,
+    /// 而不是产出无法启动的系统。
+    /// </summary>
+    private async Task RebuildInitramfsAsync(string target, CancellationToken ct)
+    {
+        // RunScriptAsync 默认非零退出码即抛 ToolException —— 不吞错误。
+        await _chroot.RunScriptAsync(
+            target,
+            "update-initramfs -u",
+            ct,
+            timeout: TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 把安装向导设置的账号密码写入目标系统的 FortOS 用户库
+    /// (/srv/nas/database/nas.db,SQLite)。这样目标系统首次启动后,Web 管理
+    /// 界面与 fortos CLI 直接使用同一账号密码登录,不再经过匿名注册步骤。
+    /// 表结构与 <c>FortOS.Core/Data/DatabaseProvider.cs</c> 的 users 表一致,
+    /// 首用户自动获得 admin+user 角色(与 IdentityService.CreateLocalUserAsync 行为一致)。
+    /// 失败必须让安装失败:否则安装报成功但 Web 无法用约定凭据登录。
+    /// </summary>
+    private async Task SeedFortosUserAsync(InstallContext context, string target, CancellationToken ct)
+    {
+        var username = context.Config.Account.Username;
+        var password = context.Config.Account.Password;
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            // 未配置账号密码(如纯自动化流程未提供时)跳过,由 FortOS 首次启动的
+            // BootstrapOnly 注册兜底。
+            return;
+        }
+
+        var databaseDir = Path.Combine(target, "srv/nas/database");
+        var databasePath = Path.Combine(databaseDir, "nas.db");
+        Directory.CreateDirectory(databaseDir);
+
+        await Task.Run(() => SeedFortosUserDb(databasePath, username, password), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 在指定 SQLite 文件上幂等创建 FortOS 用户库并写入首个管理员。
+    /// 纯函数(仅依赖 dbPath 指向的文件),便于单元测试。
+    /// </summary>
+    internal static void SeedFortosUserDb(string databasePath, string username, string password)
+    {
+        var connectionString = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            DefaultTimeout = 30,
+            // 一次性写库,禁用连接池避免句柄残留(安装进程后续还要卸载目标盘)。
+            Pooling = false,
+        }.ToString();
+
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString);
+        connection.Open();
+
+        using (var create = connection.CreateCommand())
+        {
+            // 与 FortOS.Core/Data/DatabaseProvider.cs 的 users 表 schema 保持一致。
+            create.CommandText = """
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    display_name TEXT,
+                    email TEXT,
+                    totp_secret TEXT,
+                    failed_attempts INT DEFAULT 0,
+                    locked_until TEXT,
+                    created_at TEXT NOT NULL,
+                    roles_json TEXT DEFAULT '[]'
+                );
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        using (var count = connection.CreateCommand())
+        {
+            count.CommandText = "SELECT COUNT(*) FROM users WHERE username = $username;";
+            count.Parameters.AddWithValue("$username", username);
+            var exists = Convert.ToInt64(count.ExecuteScalar() ?? 0L) > 0;
+            if (exists)
+            {
+                // 重试安装场景:库已含该用户则跳过,不覆盖既有数据。
+                return;
+            }
+        }
+
+        using var insert = connection.CreateCommand();
+        insert.CommandText = """
+            INSERT INTO users (username, password_hash, display_name, email, failed_attempts, locked_until, created_at, roles_json)
+            VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, $roles_json);
+            """;
+        insert.Parameters.AddWithValue("$username", username);
+        insert.Parameters.AddWithValue("$password_hash", BCrypt.Net.BCrypt.HashPassword(password, 12));
+        insert.Parameters.AddWithValue("$display_name", username);
+        insert.Parameters.AddWithValue("$email", DBNull.Value);
+        insert.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
+        // 首个用户自动获得 admin 角色(与 IdentityService.CreateLocalUserAsync 一致)。
+        // 用源生成上下文序列化(安装器 PublishTrimmed 下禁用反射式 JsonSerializer)。
+        insert.Parameters.AddWithValue(
+            "$roles_json",
+            System.Text.Json.JsonSerializer.Serialize(
+                new[] { "admin", "user" }, Models.InstallerJsonContext.Default.StringArray));
+        insert.ExecuteNonQuery();
     }
 
     private async Task CleanupLiveResidueAsync(string target, CancellationToken ct)

@@ -9,6 +9,7 @@ namespace FortOS.Installer.Core.Models;
 /// </summary>
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(InstallSummary))]
+[JsonSerializable(typeof(string[]))]
 internal partial class InstallerJsonContext : JsonSerializerContext
 {
 }

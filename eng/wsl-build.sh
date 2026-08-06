@@ -14,7 +14,7 @@ mkdir -p "$DST"
 cd "$SRC_WIN"
 tar -cf - \
   --exclude='bin' --exclude='obj' --exclude='node_modules' \
-  --exclude='.git' --exclude='wwwroot/dashboard' \
+  --exclude='.git' \
   --exclude='.reasonix' --exclude='mnt' \
   src protos eng Directory.Build.props Dockerfile docker-compose*.yml FortOS.slnx \
   | (cd "$DST" && tar -xf -)

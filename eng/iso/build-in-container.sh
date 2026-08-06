@@ -52,6 +52,13 @@ install_dotnet_sdk() {
 }
 
 publish_fortos() {
+    # FortOS.Dashboard 前端产物由 Vite 构建生成(不入库)。缺失会导致目标
+    # 系统 /dashboard 404 —— 缺失即中止,避免产出不可用的 ISO。
+    if [[ ! -f /workspace/src/FortOS.Api/wwwroot/dashboard/index.html ]]; then
+        echo "error: /workspace/src/FortOS.Api/wwwroot/dashboard/index.html not found — run the frontend build first:" >&2
+        echo "  cd src/FortOS.Dashboard && npm ci && npm run build" >&2
+        exit 1
+    fi
     mkdir -p "${PUBLISH_ROOT}/api" "${PUBLISH_ROOT}/cli"
 
     dotnet publish /workspace/src/FortOS.Api/FortOS.Api.csproj \
@@ -69,8 +76,8 @@ publish_fortos() {
         --output "${PUBLISH_ROOT}/cli"
 }
 
-# FortOS 图形安装器(GUI kiosk + headless CLI,设计稿 §8.2)。
-# --self-contained + partial trimming 控制增量体积(目标 ≤ 300 MB,§8.5)。
+# FortOS graphical installer (GUI kiosk + headless CLI, design §8.2).
+# --self-contained + partial trimming keep the image delta small (target <= 300 MB, §8.5).
 publish_installer() {
     mkdir -p "${PUBLISH_ROOT}/installer/gui" "${PUBLISH_ROOT}/installer/cli"
 

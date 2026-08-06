@@ -30,7 +30,12 @@ public sealed class RsyncTool : ITool
     {
         var args = new List<string>
         {
-            "-aHAXS", "--one-file-system", "--numeric-ids", "--info=progress2",
+            // 注意:不能使用 -S/--sparse。btrfs 默认启用 no_holes 特性,稀疏
+            // 复制的文件在目标上留下 extent 空洞;GRUB 2.06 的 btrfs 驱动
+            // 遍历空洞时直接报 "extent not found"(上游 7f4e017a 才修复,2.12
+            // 起生效),导致 initrd 读取失败 → 内核无 initramfs → 重启即
+            // "VFS: Unable to mount root fs on unknown-block(0,0)" panic。
+            "-aHAX", "--one-file-system", "--numeric-ids", "--info=progress2",
         };
         foreach (var exclude in Excludes)
         {

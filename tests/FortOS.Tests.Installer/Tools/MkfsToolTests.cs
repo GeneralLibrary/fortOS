@@ -7,7 +7,7 @@ namespace FortOS.Tests.Installer.Tools;
 public class MkfsToolTests
 {
     [Theory]
-    [InlineData(PartitionFs.Ext4, "mkfs.ext4", "-f", "-L")]
+    [InlineData(PartitionFs.Ext4, "mkfs.ext4", "-F", "-L")]
     [InlineData(PartitionFs.Btrfs, "mkfs.btrfs", "-f", "-L")]
     [InlineData(PartitionFs.Vfat, "mkfs.fat", "-F", "-n")] // dosfstools 卷标用 -n
     [InlineData(PartitionFs.Xfs, "mkfs.xfs", "-f", "-L")]

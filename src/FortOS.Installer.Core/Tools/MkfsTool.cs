@@ -42,11 +42,13 @@ public sealed class MkfsTool : ITool
                 args.Add("32");
                 break;
             case PartitionFs.Ext4:
-            case PartitionFs.Xfs:
-                args.Add("-f"); // force,覆盖残留签名
+                // mkfs.ext4 的 force 选项是大写 -F(小写 -f 是 mkfs.xfs 的,
+                // ext4 传 -f 会报 "invalid option" 直接失败)。
+                args.Add("-F");
                 break;
+            case PartitionFs.Xfs:
             case PartitionFs.Btrfs:
-                args.Add("-f");
+                args.Add("-f"); // force,覆盖残留签名
                 break;
             case PartitionFs.Swap:
                 break;
