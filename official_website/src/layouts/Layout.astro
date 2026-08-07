@@ -1,0 +1,76 @@
+---
+import { SEO } from "astro-seo";
+import Footer from "@/components/footer.astro";
+import Navbar from "@/components/navbar/navbar.astro";
+import { getDict } from "@/i18n";
+import "@fontsource-variable/inter/index.css";
+import "../styles/global.css";
+
+export interface Props {
+  title?: string;
+  description?: string;
+}
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site).toString();
+
+const resolvedImageWithDomain = new URL(
+  "/opengraph.jpg",
+  Astro.site
+).toString();
+
+const { title = "", description } = Astro.props;
+
+const dict = getDict(Astro.currentLocale);
+const htmlLang = Astro.currentLocale === "zh" ? "zh-CN" : "en";
+
+const makeTitle = title
+  ? title + " | " + dict.common.name
+  : dict.common.name + " — " + dict.common.tagline;
+
+const seoDescription =
+  description || dict.common.tagline + " " + dict.common.name + ".";
+---
+
+<!doctype html>
+<html lang={htmlLang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="generator" content={Astro.generator} />
+
+    <SEO
+      title={makeTitle}
+      description={seoDescription}
+      canonical={canonicalURL}
+      twitter={{
+        creator: "@GeneralLibrary",
+        site: "@GeneralLibrary",
+        card: "summary_large_image",
+      }}
+      openGraph={{
+        basic: {
+          url: canonicalURL,
+          type: "website",
+          title: makeTitle,
+          image: resolvedImageWithDomain,
+        },
+        image: {
+          alt: dict.common.name,
+        },
+      }}
+    />
+  </head>
+  <body>
+    <Navbar />
+    <slot />
+    <Footer />
+    <style is:global>
+      /* Improve Page speed */
+      /* https://css-tricks.com/almanac/properties/c/content-visibility/ */
+      img {
+        content-visibility: auto;
+      }
+    </style>
+  </body>
+</html>

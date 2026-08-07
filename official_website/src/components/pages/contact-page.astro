@@ -1,0 +1,76 @@
+---
+import Container from "@/components/container.astro";
+import Sectionhead from "@/components/sectionhead.astro";
+import Layout from "@/layouts/Layout.astro";
+import { Icon } from "astro-icon/components";
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+const { contact } = dict;
+---
+
+<Layout title={contact.title} description={contact.desc}>
+  <Container>
+    <Sectionhead>
+      <Fragment slot="title">{contact.title}</Fragment>
+      <Fragment slot="desc">{contact.desc}</Fragment>
+    </Sectionhead>
+
+    <div class="mx-auto max-w-4xl mt-16">
+      <h2 class="font-medium text-2xl text-gray-800">{contact.h2}</h2>
+      <p class="text-lg leading-relaxed text-slate-500 mt-3 max-w-2xl">
+        {contact.intro}
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-6 mt-10">
+        <a
+          href={contact.links.github}
+          target="_blank"
+          rel="noopener"
+          class="group border border-slate-200 rounded-2xl p-7 hover:border-blue-200 hover:shadow-md transition">
+          <Icon class="text-gray-900 w-8 h-8" name="bx:bxl-github" />
+          <h3 class="font-semibold text-lg mt-4">{contact.github}</h3>
+          <p class="text-slate-500 mt-1 text-sm leading-relaxed">
+            {contact.githubDesc}
+          </p>
+          <span class="inline-flex items-center gap-1 text-sm font-medium mt-4 text-gray-800 group-hover:underline">
+            {contact.github}
+            <Icon class="w-4 h-4" name="bx:bxs-right-top-arrow-circle" />
+          </span>
+        </a>
+
+        <a
+          href={contact.links.discussions}
+          target="_blank"
+          rel="noopener"
+          class="group border border-slate-200 rounded-2xl p-7 hover:border-blue-200 hover:shadow-md transition">
+          <Icon class="text-gray-900 w-8 h-8" name="bx:bxs-message-rounded-dots" />
+          <h3 class="font-semibold text-lg mt-4">{contact.discussions}</h3>
+          <p class="text-slate-500 mt-1 text-sm leading-relaxed">
+            {contact.discussionsDesc}
+          </p>
+          <span class="inline-flex items-center gap-1 text-sm font-medium mt-4 text-gray-800 group-hover:underline">
+            {contact.discussions}
+            <Icon class="w-4 h-4" name="bx:bxs-right-top-arrow-circle" />
+          </span>
+        </a>
+
+        <a
+          href={contact.links.repository}
+          target="_blank"
+          rel="noopener"
+          class="group border border-slate-200 rounded-2xl p-7 hover:border-blue-200 hover:shadow-md transition">
+          <Icon class="text-gray-900 w-8 h-8" name="bx:bx-code-block" />
+          <h3 class="font-semibold text-lg mt-4">{contact.repository}</h3>
+          <p class="text-slate-500 mt-1 text-sm leading-relaxed">
+            {contact.repositoryDesc}
+          </p>
+          <span class="inline-flex items-center gap-1 text-sm font-medium mt-4 text-gray-800 group-hover:underline">
+            github.com/GeneralLibrary/fortOS
+            <Icon class="w-4 h-4" name="bx:bxs-right-top-arrow-circle" />
+          </span>
+        </a>
+      </div>
+    </div>
+  </Container>
+</Layout>

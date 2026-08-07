@@ -1,0 +1,48 @@
+---
+import { Tick } from "@/components/ui/icons";
+import Link from "@/components/ui/link.astro";
+import { getDict } from "@/i18n";
+
+const { plan } = Astro.props;
+const dict = getDict(Astro.currentLocale);
+---
+
+<div class="relative h-full">
+  {plan.popular && (
+    <span
+      class="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 text-xs font-semibold tracking-wide text-white bg-[#0071e3] rounded-full px-4 py-1.5 shadow-sm">
+      {dict.deploy.popular}
+    </span>
+  )}
+  <div
+    class:list={[
+      "flex flex-col w-full order-first lg:order-none p-7 rounded-2xl h-full",
+      plan.popular
+        ? "border border-blue-300 bg-blue-50/40 shadow-sm"
+        : "border border-slate-200 bg-white",
+    ]}>
+    <div class="text-center">
+      <h4 class="text-base font-medium text-slate-500">{plan.name}</h4><p
+        class="mt-2 text-4xl font-semibold tracking-tight text-slate-900">
+        {plan.price}
+      </p>
+    </div><ul class="grid mt-7 text-left gap-y-3.5">
+      {
+        plan.features.map((item) => (
+          <li class="flex items-start gap-3 text-[15px] text-gray-700">
+            <Tick class="w-5 h-5 shrink-0 mt-0.5" />
+            <span>{item}</span>
+          </li>
+        ))
+      }
+    </ul><div class="flex mt-8">
+      <Link
+        href={plan.button.link || "#"}
+        block
+        size="md"
+        style={plan.popular ? "primary" : "outline"}>
+        {plan.button.text || "Get Started"}
+      </Link>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,24 @@
+---
+import Container from "@/components/container.astro";
+import Layout from "@/layouts/Layout.astro";
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+const homePath = Astro.currentLocale === "zh" ? "/zh/" : "/";
+---
+
+<Layout title={dict.notfound.title}>
+  <Container>
+    <div class="min-h-[calc(100vh-16rem)] flex items-center justify-center">
+      <div class="mt-16 text-center">
+        <h1 class="text-4xl lg:text-5xl font-bold lg:tracking-tight">404</h1>
+        <p class="text-lg mt-4 text-slate-600">{dict.notfound.desc}</p>
+        <a
+          href={homePath}
+          class="inline-block mt-6 text-lg text-[#2997ff] hover:underline decoration-[#2997ff] underline-offset-4"
+          >← {dict.notfound.home}</a
+        >
+      </div>
+    </div>
+  </Container>
+</Layout>

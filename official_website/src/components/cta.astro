@@ -1,0 +1,27 @@
+---
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+---
+
+<div
+  class="relative mt-24 md:mt-32 bg-slate-900 rounded-3xl p-12 md:p-24 mx-auto max-w-6xl text-center overflow-hidden">
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[36rem] h-64 bg-[#0071e3]/15 blur-3xl rounded-full"></div>
+  <h2 class="text-white text-4xl md:text-5xl font-semibold tracking-tight">
+    {dict.cta.title}
+  </h2>
+  <p class="text-slate-400 mt-4 text-xl md:text-2xl max-w-2xl mx-auto leading-relaxed">
+    {dict.cta.description}
+  </p>
+  <div class="mt-8">
+    <a
+      href="https://github.com/GeneralLibrary/fortOS"
+      target="_blank"
+      rel="noopener"
+      class="inline-flex items-center gap-1.5 text-lg text-[#2997ff] hover:underline decoration-[#2997ff] underline-offset-4">
+      {dict.cta.button} <span class="font-medium">&gt;</span>
+    </a>
+  </div>
+</div>

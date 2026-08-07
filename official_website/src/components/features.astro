@@ -1,0 +1,38 @@
+---
+// @ts-ignore
+import { Icon } from "astro-icon/components";
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+const features = dict.features.items;
+---
+
+<section class="mt-24 md:mt-32" id="features">
+  <div class="text-center">
+    <h2 class="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900">
+      {dict.features.heading}
+    </h2>
+    <p class="mt-4 text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
+      {dict.features.subheading}
+    </p>
+  </div>
+
+  <div class="mt-12 md:mt-16 bg-slate-50 rounded-3xl p-8 md:p-14">
+    <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-x-10 gap-y-14">
+      {
+        features.map((item) => (
+          <div class="text-center">
+            <div
+              class="mx-auto bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5 w-14 h-14 flex items-center justify-center">
+              <Icon class="text-slate-700 w-7 h-7" name={item.icon} />
+            </div>
+            <h3 class="font-semibold text-lg mt-5 text-slate-900">{item.title}</h3>
+            <p class="text-slate-500 mt-2 leading-relaxed text-[15px]">
+              {item.description}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,49 @@
+---
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+---
+
+<main class="pt-20 md:pt-28 pb-8 text-center">
+  <div class="mx-auto max-w-4xl px-5">
+    <span
+      class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+      {dict.hero.badge}
+    </span>
+    <h1
+      class="mt-5 text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight text-slate-900 leading-[1.05]">
+      {dict.hero.title}
+    </h1>
+    <p class="mt-6 text-xl md:text-2xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
+      {dict.hero.subtitle}
+    </p>
+    <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-x-8 gap-y-3 text-lg">
+      <a
+        href="https://github.com/GeneralLibrary/fortOS/releases"
+        target="_blank"
+        rel="noopener"
+        class="text-[#2997ff] hover:underline decoration-[#2997ff] underline-offset-4">
+        {dict.hero.ctaPrimary} <span class="font-medium">&gt;</span>
+      </a>
+      <a
+        href="https://github.com/GeneralLibrary/fortOS"
+        target="_blank"
+        rel="noopener"
+        class="text-[#2997ff] hover:underline decoration-[#2997ff] underline-offset-4">
+        {dict.hero.ctaSecondary} <span class="font-medium">&gt;</span>
+      </a>
+    </div>
+  </div>
+  <div class="mt-14 md:mt-20 px-5">
+    <div class="mx-auto max-w-3xl bg-black rounded-3xl overflow-hidden">
+      <img
+        src="/images/fortos-logo-original.png"
+        alt="FortOS logo"
+        width="2208"
+        height="2048"
+        class="w-full h-auto block"
+        loading="eager"
+      />
+    </div>
+  </div>
+</main>

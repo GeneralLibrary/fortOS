@@ -1,0 +1,35 @@
+---
+// @ts-ignore
+import { Icon } from "astro-icon/components";
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+---
+
+<div class="mt-24 md:mt-32">
+  <h2 class="text-center text-slate-400 text-sm font-medium tracking-wide">
+    {dict.logos.heading}
+  </h2>
+  <div class="flex gap-10 md:gap-16 items-center justify-center mt-8 flex-wrap">
+
+    <Icon
+      class="size-7 md:size-9 text-slate-300 hover:text-slate-500 transition-colors"
+      name="simple-icons:dotnet" />
+    <Icon
+      class="size-7 md:size-9 text-slate-300 hover:text-slate-500 transition-colors"
+      name="simple-icons:docker" />
+    <Icon
+      class="size-7 md:size-9 text-slate-300 hover:text-slate-500 transition-colors"
+      name="simple-icons:linux" />
+    <Icon
+      class="size-7 md:size-9 text-slate-300 hover:text-slate-500 transition-colors"
+      name="simple-icons:prometheus" />
+    <Icon
+      class="size-7 md:size-9 text-slate-300 hover:text-slate-500 transition-colors"
+      name="simple-icons:grafana" />
+    <Icon
+      class="size-7 md:size-9 text-slate-300 hover:text-slate-500 transition-colors"
+      name="simple-icons:nginx" />
+
+  </div>
+</div>

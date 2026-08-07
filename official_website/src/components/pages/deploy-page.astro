@@ -1,0 +1,24 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import Container from "@/components/container.astro";
+import Sectionhead from "@/components/sectionhead.astro";
+import DeployCard from "@/components/deploy-card.astro";
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+const { deploy } = dict;
+---
+
+<Layout title={deploy.title} description={deploy.desc}>
+  <Container>
+    <Sectionhead>
+      <Fragment slot="title">{deploy.title}</Fragment>
+      <Fragment slot="desc">{deploy.desc}</Fragment>
+    </Sectionhead>
+
+    <div
+      class="grid md:grid-cols-3 gap-10 mx-auto max-w-(--breakpoint-lg) mt-12">
+      {deploy.cards.map((item) => <DeployCard plan={item} />)}
+    </div>
+  </Container>
+</Layout>

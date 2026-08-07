@@ -1,0 +1,44 @@
+---
+import { getDict } from "@/i18n";
+
+const dict = getDict(Astro.currentLocale);
+const homePath = Astro.currentLocale === "zh" ? "/zh/" : "/";
+---
+
+<footer class="mt-20 border-t border-slate-100 pt-12">
+  <div class="text-center flex flex-col items-center gap-3">
+    <a href={homePath} class="flex items-center gap-2">
+      <img
+        src="/images/fortos-logo-sm.png"
+        alt="FortOS logo"
+        width="22"
+        height="20"
+        class="w-auto h-5"
+      />
+      <span class="text-[17px] font-semibold tracking-tight text-slate-900">FortOS</span>
+    </a>
+    <p class="text-sm text-slate-500 max-w-md">{dict.common.tagline}</p>
+  </div>
+  <p class="text-center text-sm text-slate-500 mt-8">
+    Copyright © {new Date().getFullYear()} FortOS. {dict.footer.rights}
+  </p>
+  <p class="text-center text-xs text-slate-400 mt-1">
+    {dict.footer.license}
+  </p>
+  <!--
+    Backlink for the Astroship template:
+    Please keep this backlink on your website if possible.
+    or Purchase a commercial license from https://web3templates.com
+  -->
+  <p class="text-center text-xs text-slate-400 mt-6 pb-10">
+    {dict.footer.madeWith}{" "}
+    <a
+      href={dict.footer.templateLink}
+      target="_blank"
+      rel="noopener"
+      class="hover:underline">
+      {dict.footer.template}
+    </a>{" "}
+    {dict.footer.templateName}
+  </p>
+</footer>
