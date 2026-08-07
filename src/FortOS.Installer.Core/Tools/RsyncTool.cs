@@ -1,14 +1,14 @@
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>rsync</c> 适配器:live rootfs → 目标系统复制(设计稿 5.3)。
+/// <c>rsync</c> adapter: copies the live rootfs to the target system (design draft 5.3).
 /// </summary>
 public sealed class RsyncTool : ITool
 {
-    /// <summary>复制超时:完整系统复制可能耗时很长,放宽到 2 小时。</summary>
+    /// <summary>Copy timeout: a full system copy can take a long time, so it is relaxed to 2 hours.</summary>
     private static readonly TimeSpan CopyTimeout = TimeSpan.FromHours(2);
 
-    /// <summary>复制时排除的路径(live 运行环境与目标挂载点)。</summary>
+    /// <summary>Paths excluded during the copy (live runtime environment and target mount points).</summary>
     private static readonly string[] Excludes =
     [
         "/proc", "/sys", "/dev", "/run", "/tmp", "/mnt", "/target", "/live",
@@ -23,18 +23,18 @@ public sealed class RsyncTool : ITool
     public string Name => "rsync";
 
     /// <summary>
-    /// 复制 <paramref name="source"/> 到 <paramref name="target"/>。
-    /// source 为 <c>/</c> 时排除 live 虚拟文件系统与目标挂载点。
+    /// Copies <paramref name="source"/> to <paramref name="target"/>.
+    /// When source is <c>/</c>, excludes the live virtual file systems and target mount points.
     /// </summary>
     public async Task CopyAsync(string source, string target, CancellationToken ct)
     {
         var args = new List<string>
         {
-            // 注意:不能使用 -S/--sparse。btrfs 默认启用 no_holes 特性,稀疏
-            // 复制的文件在目标上留下 extent 空洞;GRUB 2.06 的 btrfs 驱动
-            // 遍历空洞时直接报 "extent not found"(上游 7f4e017a 才修复,2.12
-            // 起生效),导致 initrd 读取失败 → 内核无 initramfs → 重启即
-            // "VFS: Unable to mount root fs on unknown-block(0,0)" panic。
+            // Note: -S/--sparse must not be used. btrfs enables the no_holes feature by default, so sparse
+            // copies leave extent holes in the target; when the GRUB 2.06 btrfs driver
+            // traverses holes it reports "extent not found" (only fixed upstream in 7f4e017a, effective
+            // from 2.12), causing initrd reads to fail → the kernel has no initramfs → on reboot it
+            // panics with "VFS: Unable to mount root fs on unknown-block(0,0)".
             "-aHAX", "--one-file-system", "--numeric-ids", "--info=progress2",
         };
         foreach (var exclude in Excludes)
@@ -42,7 +42,7 @@ public sealed class RsyncTool : ITool
             args.Add($"--exclude={exclude}");
         }
 
-        // 源目录以斜杠结尾:复制内容而非目录本身。
+        // The source directory ends with a slash: copy the contents rather than the directory itself.
         var sourceArg = source.EndsWith('/') ? source : source + "/";
         args.Add(sourceArg);
         args.Add(target + "/");

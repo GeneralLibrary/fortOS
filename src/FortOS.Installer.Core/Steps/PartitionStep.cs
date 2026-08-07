@@ -5,8 +5,9 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Core.Steps;
 
 /// <summary>
-/// 分区步骤:清盘 → 按模板创建 GPT 分区 → 校验 → 等待设备节点 → 确定引导方式;
-/// 数据盘(单盘)同时创建分区。
+/// Partition step: wipe disk → create GPT partitions per template → verify →
+/// wait for device nodes → determine boot mode; the data disk (single disk) also
+/// gets its partition created here.
 /// </summary>
 public sealed class PartitionStep : IInstallStep
 {
@@ -36,7 +37,7 @@ public sealed class PartitionStep : IInstallStep
         await _sgdisk.CreatePartitionsAsync(disk, specs, ct).ConfigureAwait(false);
         await _sgdisk.VerifyAsync(disk, ct).ConfigureAwait(false);
 
-        // 等待 udev 生成分区设备节点。
+        // Wait for udev to create the partition device nodes.
         foreach (var spec in specs)
         {
             var device = PartitionDevice(disk, spec.Number);
@@ -75,7 +76,7 @@ public sealed class PartitionStep : IInstallStep
             ?? throw new Exceptions.ConfigException("DataDiskMode.Single requires data.disk in install.yaml.");
 
         await _sgdisk.ZapAsync(disk, ct).ConfigureAwait(false);
-        // 单盘单分区:整盘一个主分区(8300 = Linux filesystem)。
+        // Single disk, single partition: one primary partition for the whole disk (8300 = Linux filesystem).
         await _sgdisk.CreatePartitionsAsync(disk, [new PartitionSpec { Number = 1, SizeMiB = 0, TypeCode = GptTypeCode.LinuxFilesystem, Label = "FortOS data", Fs = PartitionFs.None }], ct).ConfigureAwait(false);
         await _sgdisk.VerifyAsync(disk, ct).ConfigureAwait(false);
         var dataDevice = PartitionDevice(disk, 1);
@@ -126,10 +127,10 @@ public sealed class PartitionStep : IInstallStep
         context.Summary.DataDisk = disk;
     }
 
-    /// <summary>等待设备节点出现(udev 延迟容忍;loop 等设备需先关联)。</summary>
+    /// <summary>Wait for a device node to appear (tolerates udev delay; loop and similar devices must be associated first).</summary>
     private async Task WaitForDeviceAsync(string device, CancellationToken ct)
     {
-        // 轮询 40 × 250ms = 10s 超时。
+        // Poll 40 × 250ms = 10s timeout.
         const int attempts = 40;
         const int delayMs = 250;
         for (var i = 0; i < attempts; i++)
@@ -143,7 +144,7 @@ public sealed class PartitionStep : IInstallStep
         throw new Exceptions.StepException(Name, $"Partition device {device} did not appear after partitioning.");
     }
 
-    /// <summary>解析 swap 大小:Auto=内存大小,Fixed=配置值,Off=0。</summary>
+    /// <summary>Resolve swap size: Auto = memory size, Fixed = configured value, Off = 0.</summary>
     internal static long ResolveSwapMiB(InstallConfig config) => config.SwapMode switch
     {
         SwapMode.Off => 0,
@@ -167,12 +168,12 @@ public sealed class PartitionStep : IInstallStep
         }
         catch
         {
-            // 读取失败时给保守默认。
+            // Give a conservative default on read failure.
         }
         return 4096;
     }
 
-    /// <summary>检测实际引导方式:配置覆盖优先,否则看固件。</summary>
+    /// <summary>Detect the actual boot mode: config override wins, otherwise check the firmware.</summary>
     internal static BootModeKind ResolveBootMode(BootloaderMode mode) => mode switch
     {
         BootloaderMode.Uefi => BootModeKind.Uefi,
@@ -180,7 +181,7 @@ public sealed class PartitionStep : IInstallStep
         _ => Directory.Exists("/sys/firmware/efi") ? BootModeKind.Uefi : BootModeKind.Bios,
     };
 
-    /// <summary>拼接分区设备路径:NVMe/MMC/loop 需要 p 分隔符(loop0 → loop0p1)。</summary>
+    /// <summary>Assemble a partition device path: NVMe/MMC/loop need the p separator (loop0 → loop0p1).</summary>
     internal static string PartitionDevice(string disk, int number)
     {
         var sep = (disk.Contains("nvme", StringComparison.OrdinalIgnoreCase)

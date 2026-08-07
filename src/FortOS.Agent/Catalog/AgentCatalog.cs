@@ -541,8 +541,8 @@ compose:
         }
 
         var path = uri?.Scheme == Uri.UriSchemeFile ? uri.LocalPath : source;
-        // 本地源白名单：只允许 catalog 目录内的文件，防止 file:// 读取宿主任意文件
-        // （如 /etc/shadow）；其内容会被解析并持久化到 catalog，构成任意文件读取。
+        // Local source whitelist: only files inside the catalog directory are allowed, preventing file://
+        // from reading arbitrary host files (e.g. /etc/shadow); their content would be parsed and persisted into the catalog — arbitrary file read.
         if (!PathSafety.IsPathUnderRoot(Path.GetFullPath(path), AgentPaths.CatalogRoot))
         {
             throw new ArgumentException("Local template source must be located within the agent catalog directory.", nameof(source));

@@ -50,7 +50,7 @@ public static class Program
                 var config = InstallYamlLoader.ToConfig(InstallYamlLoader.LoadYaml(configPath));
                 PrintConfigSummary(config);
 
-                // 非交互环境(stdin 重定向/CI)必须显式 --yes,否则报错而非卡死/误确认。
+                // In non-interactive environments (stdin redirection/CI) --yes is mandatory; otherwise error out rather than hang or accidentally confirm.
                 var interactive = !Console.IsInputRedirected;
                 if (!parseResult.GetValue(yesOption) && (!interactive || !AnsiConsole.Confirm("Begin installation? This will ERASE the target disk(s).", defaultValue: false)))
                 {
@@ -64,7 +64,7 @@ public static class Program
             }
             catch (Exception ex)
             {
-                // 用户可见文本必须 Escape,防止被当作 Spectre markup 解析。
+                // User-visible text must be escaped so it is not parsed as Spectre markup.
                 AnsiConsole.MarkupLineInterpolated($"[red]Error: {Markup.Escape(ex.Message)}[/]");
                 return 1;
             }
@@ -79,7 +79,7 @@ public static class Program
         var table = new Table().AddColumn("Device").AddColumn("Size").AddColumn("Model").AddColumn("Transport");
         foreach (var disk in disks)
         {
-            // 硬件 Model/Transport 可能含方括号,必须 Escape(Table 单元格按 markup 渲染)。
+            // Hardware Model/Transport may contain square brackets and must be escaped (Table cells are rendered as markup).
             table.AddRow(Markup.Escape(disk.Path), Markup.Escape(disk.SizeHuman), Markup.Escape(disk.Model ?? "-"), Markup.Escape(disk.Transport ?? "-"));
         }
         AnsiConsole.Write(table);
@@ -98,7 +98,7 @@ public static class Program
 
         var summary = new Table().Title("Installation plan")
             .AddColumn("Item").AddColumn("Value");
-        // Table 单元格按 markup 渲染:动态文本必须 Escape,防止方括号等被解析。
+        // Table cells are rendered as markup: dynamic text must be escaped so brackets etc. are not parsed.
         summary.AddRow("System disk", Markup.Escape($"{config.SystemDisk} — {config.RootFs}{(config.SwapMode == SwapMode.Off ? " (no swap)" : "")}"));
         summary.AddRow("Data disk", Markup.Escape(data));
         summary.AddRow("Network", Markup.Escape(config.Network.Mode == NetworkMode.Dhcp
@@ -125,7 +125,7 @@ public static class Program
         };
 
         AnsiConsole.MarkupLine("[yellow]Starting FortOS installation. Logs are written to /target/var/log/fortos-install.log on completion.[/]");
-        // 透传取消令牌:headless 安装支持 Ctrl+C(引擎已实现取消清理路径)。
+        // Pass through the cancellation token: headless install supports Ctrl+C (the engine implements the cancellation cleanup path).
         var result = await session.RunAsync(config, ct).ConfigureAwait(false);
 
         if (result.Success)

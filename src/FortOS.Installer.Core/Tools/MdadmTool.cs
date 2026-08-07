@@ -1,8 +1,8 @@
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>mdadm</c> 适配器:RAID 组装与清理(设计稿 6)。
-/// 已接入默认安装流程(PartitionStep 创建、FinalizeStep 停止)。
+/// <c>mdadm</c> adapter: RAID assembly and cleanup (design draft 6).
+/// Wired into the default installation flow (PartitionStep creates, FinalizeStep stops).
 /// </summary>
 public sealed class MdadmTool : ITool
 {
@@ -13,8 +13,8 @@ public sealed class MdadmTool : ITool
     public string Name => "mdadm";
 
     /// <summary>
-    /// 创建 RAID 设备。level 如 <c>1</c>/<c>5</c>/<c>10</c>;
-    /// devices 为成员盘路径(整盘参与)。
+    /// Creates a RAID device. level is e.g. <c>1</c>/<c>5</c>/<c>10</c>;
+    /// devices are the member disk paths (whole disks participate).
     /// </summary>
     public async Task CreateAsync(string device, int level, string name, IReadOnlyList<string> devices, CancellationToken ct)
     {
@@ -29,7 +29,7 @@ public sealed class MdadmTool : ITool
         await _runner.RunAsync("mdadm", args, ct, timeout: TimeSpan.FromMinutes(5)).ConfigureAwait(false);
     }
 
-    /// <summary>停止 RAID 数组(失败容忍——设备可能未创建,保证「可重跑」)。</summary>
+    /// <summary>Stops the RAID array (failure-tolerant — the device may not have been created, keeping it "re-runnable").</summary>
     public Task StopAsync(string device, CancellationToken ct)
         => _runner.RunAsync("mdadm", ["--stop", device], ct, throwOnNonZeroExit: false);
 }

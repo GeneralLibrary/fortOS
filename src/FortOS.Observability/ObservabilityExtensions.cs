@@ -15,7 +15,7 @@ namespace FortOS.Observability;
 public static class ObservabilityExtensions
 {
     /// <summary>Register logging, audit chain, alerts, and Serilog integration.</summary>
-    public static IServiceCollection AddObservability(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddFortOSObservability(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<FortOSMetrics>();
         services.AddSingleton<MetricStore>();

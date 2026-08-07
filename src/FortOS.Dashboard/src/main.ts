@@ -9,7 +9,7 @@ import App from './App.vue'
 import { router } from './router'
 import i18n from './i18n'
 
-// 极空间 (ZSpace) Design System — global CSS custom properties & primitives.
+// JiSpace (ZSpace) Design System — global CSS custom properties & primitives.
 import './styles/zspace.css'
 
 const app = createApp(App)

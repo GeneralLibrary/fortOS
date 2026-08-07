@@ -8,9 +8,9 @@ using FortOS.Installer.Core.Session;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 执行页:顶部先展示安装计划汇总与不可回退警告(原确认页内容),
-/// 点击「开始安装」后在同一页展示阶段进度与实时日志;
-/// 失败时停留本页并允许重试。
+/// Execution page: shows the installation plan summary and the no-return warning at the top (the former confirmation page content);
+/// after clicking "Begin installation" it shows phase progress and live logs on the same page;
+/// on failure it stays on this page and allows retry.
 /// </summary>
 public partial class InstallViewModel : ViewModelBase, IWizardPage
 {
@@ -24,7 +24,7 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
     private InstallConfig? _config;
     private bool _started;
 
-    /// <param name="uiDispatch">把回调封送到 UI 线程的委托;测试注入同步执行。</param>
+    /// <param name="uiDispatch">A delegate that marshals callbacks to the UI thread; tests inject synchronous execution.</param>
     public InstallViewModel(
         WelcomeViewModel welcome,
         DiskLayoutViewModel disk,
@@ -52,7 +52,7 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
     [ObservableProperty]
     private InstallerPhase _phase = InstallerPhase.Idle;
 
-    /// <summary>本地化的阶段标题(如「阶段:Copying」)。</summary>
+    /// <summary>Localized phase title (e.g. "Phase: Copying").</summary>
     public string PhaseText => string.Format(L["install.phase"], Phase);
 
     [ObservableProperty]
@@ -64,19 +64,19 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
     [ObservableProperty]
     private string _errorMessage = string.Empty;
 
-    /// <summary>开始安装前展示计划汇总;执行开始后切换为进度视图。</summary>
+    /// <summary>Shows the plan summary before installation starts; switches to the progress view once execution begins.</summary>
     [ObservableProperty]
     private bool _isPlanning = true;
 
-    /// <summary>安装计划汇总(由前面四页输入动态生成)。</summary>
+    /// <summary>Installation plan summary (dynamically generated from the input of the four preceding pages).</summary>
     public string Summary => BuildSummary();
 
-    public bool IsValid => false; // 执行页不可前进
+    public bool IsValid => false; // the execution page cannot advance
 
-    /// <summary>安装完成(成功)事件:向导前进到完成页。</summary>
+    /// <summary>Installation complete (success) event: the wizard advances to the completion page.</summary>
     public event Action? Completed;
 
-    /// <summary>启动安装(首次与重试共用)。</summary>
+    /// <summary>Starts installation (shared by first run and retry).</summary>
     [RelayCommand]
     private async Task StartAsync(InstallConfig? config)
     {
@@ -99,7 +99,7 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
         _config = config;
 
         _session = _sessionFactory();
-        // 会话在后台线程执行:所有回调封送到 UI 线程(ObservableCollection 不允许跨线程变更)。
+        // The session runs on a background thread: all callbacks are marshaled to the UI thread (ObservableCollection does not allow cross-thread changes).
         _session.PhaseChanged += phase => _uiDispatch(() => Phase = phase);
         _session.StepProgress += p => _uiDispatch(() => OnStepProgress(p));
         _session.LogEntryAdded += e => _uiDispatch(() => OnLogEntryAdded(e));
@@ -123,14 +123,14 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
         }
         catch (Exception ex)
         {
-            // 配置校验等异常在 InstallerSession.RunAsync 的 try 块外抛出(设计使然);
-            // 必须就地转为失败状态,否则页面永远停在「执行中」且异常变成未观察异常。
+            // Exceptions such as configuration validation are thrown outside the try block of InstallerSession.RunAsync (by design);
+            // they must be converted to a failed state here, otherwise the page stays on "running" forever and the exception becomes an unobserved one.
             IsFailed = true;
             ErrorMessage = ex.Message;
         }
         finally
         {
-            _started = false; // 允许 Retry 重新执行
+            _started = false; // allows Retry to run again
         }
     }
 
@@ -143,11 +143,11 @@ public partial class InstallViewModel : ViewModelBase, IWizardPage
         }
     }
 
-    /// <summary>失败后重启(设计稿 4:失败展示日志并允许重启重装)。</summary>
+    /// <summary>Reboots after failure (design spec 4: on failure the logs are shown and a reboot reinstall is allowed).</summary>
     [RelayCommand]
     private static void Reboot() => SystemControl.Reboot();
 
-    // ObservableProperty(_phase) 生成器会调用此 partial 方法:同步阶段、标题与进度。
+    // The ObservableProperty(_phase) generator calls this partial method: it syncs phase, title, and progress.
     partial void OnPhaseChanged(InstallerPhase value)
     {
         OnPropertyChanged(nameof(PhaseText));

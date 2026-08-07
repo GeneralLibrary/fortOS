@@ -7,7 +7,7 @@ namespace FortOS.Modules.Host;
 public static class ModuleServiceExtensions
 {
     /// <summary>Register module host singleton.</summary>
-    public static IServiceCollection AddModuleHost(this IServiceCollection services)
+    public static IServiceCollection AddFortOSModuleHost(this IServiceCollection services)
     {
         services.AddSingleton<ModuleHost>();
         services.AddSingleton<IModuleHost>(sp => sp.GetRequiredService<ModuleHost>());

@@ -97,7 +97,7 @@ public sealed class HealthMonitor : BackgroundService, IHealthMonitor
             var now = DateTimeOffset.UtcNow;
             var tasks = _states.Select(pair => CheckIfDueAsync(pair.Key, pair.Value, now, stoppingToken)).ToArray();
             await Task.WhenAll(tasks).ConfigureAwait(false);
-            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken).ConfigureAwait(false);
+            await Task.Delay(ServiceBusDefaults.HealthPollInterval, stoppingToken).ConfigureAwait(false);
         }
     }
 

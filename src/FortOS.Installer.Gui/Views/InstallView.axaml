@@ -3,7 +3,7 @@
              xmlns:vm="using:FortOS.Installer.Gui.ViewModels"
              x:DataType="vm:InstallViewModel"
              x:Class="FortOS.Installer.Gui.Views.InstallView">    <DockPanel>
-        <!-- 规划视图:汇总 + 警告 + 开始安装(执行开始后隐藏) -->
+        <!-- Planning view: summary + warning + begin installation (hidden once execution starts) -->
         <StackPanel DockPanel.Dock="Top" Spacing="16" Margin="0,0,0,16"
                     IsVisible="{Binding IsPlanning}">
             <TextBlock Text="{Binding L[confirm.title]}" FontSize="20" FontWeight="Bold"/>
@@ -16,7 +16,7 @@
                     Classes="Primary" FontSize="16" Padding="24,10" HorizontalAlignment="Left"/>
         </StackPanel>
 
-        <!-- 进度视图:阶段 + 进度条 + 失败操作 -->
+        <!-- Progress view: phase + progress bar + failure actions -->
         <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,16"
                     IsVisible="{Binding !IsPlanning}">
             <TextBlock Text="{Binding PhaseText}" FontSize="16" FontWeight="Bold"/>

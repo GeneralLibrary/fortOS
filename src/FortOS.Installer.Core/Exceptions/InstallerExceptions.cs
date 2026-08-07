@@ -1,6 +1,6 @@
 namespace FortOS.Installer.Core.Exceptions;
 
-/// <summary>安装器基类异常。携带失败发生的阶段,便于 UI/CLI 展示与重试定位。</summary>
+/// <summary>Base exception for the installer. Carries the phase where the failure occurred for UI/CLI display and retry targeting.</summary>
 public class InstallerException : Exception
 {
     public InstallerException(string message, Exception? innerException = null)
@@ -9,7 +9,7 @@ public class InstallerException : Exception
     }
 }
 
-/// <summary>系统工具调用失败(非零退出码、超时或输出无法解析)。</summary>
+/// <summary>System tool invocation failed (non-zero exit code, timeout, or unparseable output).</summary>
 public class ToolException : InstallerException
 {
     public ToolException(string message, int exitCode, string stdout, string stderr, Exception? innerException = null)
@@ -27,7 +27,7 @@ public class ToolException : InstallerException
     public string Stderr { get; }
 }
 
-/// <summary>安装步骤执行失败。</summary>
+/// <summary>An installation step failed.</summary>
 public class StepException : InstallerException
 {
     public StepException(string step, string message, Exception? innerException = null)
@@ -39,7 +39,7 @@ public class StepException : InstallerException
     public string Step { get; }
 }
 
-/// <summary>配置校验失败(install.yaml 非法或缺字段)。</summary>
+/// <summary>Config validation failed (install.yaml is invalid or missing fields).</summary>
 public class ConfigException : InstallerException
 {
     public ConfigException(string message)

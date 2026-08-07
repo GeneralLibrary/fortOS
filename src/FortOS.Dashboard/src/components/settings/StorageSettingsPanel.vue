@@ -92,7 +92,7 @@ const canCreate = computed(() => selectedLevel.value !== null && needMore.value 
 
 function toggleDisk(path: string): void {
   const disk = disks.value.find(d => d.path === path)
-  // 挂载中的磁盘(如系统盘)禁止选为 RAID 成员:后端同样会拒绝。
+  // Mounted disks (e.g. the system disk) cannot be selected as RAID members; the backend rejects them too.
   if (disk?.mountPoint != null) return
   if (selectedDisks.value.includes(path)) {
     selectedDisks.value = selectedDisks.value.filter(p => p !== path)
@@ -111,7 +111,7 @@ async function handleCreate(): Promise<void> {
       selectedLevel.value = null
       selectedDisks.value = []
       await load()
-      // 引导闭环:创建成功后直接打开「格式化并挂载」面板。
+      // Guided flow: after a successful creation, open the "format & mount" panel directly.
       const poolName = result.poolId?.replace(/^\/dev\//, '') ?? ''
       if (poolName) openInit(poolName)
     } else {
@@ -143,8 +143,8 @@ async function handleInitialize(): Promise<void> {
   try {
     const device = `/dev/${pool}`
     const status = statuses.value[pool]
-    // 仅在明确检测到未格式化时执行破坏性的格式化;状态未知/设备不可见时直接尝试挂载,
-    // 避免在无法确认设备内容的情况下清盘。
+    // Only run the destructive format when the device is explicitly detected as unformatted; if the state
+    // is unknown or the device is not visible, try mounting directly to avoid wiping a disk whose contents cannot be verified.
     if (status && !status.fileSystem) {
       await formatDevice(device, initFsType.value)
     }

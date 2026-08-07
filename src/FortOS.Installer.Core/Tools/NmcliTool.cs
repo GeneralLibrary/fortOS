@@ -2,12 +2,12 @@ using System.Text;
 
 namespace FortOS.Installer.Core.Tools;
 
-/// <summary>无线网络条目(来自 nmcli 扫描)。</summary>
+/// <summary>Wireless network entry (from an nmcli scan).</summary>
 public sealed record WifiNetwork(string Ssid, string Signal, string Security);
 
 /// <summary>
-/// NetworkManager(nmcli)适配器:扫描与连接无线网络。
-/// 扫描失败(无无线网卡、NetworkManager 未运行)时返回空列表,不抛出。
+/// NetworkManager (nmcli) adapter: scans for and connects to wireless networks.
+/// Returns an empty list when the scan fails (no wireless adapter, NetworkManager not running), without throwing.
 /// </summary>
 public class NmcliTool
 {
@@ -15,7 +15,7 @@ public class NmcliTool
 
     public NmcliTool(IProcessRunner runner) => _runner = runner;
 
-    /// <summary>扫描可用无线网络。失败返回空列表。</summary>
+    /// <summary>Scans for available wireless networks. Returns an empty list on failure.</summary>
     public async Task<IReadOnlyList<WifiNetwork>> ScanAsync(CancellationToken ct)
     {
         try
@@ -34,7 +34,7 @@ public class NmcliTool
             var networks = new List<WifiNetwork>();
             foreach (var line in result.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                // nmcli -t 字段以 ':' 分隔,SSID 内的 ':' 被转义为 '\:'、'\' 被转义为 '\\'。
+                // nmcli -t fields are separated by ':'; a ':' inside an SSID is escaped as '\:' and '\' is escaped as '\\'.
                 var parts = SplitFields(line);
                 if (parts.Length < 2)
                 {
@@ -59,8 +59,8 @@ public class NmcliTool
     }
 
     /// <summary>
-    /// 连接无线网络。成功返回 (true, null);失败返回 (false, 错误摘要)。
-    /// 注:密码以 argv 传入 nmcli(单用户 live 安装器可接受,45s 超时窗口短)。
+    /// Connects to a wireless network. Returns (true, null) on success; (false, error summary) on failure.
+    /// Note: the password is passed to nmcli via argv (acceptable for a single-user live installer; the 45s timeout window is short).
     /// </summary>
     public async Task<(bool Ok, string? Error)> ConnectAsync(string ssid, string? password, CancellationToken ct)
     {
@@ -93,7 +93,7 @@ public class NmcliTool
         }
     }
 
-    /// <summary>按 nmcli -t 转义规则拆分字段:':' 分隔、'\:' 还原为 ':'、'\\' 还原为 '\'。</summary>
+    /// <summary>Splits fields according to the nmcli -t escaping rules: ':' separates, '\:' becomes ':', '\\' becomes '\'.</summary>
     private static string[] SplitFields(string line)
     {
         var fields = new List<string>();

@@ -13,7 +13,7 @@ public static class PlatformServiceExtensions
     /// <param name="services">Service collection.</param>
     /// <returns>Service collection.</returns>
     /// <exception cref="PlatformNotSupportedException">Current platform is not supported.</exception>
-    public static IServiceCollection AddPlatformServices(this IServiceCollection services)
+    public static IServiceCollection AddFortOSPlatform(this IServiceCollection services)
     {
         if (!OperatingSystem.IsLinux())
         {

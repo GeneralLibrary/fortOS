@@ -294,10 +294,10 @@ public sealed class ComposeGenerator : IComposeGenerator
         }
 
         var roots = configured.Length == 0
-            ? [Environment.GetEnvironmentVariable("FortOS_DATA_ROOT") is { Length: > 0 } dataRoot && !string.IsNullOrWhiteSpace(dataRoot) ? dataRoot : "/srv/nas"]
+            ? [PathSafety.ResolveDataRoot(Environment.GetEnvironmentVariable("FortOS_DATA_ROOT"))]
             : configured;
 
-        return roots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return roots.Select(PathSafety.NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static void RejectTrue(YamlMappingNode service, string key)

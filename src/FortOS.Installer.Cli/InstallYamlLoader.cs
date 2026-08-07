@@ -6,7 +6,7 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace FortOS.Installer.Cli;
 
-/// <summary>install.yaml 的宽松模型(可设置属性),映射为引擎强类型 InstallConfig。</summary>
+/// <summary>Loose model of install.yaml (with settable properties), mapped to the engine's strongly-typed InstallConfig.</summary>
 public sealed class InstallYaml
 {
     public SystemYaml System { get; set; } = new();
@@ -43,13 +43,13 @@ public sealed class DataYaml
 
     public string? Label { get; set; }
 
-    /// <summary>RAID 级别(1/5/10)。</summary>
+    /// <summary>RAID level (1/5/10).</summary>
     public int? RaidLevel { get; set; }
 
-    /// <summary>RAID 成员盘列表。</summary>
+    /// <summary>List of RAID member disks.</summary>
     public List<string> RaidDisks { get; set; } = [];
 
-    /// <summary>LUKS 口令(headless/自动化路径使用)。</summary>
+    /// <summary>LUKS passphrase (used by the headless/automation path).</summary>
     public string? LuksPassphrase { get; set; }
 
     public string? LuksMapperName { get; set; }
@@ -88,7 +88,7 @@ public sealed class LocaleYaml
     public string? Keyboard { get; set; }
 }
 
-/// <summary>install.yaml 加载与校验。</summary>
+/// <summary>Loads and validates install.yaml.</summary>
 public static class InstallYamlLoader
 {
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
@@ -113,12 +113,12 @@ public static class InstallYamlLoader
     }
 
     /// <summary>
-    /// yaml 宽松模型 → 引擎强类型配置,并立即执行完整校验
-    /// (让用户在看确认提示前就发现配置错误,而非在破坏磁盘后)。
+    /// Converts the loose yaml model → engine strongly-typed config, and immediately runs full validation
+    /// (so users discover config errors before the confirmation prompt, not after a disk has been wiped).
     /// </summary>
     public static InstallConfig ToConfig(InstallYaml yaml)
     {
-        // 子节判空:YamlDotNet 对 "data:" / "data: null" 会把属性置 null。
+        // Null checks for subsections: YamlDotNet sets properties to null for "data:" / "data: null".
         var system = yaml.System ?? throw new ConfigException("install.yaml is missing the 'system' section.");
         var data = yaml.Data ?? new DataYaml();
         var network = yaml.Network ?? new NetworkYaml();
@@ -178,7 +178,7 @@ public static class InstallYamlLoader
         {
             return null;
         }
-        // 白名单校验:只接受枚举名(忽略大小写),拒绝数字字符串("1")与未知值。
+        // Whitelist validation: only enum names are accepted (case-insensitive); numeric strings ("1") and unknown values are rejected.
         if (Enum.GetNames<T>().Any(n => n.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
         {
             return Enum.Parse<T>(trimmed, ignoreCase: true);
@@ -187,8 +187,8 @@ public static class InstallYamlLoader
     }
 
     /// <summary>
-    /// 解析 swap 字段:合法值仅 <c>auto</c> / <c>off</c> / 正整数(MiB)。
-    /// 其他写法("8G"、"4GiB"、负数)直接报错,避免静默回落 Auto。
+    /// Parses the swap field: valid values are only <c>auto</c> / <c>off</c> / a positive integer (MiB).
+    /// Any other form ("8G", "4GiB", negative) errors out immediately to avoid silently falling back to Auto.
     /// </summary>
     private static SwapMode ParseSwapMode(string? value)
     {

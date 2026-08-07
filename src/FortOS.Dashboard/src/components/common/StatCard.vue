@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Stat Card
+  FortOS Dashboard — JiSpace-style Stat Card
   A compact metric card with colored accent border, icon, value, and label.
 -->
 <script setup lang="ts">

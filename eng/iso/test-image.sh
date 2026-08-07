@@ -62,10 +62,10 @@ unsquashfs -f -d "${EXTRACTED_ROOT}" "${SQUASHFS_PATH}" "${required_paths[@]}" \
 for path in "${required_paths[@]}"; do
     target="${EXTRACTED_ROOT}/${path}"
     if [[ -L "${target}" ]]; then
-        # Symlink — 在镜像根内解析目标,而非宿主机文件系统。
-        # 绝对路径链接(如 /usr/local/bin/fortos -> /opt/fortos/cli/FortOS.Cli)
-        # 在 CI runner 上宿主机不存在 /opt/fortos,裸 -e 会跟随并误报缺失;
-        # 相对链接则基于链接所在目录解析。越界/悬空仍按错误处理。
+        # Symlink — resolve the target inside the image root, not on the host filesystem.
+        # For absolute-path links (e.g. /usr/local/bin/fortos -> /opt/fortos/cli/FortOS.Cli), the host
+        # on a CI runner has no /opt/fortos, so a bare -e would follow the link and wrongly report it missing;
+        # relative links are resolved from the directory containing the link. Out-of-root/broken links are still errors.
         link_target="$(readlink "${target}")"
         case "${link_target}" in
             /*) candidate="${EXTRACTED_ROOT}/${link_target#/}" ;;

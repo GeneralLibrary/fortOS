@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # -------------------------------------------------------------------------
-# installer-e2e.sh — FortOS.Installer 场景矩阵集成测试(设计稿 §9 / M4)
+# installer-e2e.sh — FortOS.Installer scenario-matrix integration test (design doc §9 / M4)
 #
-# 在 QEMU 中启动 live ISO(内嵌 FortOS.Installer.Cli),通过串口驱动
-# `fortos-installer --config install.yaml --yes` 完成全流程安装,随后离线
-# 断言目标盘:分区表 / fstab / grub / install-summary.json / crypttab / mdadm。
+# Boots the live ISO (which embeds FortOS.Installer.Cli) in QEMU, drives
+# `fortos-installer --config install.yaml --yes` through the serial port to complete a full installation,
+# then asserts the target disk offline: partition table / fstab / grub / install-summary.json / crypttab / mdadm.
 #
-# 场景矩阵(scenario 参数):
-#   single-btrfs   单系统盘 btrfs(默认)
-#   single-ext4    单系统盘 ext4
-#   raid1          系统盘 + 2×整盘 mdadm RAID1(btrfs)
-#   luks           系统盘 + 1×整盘 LUKS2(btrfs)
+# Scenario matrix (scenario parameter):
+#   single-btrfs   single system disk btrfs (default)
+#   single-ext4    single system disk ext4
+#   raid1          system disk + 2x whole-disk mdadm RAID1 (btrfs)
+#   luks           system disk + 1x whole-disk LUKS2 (btrfs)
 #
-# 依赖: xorriso qemu-system-x86_64 qemu-img expect mkfs.vfat mcopy
-#       qemu-nbd(离线断言;CI 容器以 root 运行)
+# Dependencies: xorriso qemu-system-x86_64 qemu-img expect mkfs.vfat mcopy
+#       qemu-nbd (offline assertions; the CI container runs as root)
 #
-# 用法: installer-e2e.sh <iso-path> <result-directory> [scenario]
-# 说明: 设计在 Linux CI 容器内运行(与 test-install.sh 相同的环境)。
+# Usage: installer-e2e.sh <iso-path> <result-directory> [scenario]
+# Note: designed to run inside a Linux CI container (same environment as test-install.sh).
 # -------------------------------------------------------------------------
 set -Eeuo pipefail
 
@@ -39,11 +39,11 @@ done
 rm -rf "${RESULT_DIR}"
 mkdir -p "${BOOT_DIR}" "${CONFIG_MNT}"
 
-# --- 场景定义:根文件系统 + 数据盘布局 + 专属断言 --------------------------
+# --- Scenario definition: root filesystem + data disk layout + scenario assertions --------------------------
 ROOT_FS=btrfs
-DATA_DISK_SIZES=()          # 数据盘大小(系统盘之后追加的 QEMU 盘)
-data_yaml() { :; }          # 输出 install.yaml 的 data: 段
-extra_assert() { :; }       # 场景专属断言(rootfs 挂载点路径为 $1)
+DATA_DISK_SIZES=()          # data disk sizes (QEMU disks appended after the system disk)
+data_yaml() { :; }          # emits the data: section of install.yaml
+extra_assert() { :; }       # scenario-specific assertions (rootfs mount point path is $1)
 
 case "${SCENARIO}" in
     single-btrfs) ;;
@@ -67,8 +67,8 @@ YAML
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 mdadm = (root / "etc/mdadm/mdadm.conf").read_text()
-# --name=fortos-data 时 mdadm --detail --scan 输出 homehost 风格的
-# "ARRAY /dev/md/fortos-data ... name=fortos-data",不断言具体设备名。
+# With --name=fortos-data, mdadm --detail --scan outputs a homehost-style
+# "ARRAY /dev/md/fortos-data ... name=fortos-data"; do not assert a specific device name.
 assert "ARRAY" in mdadm and "name=fortos-data" in mdadm, f"mdadm.conf missing array: {mdadm}"
 assert not (root / "etc/crypttab").exists(), "crypttab should be absent for RAID"
 print("RAID assertions passed")
@@ -107,7 +107,7 @@ PY
         ;;
 esac
 
-# --- 1. 提取 live 内核与 initrd --------------------------------------------
+# --- 1. Extract live kernel and initrd --------------------------------------------
 extract_live() {
     local path="$1" dest="$2"
     xorriso -osirrox on -indev "${ISO_PATH}" -extract "${path}" "${dest}" >/dev/null 2>&1
@@ -119,7 +119,7 @@ extract_live /live/initrd.img "${BOOT_DIR}/initrd.img" || extract_live /isolinux
     exit 1
 }
 
-# --- 2. 生成 install.yaml 并打包为 vfat 配置盘 -----------------------------
+# --- 2. Generate install.yaml and pack it as a vfat config disk -----------------------------
 {
     cat <<YAML
 # FortOS E2E scenario: ${SCENARIO}
@@ -148,7 +148,7 @@ for f in "${CONFIG_MNT}"/*; do
     mcopy -i "${CONFIG_IMG}" "${f}" "::/$(basename "${f}")"
 done
 
-# --- 3. 目标虚拟盘:系统盘 disk-0 + 数据盘 disk-1..N ------------------------
+# --- 3. Target virtual disks: system disk disk-0 + data disks disk-1..N ------------------------
 declare -a DISK_PATHS=()
 i=0
 for size in "20G" "${DATA_DISK_SIZES[@]}"; do
@@ -164,7 +164,7 @@ for ((i = 1; i < ${#DISK_PATHS[@]}; i++)); do
     DATA_DISK_PATHS_STR="${DATA_DISK_PATHS_STR} ${DISK_PATHS[i]}"
 done
 
-# --- 4. QEMU + expect 驱动安装 ----------------------------------------------
+# --- 4. QEMU + expect driven install ----------------------------------------------
 cat > "${RESULT_DIR}/drive-install.exp" <<'EXP'
 #!/usr/bin/expect -f
 set timeout 1800
@@ -193,15 +193,15 @@ lappend cmd \
     -nic user,model=virtio-net-pci \
     -nographic -no-reboot
 
-# guest 串口(ttyS0)经 -nographic 走 QEMU stdio,expect 从这里交互并匹配
-# 登录提示;不能用 -serial file:,否则 guest 输出全部落入文件、stdio 上
-# 只有 "(qemu)" monitor 提示符,expect 永远匹配不到登录提示。
+# The guest serial (ttyS0) goes to QEMU stdio via -nographic; expect interacts there and matches the
+# login prompt. -serial file: cannot be used: guest output would all go to the file, leaving only the
+# "(qemu)" monitor prompt on stdio, so expect would never match the login prompt.
 log_file "$serial_log"
 
 spawn {*}$cmd
 
-# live 系统串口无自动登录,需手动登录;用户为 user(密码 live,
-# live-build 默认 --password live),root 登录需要密码且非交互场景不适用。
+# The live system serial console has no auto-login; log in manually. The user is "user" (password "live",
+# live-build default --password live); root login requires a password and is not applicable in this non-interactive scenario.
 expect {
     -re "fortos login:" { send "user\r"; exp_continue }
     -re "Password:" { send "live\r"; exp_continue }
@@ -209,9 +209,9 @@ expect {
     timeout { puts "TIMEOUT waiting for live shell"; exit 2 }
 }
 
-# 挂载配置盘(最后附加的 virtio 盘,按内容定位;mount 需 root)。
-# 注意:\$d 在 Tcl 层转义为字面 $d,由 guest 的 sh 循环变量替换;
-# 用 test -f 而非 [ -f ],避免 Tcl 把 [ 当作命令替换解析。
+# Mount the config disk (the last attached virtio disk, located by content; mounting needs root).
+# Note: \$d is escaped at the Tcl layer as the literal $d, substituted by the guest's sh loop variable;
+# use test -f rather than [ -f ] to keep Tcl from parsing [ as command substitution.
 send "sudo sh -c 'mkdir -p /mnt/cfg; for d in /dev/vd?; do mount \$d /mnt/cfg 2>/dev/null && test -f /mnt/cfg/install.yaml && exit 0; umount /mnt/cfg 2>/dev/null; done; exit 1'\r"
 expect {
     -re {password for user:} { send "live\r"; exp_continue }
@@ -250,13 +250,13 @@ if [[ ${expect_exit} -ne 0 ]]; then
 fi
 [[ -s "${SYSTEM_DISK}" ]] || { echo "error: installation did not produce a system disk." >&2; exit 1; }
 
-# --- 5. 离线断言(qemu-nbd 挂载系统盘 p3) -----------------------------------
+# --- 5. Offline assertions (mount system disk p3 with qemu-nbd) -----------------------------------
 [[ -e /dev/nbd0 ]] || { echo "error: /dev/nbd0 unavailable (need nbd module + root)." >&2; exit 1; }
 qemu-nbd --connect=/dev/nbd0 "${SYSTEM_DISK}"
 trap 'umount "${RESULT_DIR}/rootfs" 2>/dev/null || true; qemu-nbd --disconnect /dev/nbd0 >/dev/null 2>&1 || true' EXIT
 mkdir -p "${RESULT_DIR}/rootfs"
-# nbd 连接后分区节点(nbd0p3)可能尚未创建:触发内核重新扫描分区表,
-# 并等待节点出现,再挂载。
+# After the nbd connection, the partition node (nbd0p3) may not exist yet: trigger a kernel re-scan of the
+# partition table and wait for the node to appear before mounting.
 partprobe /dev/nbd0 2>/dev/null || partx -a /dev/nbd0 2>/dev/null || true
 for _ in $(seq 1 20); do
     [[ -b /dev/nbd0p3 ]] && break

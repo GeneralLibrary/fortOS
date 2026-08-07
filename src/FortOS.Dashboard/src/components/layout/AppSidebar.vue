@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Sidebar
+  FortOS Dashboard — JiSpace-style Sidebar
   Slim icon bar with gradient accent colors and active state indicators.
 -->
 <script setup lang="ts">

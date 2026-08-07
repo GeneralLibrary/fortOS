@@ -3,16 +3,16 @@ using FortOS.Installer.Core.Exceptions;
 
 namespace FortOS.Installer.Core.Tools;
 
-/// <summary>命令执行结果。</summary>
+/// <summary>Command execution result.</summary>
 public sealed record CommandResult(int ExitCode, string Stdout, string Stderr);
 
-/// <summary>进程执行抽象,便于测试注入。</summary>
+/// <summary>Process execution abstraction, for easy test injection.</summary>
 public interface IProcessRunner
 {
     /// <summary>
-    /// 执行命令并收集输出。参数以列表传递,避免 shell 转义问题。
+    /// Executes a command and collects the output. Arguments are passed as a list, avoiding shell escaping issues.
     /// </summary>
-    /// <param name="standardInput">可选标准输入内容(密钥等敏感数据,不进命令行)。</param>
+    /// <param name="standardInput">Optional standard input content (sensitive data such as secrets, not passed on the command line).</param>
     Task<CommandResult> RunAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -24,20 +24,20 @@ public interface IProcessRunner
 }
 
 /// <summary>
-/// 系统工具进程执行器(设计稿 6)。行为参考 FortOS.Platform.Execution.CommandExecutor:
-/// 超时、非零退出码抛 <see cref="ToolException"/>(消息附带 stderr 摘要便于诊断)。
-/// 参数经 ArgumentList 传递,不使用 shell——无注入面;敏感数据(密钥)走
-/// <paramref name="standardInput"/>,不进命令行。
+/// Process executor for system tools (design draft 6). Behavior follows FortOS.Platform.Execution.CommandExecutor:
+/// on timeout or a non-zero exit code it throws <see cref="ToolException"/> (the message includes a stderr summary for diagnosis).
+/// Arguments are passed via ArgumentList, no shell is used — no injection surface; sensitive data (secrets) goes through
+/// <paramref name="standardInput"/>, never on the command line.
 /// </summary>
 public sealed class ProcessRunner : IProcessRunner
 {
-    /// <summary>默认命令超时(普通系统工具足够;长任务如 rsync 由调用方显式指定)。</summary>
+    /// <summary>Default command timeout (sufficient for ordinary system tools; long tasks such as rsync specify their own explicitly).</summary>
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
 
-    /// <summary>异常消息中 stderr 摘要的最大长度。</summary>
+    /// <summary>Maximum length of the stderr summary in exception messages.</summary>
     private const int ErrorDetailMaxLength = 300;
 
-    /// <summary>启动失败/超时使用的人工退出码(进程未产生真实退出码)。</summary>
+    /// <summary>Synthetic exit code used for start failures/timeouts (the process never produced a real exit code).</summary>
     private const int SyntheticExitCode = -1;
 
     /// <inheritdoc />
@@ -94,7 +94,7 @@ public sealed class ProcessRunner : IProcessRunner
 
             if (process.ExitCode != 0 && throwOnNonZeroExit)
             {
-                // 异常消息附带 stderr/stdout 摘要,便于 CLI/日志直接诊断失败原因。
+                // The exception message includes a stderr/stdout summary so the CLI/logs can diagnose the failure directly.
                 var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
                 var trimmed = detail.Length > ErrorDetailMaxLength ? detail[..ErrorDetailMaxLength] : detail;
                 throw new ToolException(
@@ -108,7 +108,7 @@ public sealed class ProcessRunner : IProcessRunner
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            // 超时:终止子进程并抛出类型化异常。
+            // Timeout: kill the child process and throw a typed exception.
             TryKill(process);
             var stdout = await SafeReadAsync(stdoutTask).ConfigureAwait(false);
             var stderr = await SafeReadAsync(stderrTask).ConfigureAwait(false);
@@ -144,7 +144,7 @@ public sealed class ProcessRunner : IProcessRunner
         }
         catch
         {
-            // 进程可能已退出。
+            // The process may have already exited.
         }
     }
 }

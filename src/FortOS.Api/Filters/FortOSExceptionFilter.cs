@@ -44,6 +44,10 @@ public sealed class FortOSExceptionFilter : IExceptionFilter
         // additionally sets the Upload-Offset header before rethrowing.
         UploadOffsetConflictException ex => (StatusCodes.Status409Conflict, "UPLOAD_OFFSET_CONFLICT", ex.Message),
         UploadVersionConflictException ex => (StatusCodes.Status412PreconditionFailed, "UPLOAD_VERSION_CONFLICT", ex.Message),
+        // Missing files/directories are client-correctable conditions and must surface as
+        // 404 (matching FilesController.Download), not as generic 500 internal errors.
+        FileNotFoundException ex => (StatusCodes.Status404NotFound, "FILE_NOT_FOUND", ex.Message),
+        DirectoryNotFoundException ex => (StatusCodes.Status404NotFound, "DIRECTORY_NOT_FOUND", ex.Message),
         ArgumentException ex => (StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message),
         FortOSException ex => (StatusCodes.Status500InternalServerError, ex.ErrorCode, ex.Message),
         _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "Internal server error."),

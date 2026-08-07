@@ -20,8 +20,8 @@ public sealed class RsyncBackupService
         Validate(source);
         Validate(target);
 
-        // 数据保护：源目录不存在或为空时拒绝同步。配合无条件 --delete，空源会把
-        // 目标目录整个清空 —— 空源通常是挂载失败/路径错误，宁可失败也不可清空目标。
+        // Data protection: refuse to sync when the source directory is missing or empty. Combined with unconditional --delete, an empty source would
+        // wipe the entire target directory. An empty source usually means a mount failure or wrong path; better to fail than to empty the target.
         if (!Directory.Exists(source))
         {
             return new CommandResult { ExitCode = 3, Stderr = $"Source directory does not exist; refusing to sync: {source}" };
@@ -36,8 +36,8 @@ public sealed class RsyncBackupService
         if (dryRun) args.Append("--dry-run ");
         foreach (var pattern in excludePatterns ?? [])
         {
-            // 每个 pattern 一个 --exclude 参数；pattern 由管理员配置，作为 rsync
-            // 过滤模式原样传入（--exclude=value 不会被 rsync 重新解析为选项）。
+            // One --exclude argument per pattern; patterns are configured by the administrator and passed through verbatim as rsync
+            // filter patterns (--exclude=value is not re-parsed by rsync as an option).
             args.Append("--exclude=").Append(Quote(pattern)).Append(' ');
         }
         args.Append(Quote(EnsureTrailingSlash(source))).Append(' ').Append(Quote(target));

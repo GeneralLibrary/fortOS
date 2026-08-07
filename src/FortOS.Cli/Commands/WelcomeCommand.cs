@@ -37,7 +37,7 @@ public static class WelcomeCommand
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0";
         var local = $"http://localhost:{ManagementPort}";
 
-        // 列出所有非虚拟网卡的 IPv4,避免多网卡时选错导致按横幅地址访问不到。
+        // List IPv4 addresses of all non-virtual NICs, to avoid picking the wrong one on multi-NIC machines and being unreachable via the banner address.
         var addresses = AllIPv4();
         var webLines = new List<string>();
         if (addresses.Count == 0)
@@ -84,8 +84,8 @@ public static class WelcomeCommand
     }
 
     /// <summary>
-    /// 返回所有非虚拟网卡的 IPv4 地址(排除 lo/docker/veth/br-* 等),按接口
-    /// 顺序去重。多网卡时全部列出,避免只取第一个而选错网卡。
+    /// Returns IPv4 addresses of all non-virtual NICs (excluding lo/docker/veth/br-* etc.), deduplicated in interface
+    /// order. Lists all of them on multi-NIC machines, to avoid picking the wrong NIC by only taking the first.
     /// </summary>
     internal static List<string> AllIPv4()
     {
@@ -113,7 +113,7 @@ public static class WelcomeCommand
         }
         catch
         {
-            // 网络接口枚举失败时返回空列表,由调用方回退到 localhost。
+            // If network interface enumeration fails, return an empty list and let the caller fall back to localhost.
         }
         return result;
     }

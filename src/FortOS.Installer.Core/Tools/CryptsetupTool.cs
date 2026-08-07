@@ -1,9 +1,9 @@
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>cryptsetup</c> 适配器:LUKS2 加密(设计稿 6)。
-/// 已接入默认安装流程(PartitionStep 创建/打开、FinalizeStep 关闭)。
-/// 口令一律经 stdin 传入,不进命令行。
+/// <c>cryptsetup</c> adapter: LUKS2 encryption (design draft 6).
+/// Wired into the default installation flow (PartitionStep creates/opens, FinalizeStep closes).
+/// Passphrases are always passed via stdin, never on the command line.
 /// </summary>
 public sealed class CryptsetupTool : ITool
 {
@@ -13,7 +13,7 @@ public sealed class CryptsetupTool : ITool
 
     public string Name => "cryptsetup";
 
-    /// <summary>创建 LUKS2 容器。passphrase 经 stdin 传入,不进命令行。</summary>
+    /// <summary>Creates a LUKS2 container. The passphrase is passed via stdin, never on the command line.</summary>
     public async Task LuksFormatAsync(string device, string passphrase, CancellationToken ct)
     {
         await _runner.RunAsync(
@@ -23,11 +23,11 @@ public sealed class CryptsetupTool : ITool
             standardInput: passphrase + "\n").ConfigureAwait(false);
     }
 
-    /// <summary>打开加密容器,映射到 <paramref name="name"/>。</summary>
+    /// <summary>Opens the encrypted container, mapping it to <paramref name="name"/>.</summary>
     public async Task LuksOpenAsync(string device, string name, string passphrase, CancellationToken ct)
         => await _runner.RunAsync("cryptsetup", ["open", device, name], ct, standardInput: passphrase + "\n").ConfigureAwait(false);
 
-    /// <summary>关闭映射。</summary>
+    /// <summary>Closes the mapping.</summary>
     public Task LuksCloseAsync(string name, CancellationToken ct)
         => _runner.RunAsync("cryptsetup", ["close", name], ct, throwOnNonZeroExit: false);
 }

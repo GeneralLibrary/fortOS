@@ -10,7 +10,6 @@ namespace FortOS.Agent.Broker;
 /// </summary>
 public sealed class TokenBroker : ITokenBroker
 {
-    private static readonly TimeSpan AgentLifetime = TimeSpan.FromHours(24);
     private readonly ITokenManager _tokenManager;
     private readonly ILogPipeline _logPipeline;
     private readonly AgentTokenRegistry _registry;
@@ -43,7 +42,7 @@ public sealed class TokenBroker : ITokenBroker
             var ownerSet = BuildAbilitySet(owner.Capabilities);
             EnsureCapabilitiesAllowed(config.Capabilities, ownerSet);
             var trustLevel = Math.Min(GetTrustLevel(owner), 2);
-            var token = await _tokenManager.IssueTokenAsync($"agent:{config.AgentId}", TokenType.Agent, config.Capabilities, trustLevel, AgentLifetime, [owner.Subject ?? "owner", $"agent:{config.AgentId}"], null, ct).ConfigureAwait(false);
+            var token = await _tokenManager.IssueTokenAsync($"agent:{config.AgentId}", TokenType.Agent, config.Capabilities, trustLevel, AgentDefaults.AgentTokenLifetime, [owner.Subject ?? "owner", $"agent:{config.AgentId}"], null, ct).ConfigureAwait(false);
             var validation = await _tokenManager.ValidateTokenAsync(token, ct).ConfigureAwait(false);
             var now = DateTimeOffset.UtcNow;
             var result = new AgentTokenResult
@@ -52,7 +51,7 @@ public sealed class TokenBroker : ITokenBroker
                 AgentId = config.AgentId,
                 Capabilities = [.. config.Capabilities],
                 IssuedAt = now,
-                ExpiresAt = validation.ExpiresAt ?? now.Add(AgentLifetime),
+                ExpiresAt = validation.ExpiresAt ?? now.Add(AgentDefaults.AgentTokenLifetime),
             };
             _registry.Upsert(new AgentTokenState(config.AgentId, token, validation.Jti, result.ExpiresAt, result.Capabilities));
             granted = true;
@@ -95,7 +94,7 @@ public sealed class TokenBroker : ITokenBroker
                 AgentId = agentId,
                 Capabilities = [.. validation.Capabilities],
                 IssuedAt = now,
-                ExpiresAt = validation.ExpiresAt ?? now.Add(AgentLifetime),
+                ExpiresAt = validation.ExpiresAt ?? now.Add(AgentDefaults.AgentTokenLifetime),
             };
             _registry.Upsert(new AgentTokenState(agentId, renewed, validation.Jti, result.ExpiresAt, result.Capabilities));
             granted = true;

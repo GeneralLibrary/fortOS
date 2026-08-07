@@ -1,9 +1,9 @@
 #!/bin/sh
 # -------------------------------------------------------------------------
-# FortOS installer GUI diagnostics — CI 冒烟测试用。
-# fortos-installer-diag.service 在安装器服务启动后运行,把 Avalonia 向导
-# 的进程状态写到 ttyS1。QEMU 引导测试(test-boot.sh)通过第二个 -serial
-# file: 收集并断言 gui=alive;真实硬件(无 ttyS1)时静默退出。
+# FortOS installer GUI diagnostics — for CI smoke testing.
+# fortos-installer-diag.service runs after the installer service starts, writing the Avalonia wizard's
+# process status to ttyS1. The QEMU boot test (test-boot.sh) collects it via a second -serial
+# file: and asserts gui=alive; exits silently on real hardware (no ttyS1).
 # -------------------------------------------------------------------------
 set -eu
 
@@ -11,15 +11,15 @@ xorg_alive() {
     pgrep -x Xorg >/dev/null 2>&1 || pgrep -x Xorg.wrap >/dev/null 2>&1
 }
 
-# 立即标记:即使后续失败,test-boot.sh 也能确认本服务已执行。
+# Mark immediately: even if later steps fail, test-boot.sh can confirm this service ran.
 {
     echo "=== FORTOS_INSTALLER_DIAG_START ==="
 } > /dev/ttyS1 2>/dev/null || true
 
-# 等待 Xorg 和 Avalonia 安装器启动。
-# TCG 软件仿真模式下 JIT 和图形初始化远慢于实机;默认轮询上限 240 s,
-# 这样即便 GUI 迟迟未起,CI 也能在外层 420 s 总超时前拿到最终诊断。
-# 内核命令行可通过 FORTOS_DIAG_WAIT_S=<秒数> 覆盖该值。
+# Wait for Xorg and the Avalonia installer to start.
+# Under TCG software emulation, JIT and graphics initialization are far slower than on real hardware; the default
+# polling limit is 240 s, so even if the GUI is slow to come up, CI can still collect the final diagnostics before
+# the outer 420 s total timeout. The kernel command line can override this value with FORTOS_DIAG_WAIT_S=<seconds>.
 WAIT_LIMIT="${FORTOS_DIAG_WAIT_S:-240}"
 elapsed=0
 while [ "${elapsed}" -lt "${WAIT_LIMIT}" ]; do

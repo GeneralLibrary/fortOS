@@ -24,7 +24,7 @@
             <TextBox Text="{Binding Dns}" MinWidth="280"/>
         </StackPanel>
 
-        <!-- WiFi:扫描、选择、连接(连接成功后经 DHCP 获取地址) -->
+        <!-- WiFi: scan, select, connect (after a successful connection the address is obtained via DHCP) -->
         <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <TextBlock Text="{Binding L[network.wifi.title]}" FontWeight="Bold" VerticalAlignment="Center"/>

@@ -4,9 +4,9 @@ using FortOS.Installer.Core.Models;
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>lsblk --json</c> 适配器:磁盘/分区枚举(设计稿 6)。
-/// 注意:UUID 读取由 <see cref="BlkidTool"/> 负责(loop 设备上 lsblk 的
-/// UUID 列在 mkfs 后可能不刷新)。
+/// <c>lsblk --json</c> adapter: disk/partition enumeration (design draft 6).
+/// Note: UUID reading is handled by <see cref="BlkidTool"/> (on loop devices, lsblk's
+/// UUID column may not refresh after mkfs).
 /// </summary>
 public sealed class LsblkTool : ITool
 {
@@ -18,7 +18,7 @@ public sealed class LsblkTool : ITool
 
     private static readonly string[] ListFields = ["NAME", "PATH", "SIZE", "MODEL", "SERIAL", "TRAN", "ROTA", "RM", "RO", "TYPE"];
 
-    /// <summary>枚举物理磁盘(接受 disk 与 loop 虚拟盘;排除分区与虚拟设备)。</summary>
+    /// <summary>Enumerates physical disks (accepts disk and loop virtual disks; excludes partitions and virtual devices).</summary>
     public async Task<IReadOnlyList<DiskInfo>> ListDisksAsync(CancellationToken ct)
     {
         var result = await _runner
@@ -42,7 +42,7 @@ public sealed class LsblkTool : ITool
             {
                 foreach (var item in devices.EnumerateArray())
                 {
-                    // 接受 disk 与 loop(虚拟盘/QEMU 盘安装目标);排除分区与虚拟设备。
+                    // Accept disk and loop (virtual disk / QEMU disk install target); exclude partitions and virtual devices.
                     if (item.GetProperty("type").GetString() is not ("disk" or "loop"))
                     {
                         continue;
@@ -67,7 +67,7 @@ public sealed class LsblkTool : ITool
     }
 }
 
-/// <summary>System.Text.Json 辅助扩展。</summary>
+/// <summary>System.Text.Json helper extensions.</summary>
 internal static class JsonElementExtensions
 {
     public static string? GetStringOrNull(this JsonElement element, string property)

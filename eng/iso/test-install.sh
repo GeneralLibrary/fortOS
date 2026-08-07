@@ -38,7 +38,7 @@ cp "${PRESEED_PATH}" "${INSTALL_DIR}/preseed/preseed.cfg"
 rm -f "${DISK_PATH}" "${SERIAL_LOG}"
 qemu-img create -q -f qcow2 "${DISK_PATH}" 20G
 
-# GitHub runner 的嵌套虚拟化不保证可用(/dev/kvm 可能缺失),回退 TCG。
+# Nested virtualization on GitHub runners is not guaranteed (/dev/kvm may be absent); fall back to TCG.
 if [[ -e /dev/kvm && -r /dev/kvm ]]; then
     accel_args=(-machine q35,accel=kvm -cpu host)
 else

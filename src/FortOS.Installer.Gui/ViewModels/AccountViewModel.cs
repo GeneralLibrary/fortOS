@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace FortOS.Installer.Gui.ViewModels;
 
-/// <summary>第 4 页:管理员账户 / 密码强度 / SSH 公钥 / 时区。</summary>
+/// <summary>Page 4: admin account / password strength / SSH public key / timezone.</summary>
 public partial class AccountViewModel : ViewModelBase, IWizardPage
 {
     [GeneratedRegex("^[a-z_][a-z0-9_-]{0,31}$")]
@@ -38,7 +38,7 @@ public partial class AccountViewModel : ViewModelBase, IWizardPage
         Password == ConfirmPassword &&
         !string.IsNullOrWhiteSpace(Timezone);
 
-    /// <summary>密码强度提示(本地化):Weak / OK / Strong。</summary>
+    /// <summary>Password strength hint (localized): Weak / OK / Strong.</summary>
     public string PasswordStrength
     {
         get

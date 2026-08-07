@@ -18,8 +18,8 @@ public sealed class QuotaService
     {
         ShareValidation.ValidatePath(path);
         var tool = fileSystemType.Equals("btrfs", StringComparison.OrdinalIgnoreCase) ? "btrfs" : "xfs_quota";
-        // 注意：CommandExecutor 无 shell，参数经 ProcessStartInfo.Arguments 解析，
-        // 单引号不会被移除而是作为字面字符传给工具；含空格的 -c 子命令必须用双引号分组。
+        // Note: CommandExecutor has no shell; arguments are parsed via ProcessStartInfo.Arguments, so single quotes are not stripped but
+        // passed to the tool as literal characters; a -c subcommand containing spaces must be grouped with double quotes.
         var args = tool == "btrfs"
             ? $"qgroup limit {bytes} {Quote(path)}"
             : $"-x -c {Quote($"limit -p bhard={bytes} {path}")} {Quote(path)}";
@@ -33,6 +33,6 @@ public sealed class QuotaService
         }
     }
 
-    /// <summary>完整双引号包裹：先转义内部引号，再闭合尾引号（历史实现只开不闭，命令必然失败）。</summary>
+    /// <summary>Wraps in complete double quotes: escapes inner quotes first, then closes the trailing quote (the historical implementation only opened the quote, so the command always failed).</summary>
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }

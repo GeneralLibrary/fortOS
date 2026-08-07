@@ -37,10 +37,10 @@ public sealed class FullCycleE2ETests
             services.AddLogging();
             services.AddSingleton<IConfiguration>(configuration);
             services.AddFortOSCore(dataRoot);
-            services.AddPlatformServices();
+            services.AddFortOSPlatform();
             services.AddFortOSSecurity(configuration);
-            services.AddServiceBus();
-            services.AddModuleHost();
+            services.AddFortOSServiceBus();
+            services.AddFortOSModuleHost();
             services.AddSingleton<StorageModule>();
             services.AddSingleton<ShareModule>();
             services.AddSingleton<NetworkModule>();
@@ -53,8 +53,8 @@ public sealed class FullCycleE2ETests
             services.AddSingleton<INasModule>(sp => sp.GetRequiredService<AgentModule>());
             services.AddSingleton<INasModule>(sp => sp.GetRequiredService<BackupModule>());
             services.AddSingleton<INasModule>(sp => sp.GetRequiredService<UpdateModule>());
-            services.AddAgentServices();
-            services.AddObservability(configuration);
+            services.AddFortOSAgent();
+            services.AddFortOSObservability(configuration);
 
             await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             var identity = provider.GetRequiredService<IIdentityService>();

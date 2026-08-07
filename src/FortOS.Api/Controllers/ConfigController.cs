@@ -57,9 +57,9 @@ public sealed class ConfigController : FortOSControllerBase
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
-        // 写入已落库，再触发配置链重载：SqliteConfigurationProvider 重新读取
-        // api_config 表，覆盖值立即对 IConfiguration 读取方（如 metrics:*、
-        // rateLimit:*、idempotency:*）生效，而不是只写不读的「假成功」。
+        // Once the write is persisted, trigger a reload of the configuration chain: SqliteConfigurationProvider re-reads the
+        // api_config table, so override values take effect immediately for IConfiguration consumers (e.g. metrics:*,
+        // rateLimit:*, idempotency:*) instead of a "fake success" where the value is written but never read.
         if (configuration is IConfigurationRoot root)
         {
             root.Reload();

@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Application Shell
+  FortOS Dashboard — JiSpace-style Application Shell
   Slim icon sidebar + top header with stat pills + scrollable content area.
 -->
 <script setup lang="ts">

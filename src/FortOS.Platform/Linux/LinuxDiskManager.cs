@@ -18,8 +18,8 @@ public sealed partial class LinuxDiskManager : IDiskManager
     private readonly CommandExecutor _executor;
     private readonly ILogger<LinuxDiskManager> _logger;
 
-    /// <summary>按磁盘路径串行化分区操作：probe→mklabel→mkpart 窗口无锁时，两个并发操作
-    /// 作用于全新盘会让后者的 mklabel gpt 销毁前者刚建的分区表。</summary>
+    /// <summary>Serializes partition operations per disk path: without locking the probe→mklabel→mkpart window, two concurrent
+    /// operations on a fresh disk would let the later mklabel gpt destroy the partition table the former just created.</summary>
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> DiskLocks = new(StringComparer.Ordinal);
 
     /// <summary>Initializes the Linux disk manager.</summary>
@@ -99,7 +99,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
             throw new ArgumentException("SizeBytes requires StartBytes; a size alone cannot locate the partition end.", nameof(spec));
         }
 
-        // 同一磁盘的分区操作整体串行（probe→mklabel→mkpart），防止并发建分区互相清空分区表。
+        // Partition operations on the same disk are fully serialized (probe→mklabel→mkpart) to prevent concurrent partition creation from wiping each other's partition table.
         var diskLock = DiskLocks.GetOrAdd(diskPath, static _ => new SemaphoreSlim(1, 1));
         await diskLock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -118,8 +118,8 @@ public sealed partial class LinuxDiskManager : IDiskManager
         var end = spec.SizeBytes.HasValue ? $"{spec.StartBytes!.Value + spec.SizeBytes.Value}B" : "100%";
         var fsType = string.IsNullOrWhiteSpace(spec.FileSystem) ? "ext4" : ValidateFs(spec.FileSystem);
 
-        // 仅在磁盘尚无分区表时初始化 GPT 标签。绝不能无条件 mklabel gpt，
-        // 否则每次「添加分区」都会先销毁整盘现有分区表（数据丢失）。
+        // Initialize the GPT label only when the disk has no partition table yet. Never run mklabel gpt
+        // unconditionally, otherwise every "add partition" would first destroy the disk's existing partition table (data loss).
         await EnsureDiskLabelAsync(diskPath, ct).ConfigureAwait(false);
 
         var args = $"--script {Quote(diskPath)} mkpart {Quote(spec.Name)} {Quote(fsType)} {Quote(start)} {Quote(end)}";
@@ -132,9 +132,9 @@ public sealed partial class LinuxDiskManager : IDiskManager
     }
 
     /// <summary>
-    /// 确保磁盘带有分区表。已存在有效标签时保持原样；仅当 parted 明确报告
-    /// 「unrecognised disk label」（全新盘）时才写入 GPT 标签。其他错误
-    /// （设备不存在、IO 失败等）直接抛出，避免对异常设备执行破坏性操作。
+    /// Ensures the disk has a partition table. An existing valid label is left untouched; a GPT label is
+    /// written only when parted explicitly reports "unrecognised disk label" (a fresh disk). Other errors
+    /// (device missing, I/O failure, etc.) are thrown directly to avoid destructive operations on an abnormal device.
     /// </summary>
     private async Task EnsureDiskLabelAsync(string diskPath, CancellationToken ct)
     {
@@ -155,9 +155,10 @@ public sealed partial class LinuxDiskManager : IDiskManager
     }
 
     /// <summary>
-    /// 判定磁盘是否需要初始化 GPT 标签：仅当 parted 明确报告「unrecognised disk label」
-    /// （全新盘）时才返回 true；探测失败且原因不明（设备不存在等）返回 false，
-    /// 调用方将拒绝破坏性操作。抽为纯函数便于回归测试锁定 F1 数据保护语义。
+    /// Determines whether the disk needs a GPT label: returns true only when parted explicitly reports
+    /// "unrecognised disk label" (a fresh disk); returns false when probing fails for an unknown reason
+    /// (device missing, etc.), and the caller will refuse the destructive operation. Kept as a pure function
+    /// so regression tests can pin down the F1 data-protection semantics.
     /// </summary>
     internal static bool ShouldInitializeDiskLabel(CommandResult probe)
         => probe.ExitCode != 0
@@ -200,8 +201,8 @@ public sealed partial class LinuxDiskManager : IDiskManager
         foreach (var diskPath in diskPaths)
         {
             ValidateDevicePath(diskPath);
-            // 创建 RAID 会向成员盘写入超级块并抹除盘上数据:拒绝已挂载的磁盘
-            // (纵深防御,不依赖调用方确认),防止物理机上误选正在使用的系统盘。
+            // Creating RAID writes a superblock to the member disks and erases their data: refuse disks that are already mounted
+            // (defense in depth, not relying on the caller's confirmation), preventing an in-use system disk from being selected on a physical machine.
             await LinuxMountProbe.EnsureNotMountedAsync(_executor, diskPath, ct).ConfigureAwait(false);
         }
 
@@ -218,8 +219,8 @@ public sealed partial class LinuxDiskManager : IDiskManager
         var devices = string.Join(' ', diskPaths.Select(Quote));
         try
         {
-            // 固定命名 /dev/md0 会与既有阵列冲突，且第二个 RAID 永远无法创建；
-            // 先扫描活动阵列，分配下一个可用的 mdN 设备名。
+            // Hard-coding /dev/md0 would collide with existing arrays, and a second RAID could never be created;
+            // scan active arrays first and allocate the next available mdN device name.
             var device = await FindNextMdDeviceAsync(ct).ConfigureAwait(false);
             var result = await _executor.ExecuteAsync("mdadm", $"--create {device} --level={raidLevel} --raid-devices={diskPaths.Length} {devices}", ct).ConfigureAwait(false);
             await PersistRaidAssemblyAsync(ct).ConfigureAwait(false);
@@ -232,13 +233,14 @@ public sealed partial class LinuxDiskManager : IDiskManager
         }
     }
 
-    /// <summary>mdadm.conf 写入互斥:并发创建 RAID 时,read-modify-write 不能交错丢行。</summary>
+    /// <summary>mdadm.conf writes are mutually exclusive: when creating RAIDs concurrently, read-modify-write must not interleave and drop lines.</summary>
     private static readonly SemaphoreSlim MdadmConfigGate = new(1, 1);
 
     /// <summary>
-    /// 将新创建的阵列注册到 /etc/mdadm/mdadm.conf 并刷新 initramfs，保证重启后
-    /// initramfs/系统启动阶段能自动装配（不依赖 udev 增量扫描的发行版默认行为）。
-    /// 持久化失败（如只读 /etc、容器环境）只记日志，不掩盖创建成功的结果。
+    /// Registers the newly created array in /etc/mdadm/mdadm.conf and refreshes initramfs so that the array is
+    /// automatically assembled at boot (initramfs/system startup) without relying on the distro's default
+    /// udev incremental scan. Persistence failures (e.g., read-only /etc, container environment) are only logged
+    /// and do not mask the successful creation result.
     /// </summary>
     private async Task PersistRaidAssemblyAsync(CancellationToken ct)
     {
@@ -261,7 +263,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
                 var missing = lines.Where(line => !existing.Contains(line, StringComparison.Ordinal)).ToArray();
                 if (missing.Length > 0)
                 {
-                    // 临时文件 + rename 原子写入，避免写一半截断 mdadm.conf。
+                    // Atomic write via temp file + rename, avoiding a truncated mdadm.conf from a partial write.
                     var updated = existing.TrimEnd() + (existing.TrimEnd().Length > 0 ? "\n" : string.Empty) + string.Join('\n', missing) + "\n";
                     await File.WriteAllTextAsync(tempPath, updated, ct).ConfigureAwait(false);
                     File.Move(tempPath, configPath, overwrite: true);
@@ -269,7 +271,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // 清理残留临时文件（best-effort），不掩盖原始异常。
+                // Clean up leftover temporary files (best-effort), without masking the original exception.
                 try
                 {
                     if (File.Exists(tempPath)) File.Delete(tempPath);
@@ -286,7 +288,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
                 MdadmConfigGate.Release();
             }
 
-            // 刷新 initramfs，让阵列在 initramfs 阶段即可装配（失败容忍）。
+            // Refresh initramfs so the array can be assembled as early as the initramfs phase (failure tolerated).
             await _executor.ExecuteAsync("update-initramfs", "-u", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is PlatformException or CommandExecutionException)
@@ -338,9 +340,9 @@ public sealed partial class LinuxDiskManager : IDiskManager
     }
 
     /// <summary>
-    /// 扫描 /proc/mdstat 中活动阵列的名称，返回下一个可用的 /dev/mdN 设备名。
-    /// mdstat 只列出已激活的阵列；mdadm --create 会立即激活新阵列，
-    /// 因此以「当前最大编号 + 1」为起点即可避免与既有阵列冲突。
+    /// Scans the active array names in /proc/mdstat and returns the next available /dev/mdN device name.
+    /// mdstat lists only activated arrays; mdadm --create activates the new array immediately,
+    /// so starting from "current max index + 1" avoids collisions with existing arrays.
     /// </summary>
     private async Task<string> FindNextMdDeviceAsync(CancellationToken ct)
     {
@@ -392,7 +394,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
     public async Task WipeDiskAsync(string diskPath, CancellationToken ct)
     {
         ValidateDevicePath(diskPath);
-        // 擦除分区表属于破坏性操作：拒绝已挂载的磁盘（纵深防御，不依赖调用方确认）。
+        // Wiping the partition table is destructive: refuse disks that are mounted (defense in depth, not relying on the caller's confirmation).
         await LinuxMountProbe.EnsureNotMountedAsync(_executor, diskPath, ct).ConfigureAwait(false);
         await _executor.ExecuteAsync("wipefs", $"--all {Quote(diskPath)}", ct).ConfigureAwait(false);
     }
@@ -403,8 +405,8 @@ public sealed partial class LinuxDiskManager : IDiskManager
         if (string.Equals(type, "disk", StringComparison.OrdinalIgnoreCase))
         {
             var mountPoint = GetString(block, "mountpoint");
-            // 整盘节点无挂载点时,聚合子分区的挂载点(典型如系统盘根分区挂载在
-            // /dev/nvme0n1p2),否则前端无法识别「使用中」的整盘并禁选。
+            // When the whole-disk node has no mount point, aggregate the child partitions' mount points (e.g., a system disk's root partition mounted at
+            // /dev/nvme0n1p2); otherwise the frontend cannot identify an "in use" whole disk and disable its selection.
             if (string.IsNullOrWhiteSpace(mountPoint) && block.TryGetProperty("children", out var childNodes))
             {
                 mountPoint = FindMountedChild(childNodes);
@@ -434,7 +436,7 @@ public sealed partial class LinuxDiskManager : IDiskManager
         }
     }
 
-    /// <summary>递归查找第一个已挂载的子分区挂载点。</summary>
+    /// <summary>Recursively finds the mount point of the first mounted child partition.</summary>
     private static string? FindMountedChild(JsonElement children)
     {
         foreach (var child in children.EnumerateArray())

@@ -272,8 +272,8 @@ internal static partial class LinuxProcParsers
             var detail = string.Join(' ', detailLines);
             var state = RaidStateRegex().Match(detail);
             var operation = RaidOperationRegex().Match(detail);
-            // inactive = 阵列已创建但未装配(如重启后 udev 增量扫描未接管):必须可见,
-            // 否则用户会误以为数据盘阵列不存在,raid-degraded 告警也不会触发。
+            // inactive = array created but not assembled (e.g., udev incremental scan did not take over after reboot): it must remain visible,
+            // otherwise users would think the data-disk array does not exist, and the raid-degraded alert would never fire.
             var isInactive = string.Equals(header.Groups[2].Value, "inactive", StringComparison.Ordinal);
             var total = state.Success ? state.Groups[1].Value.Length : 0;
             var active = state.Success ? state.Groups[1].Value.Count(character => character == 'U') : 0;

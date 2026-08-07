@@ -40,8 +40,8 @@ public sealed class BackupController : FortOSControllerBase
     [HttpPut("tasks/{taskId}")]
     public async Task<BackupTask> UpsertTask(string taskId, [FromBody] BackupTask task, CancellationToken ct)
     {
-        // 源路径与 restore 目标使用同一白名单规则（数据根内），保证「能备份就能恢复」，
-        // 两端约束一致（此前 restore 强制白名单但源路径创建时无校验，规则不对称）。
+        // The source path and the restore target use the same allowlist rule (within the data root), guaranteeing "if it can be backed up, it can be restored";
+        // both sides are equally constrained (previously restore enforced the allowlist but source paths were created without validation, an asymmetric rule).
         var dataRoot = FortOS.Modules.Share.Services.ShareValidation.ResolveDataRoot();
         if (!PathSafety.IsPathUnderRoot(task.SourcePath, dataRoot))
         {
@@ -107,8 +107,8 @@ public sealed class BackupController : FortOSControllerBase
         var source = string.IsNullOrWhiteSpace(request.SourceOverride) ? task.Target.BucketOrPath : request.SourceOverride;
         var target = string.IsNullOrWhiteSpace(request.TargetOverride) ? task.SourcePath : request.TargetOverride;
 
-        // 白名单：restore 目标必须位于数据根之下。校验前先 realpath 解析目标，
-        // 否则 /srv/nas/link → /etc 这类 symlink 可通过字符串校验，rsync --delete 会清空数据根外目录。
+        // Allowlist: the restore target must be under the data root. Resolve the target with realpath before validating,
+        // otherwise symlinks like /srv/nas/link → /etc could pass string validation and rsync --delete would wipe directories outside the data root.
         var dataRoot = FortOS.Modules.Share.Services.ShareValidation.ResolveDataRoot();
         var resolvedTarget = await ResolveRealPathAsync(process, target, ct).ConfigureAwait(false);
         if (!PathSafety.IsPathUnderRoot(resolvedTarget, dataRoot))
@@ -120,7 +120,7 @@ public sealed class BackupController : FortOSControllerBase
         return new { success = record.Success, taskId = task.TaskId, source, target = resolvedTarget, record.ExitCode, record.Stdout, record.Stderr, runId = record.RunId, state = record.State };
     }
 
-    /// <summary>用 realpath -m 解析路径的真实形式（展开已存在组件的 symlink，不要求路径存在）；失败时退回归一化路径。</summary>
+    /// <summary>Resolve the canonical form of a path with realpath -m (expands symlinks of existing components, does not require the path to exist); falls back to a normalized path on failure.</summary>
     private static async Task<string> ResolveRealPathAsync(IProcessManager process, string path, CancellationToken ct)
     {
         try
@@ -138,7 +138,7 @@ public sealed class BackupController : FortOSControllerBase
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // best-effort：realpath 不可用时退回归一化路径（至少保留对 .. 的防护）。
+            // best-effort: when realpath is unavailable, fall back to the normalized path (retains at least the guard against ..).
         }
 
         return PathSafety.NormalizePath(path);

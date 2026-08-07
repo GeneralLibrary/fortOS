@@ -1,16 +1,16 @@
 namespace FortOS.Installer.Core.Models;
 
-/// <summary>实际引导方式(替代 "uefi"/"bios" 魔法字符串)。</summary>
+/// <summary>Actual boot mode (replaces the "uefi"/"bios" magic strings).</summary>
 public enum BootModeKind
 {
     Uefi,
     Bios,
 }
 
-/// <summary>BootModeKind 辅助。</summary>
+/// <summary>BootModeKind helpers.</summary>
 public static class BootModeKindExtensions
 {
-    /// <summary>序列化用小写字符串(install-summary.json 的 BootMode 字段)。</summary>
+    /// <summary>Lowercase string for serialization (the BootMode field of install-summary.json).</summary>
     public static string ToLowerInvariant(this BootModeKind kind)
         => kind == BootModeKind.Uefi ? "uefi" : "bios";
 }

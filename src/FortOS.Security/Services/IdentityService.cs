@@ -24,7 +24,6 @@ public sealed class IdentityService : IIdentityService
     private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("fortos-dummy-password", 12);
     private readonly IDatabaseProvider _database;
     private readonly ITokenManager _tokenManager;
-    private readonly IFortOSConfiguration? _configuration;
     private readonly IReadOnlyList<ISystemUserProvisioner> _provisioners;
     private readonly ILogger<IdentityService>? _logger;
 
@@ -33,14 +32,12 @@ public sealed class IdentityService : IIdentityService
     /// </summary>
     /// <param name="database">Database provider.</param>
     /// <param name="tokenManager">Token manager.</param>
-    /// <param name="configuration">Optional configuration.</param>
     /// <param name="provisioners">Optional collection of system user provisioners (e.g., Samba user bridge).</param>
     /// <param name="logger">Optional logger.</param>
-    public IdentityService(IDatabaseProvider database, ITokenManager tokenManager, IFortOSConfiguration? configuration = null, IEnumerable<ISystemUserProvisioner>? provisioners = null, ILogger<IdentityService>? logger = null)
+    public IdentityService(IDatabaseProvider database, ITokenManager tokenManager, IEnumerable<ISystemUserProvisioner>? provisioners = null, ILogger<IdentityService>? logger = null)
     {
         _database = database;
         _tokenManager = tokenManager;
-        _configuration = configuration;
         _provisioners = provisioners?.ToArray() ?? [];
         _logger = logger;
     }
@@ -68,17 +65,17 @@ public sealed class IdentityService : IIdentityService
         if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
             var attempts = user.FailedAttempts + 1;
-            var lockedUntil = attempts >= 5 ? DateTimeOffset.UtcNow.AddMinutes(15) : (DateTimeOffset?)null;
+            var lockedUntil = attempts >= SecurityDefaults.MaxLoginFailures ? DateTimeOffset.UtcNow.Add(SecurityDefaults.LockoutDuration) : (DateTimeOffset?)null;
             await UpdateLoginStateAsync(connection, username, attempts, lockedUntil, ct).ConfigureAwait(false);
             return Failure(lockedUntil.HasValue ? "Account is locked, please try again in 15 minutes." : "Incorrect username or password.");
         }
 
         await UpdateLoginStateAsync(connection, username, 0, null, ct).ConfigureAwait(false);
         var capabilities = await ResolveCapabilitiesAsync(connection, user.RolesJson, ct).ConfigureAwait(false);
-        // 会话令牌一律附带刷新能力：刷新自己的 token 是已认证用户的自服务操作，
-        // 不应要求管理员权限（此前 CapabilityConvention 默认 admin:** 导致普通用户 403）。
+        // Session tokens always carry the refresh capability: refreshing one's own token is a self-service operation for an authenticated user,
+        // and must not require administrator rights (previously CapabilityConvention defaulted to admin:** and gave plain users a 403).
         capabilities = [.. capabilities, NAbilityConstants.SessionRefresh];
-        var token = await _tokenManager.IssueTokenAsync($"user:{username}", TokenType.Session, capabilities, 3, TimeSpan.FromHours(8), [$"user:{username}"], null, ct).ConfigureAwait(false);
+        var token = await _tokenManager.IssueTokenAsync($"user:{username}", TokenType.Session, capabilities, 3, SecurityDefaults.SessionTokenLifetime, [$"user:{username}"], null, ct).ConfigureAwait(false);
         var validation = await _tokenManager.ValidateTokenAsync(token, ct).ConfigureAwait(false);
         return new AuthResult { Success = true, NasToken = token, TokenPayload = validation.Payload };
     }
@@ -98,30 +95,6 @@ public sealed class IdentityService : IIdentityService
         }
 
         return VerifyTotp(secret, code) ? new AuthResult { Success = true } : Failure("TOTP verification failed.");
-    }
-
-    /// <inheritdoc />
-    public Task<AuthResult> AuthenticateLdapAsync(string domain, string username, string password, CancellationToken ct)
-    {
-        var section = _configuration?.GetSection("security:ldap") ?? new Dictionary<string, string>();
-        if (section.Count == 0 || !_configurationEnabled("security:ldap:enabled"))
-        {
-            return Task.FromResult(Failure("LDAP authentication not configured"));
-        }
-
-        return Task.FromResult(Failure("LDAP authentication configuration detected, but the current version does not include a directory binding client."));
-    }
-
-    /// <inheritdoc />
-    public Task<AuthResult> AuthenticateOAuthAsync(string provider, string authorizationCode, string? redirectUri, CancellationToken ct)
-    {
-        var section = _configuration?.GetSection("security:oauth") ?? new Dictionary<string, string>();
-        if (section.Count == 0 || !_configurationEnabled("security:oauth:enabled"))
-        {
-            return Task.FromResult(Failure("OAuth authentication not configured"));
-        }
-
-        return Task.FromResult(Failure("OAuth authentication configuration detected, but the current version does not include an OIDC client."));
     }
 
     /// <inheritdoc />
@@ -146,7 +119,7 @@ public sealed class IdentityService : IIdentityService
         }
 
         var capabilities = JsonSerializer.Deserialize<string[]>(capabilitiesJson, JsonOptions) ?? [];
-        var token = await _tokenManager.IssueTokenAsync($"service:{accountId}", TokenType.Service, capabilities, 2, TimeSpan.FromHours(1), [$"service:{accountId}"], null, ct).ConfigureAwait(false);
+        var token = await _tokenManager.IssueTokenAsync($"service:{accountId}", TokenType.Service, capabilities, 2, SecurityDefaults.ServiceTokenLifetime, [$"service:{accountId}"], null, ct).ConfigureAwait(false);
         var validation = await _tokenManager.ValidateTokenAsync(token, ct).ConfigureAwait(false);
         return new AuthResult { Success = true, NasToken = token, TokenPayload = validation.Payload };
     }
@@ -407,8 +380,6 @@ VALUES ($username, $password_hash, $display_name, $email, 0, NULL, $created_at, 
     }
 
     private static bool IsPasswordValid(string password) => password.Length >= 8 && password.Any(char.IsUpper) && password.Any(char.IsLower) && password.Any(char.IsDigit);
-
-    private bool _configurationEnabled(string key) => bool.TryParse(_configuration?.GetValue(key), out var enabled) && enabled;
 
     private static string Sha256Hex(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 

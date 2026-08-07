@@ -96,8 +96,8 @@ public sealed class ModuleHost : IModuleHost, IDisposable
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Failed to load module {Path}.", path);
-                    // 初始化失败必须释放 AssemblyLoadContext，否则 ALC 泄漏导致
-                    // 多次热替换后内存膨胀；candidate 已成功注册时此处为 null。
+                    // A failed initialization must still release the AssemblyLoadContext, otherwise an ALC leak causes
+                    // memory to balloon after repeated hot reloads; candidate is null here when it was already registered successfully.
                     candidate?.Dispose();
                     remaining.Remove(path);
                     progressed = true;
@@ -162,8 +162,8 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         }
         finally
         {
-            // ShutdownAsync 失败也必须释放模块资源（AssemblyLoadContext、事件订阅等），
-            // 否则已从 loaded 移除的旧模块继续运行，与重载后的新模块重复调度备份/事件。
+            // Module resources (AssemblyLoadContext, event subscriptions, etc.) must be released even if ShutdownAsync fails;
+            // otherwise the old module, already removed from loaded, keeps running and duplicates backup/event scheduling with the reloaded new module.
             entry.Dispose();
         }
     }
@@ -199,7 +199,7 @@ public sealed class ModuleHost : IModuleHost, IDisposable
         {
             try
             {
-                // 带超时的关闭：模块挂起（如等待外部服务）时宿主退出不能无限阻塞。
+                // Shutdown with a timeout: when a module hangs (e.g. waiting on an external service), host exit must not block indefinitely.
                 var shutdownTask = entry.Module.ShutdownAsync(CancellationToken.None);
                 if (!shutdownTask.Wait(TimeSpan.FromSeconds(5)))
                 {

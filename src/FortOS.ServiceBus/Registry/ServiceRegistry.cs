@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using FortOS.Core;
+using FortOS.ServiceBus.Supervisor;
 using Microsoft.Data.Sqlite;
 
 namespace FortOS.ServiceBus.Registry;
@@ -32,8 +33,10 @@ public sealed class ServiceRegistry : IServiceRegistry
         try
         {
             var cache = await EnsureLoadedNoLockAsync(ct).ConfigureAwait(false);
-            var graph = BuildGraph(cache.Values.Where(s => s.ServiceId != definition.ServiceId).Append(definition));
-            ThrowIfCircular(graph);
+            var definitions = cache.Values.Where(s => s.ServiceId != definition.ServiceId).Append(definition);
+            // Reuse the shared topological sort as the single cycle-detection implementation
+            // (SortLevels throws CircularDependencyException when the graph has a cycle).
+            _ = TopologySorter.SortLevels(definitions);
             await UpsertAsync(definition, ct).ConfigureAwait(false);
             cache[definition.ServiceId] = definition;
         }
@@ -74,8 +77,10 @@ public sealed class ServiceRegistry : IServiceRegistry
                 throw new ServiceNotFoundException($"Service does not exist: {definition.ServiceId}");
             }
 
-            var graph = BuildGraph(cache.Values.Where(s => s.ServiceId != definition.ServiceId).Append(definition));
-            ThrowIfCircular(graph);
+            var definitions = cache.Values.Where(s => s.ServiceId != definition.ServiceId).Append(definition);
+            // Reuse the shared topological sort as the single cycle-detection implementation
+            // (SortLevels throws CircularDependencyException when the graph has a cycle).
+            _ = TopologySorter.SortLevels(definitions);
             await UpsertAsync(definition, ct).ConfigureAwait(false);
             cache[definition.ServiceId] = definition;
         }
@@ -237,55 +242,5 @@ ON CONFLICT(service_id) DO UPDATE SET
         }
 
         await transaction.CommitAsync(ct).ConfigureAwait(false);
-    }
-
-    private static Dictionary<string, string[]> BuildGraph(IEnumerable<ServiceDefinition> definitions)
-        => definitions.ToDictionary(s => s.ServiceId, s => s.DependsOn.Distinct(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
-
-    private static void ThrowIfCircular(IReadOnlyDictionary<string, string[]> graph)
-    {
-        var states = new Dictionary<string, int>(StringComparer.Ordinal);
-        var stack = new List<string>();
-
-        foreach (var node in graph.Keys)
-        {
-            if (Visit(node, graph, states, stack, out var cycle))
-            {
-                throw new CircularDependencyException($"Service dependencies contain a cycle: {string.Join(" -> ", cycle)}");
-            }
-        }
-    }
-
-    private static bool Visit(string node, IReadOnlyDictionary<string, string[]> graph, Dictionary<string, int> states, List<string> stack, out IReadOnlyList<string> cycle)
-    {
-        cycle = Array.Empty<string>();
-        if (states.TryGetValue(node, out var state))
-        {
-            if (state == 1)
-            {
-                var index = stack.IndexOf(node);
-                cycle = stack.Skip(index).Append(node).ToArray();
-                return true;
-            }
-
-            return false;
-        }
-
-        states[node] = 1;
-        stack.Add(node);
-        if (graph.TryGetValue(node, out var dependencies))
-        {
-            foreach (var dependency in dependencies)
-            {
-                if (graph.ContainsKey(dependency) && Visit(dependency, graph, states, stack, out cycle))
-                {
-                    return true;
-                }
-            }
-        }
-
-        stack.RemoveAt(stack.Count - 1);
-        states[node] = 2;
-        return false;
     }
 }

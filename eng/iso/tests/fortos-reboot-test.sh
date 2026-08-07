@@ -2,19 +2,19 @@
 set -Eeuo pipefail
 
 # -------------------------------------------------------------------------
-# fortos-reboot-test.sh — FortOS 安装后重启引导测试(QEMU)。
+# fortos-reboot-test.sh — FortOS post-install reboot boot test (QEMU).
 #
-# 项目既有 installer-e2e.sh 只做「安装 + 离线断言」,从不从目标盘重新引导,
-# 因此「安装完成但重启即 VFS panic(如 ext4 extent 损坏 / initramfs 未生效)」
-# 这类回归完全漏网。本脚本补上最后一步:
-#   1. QEMU 启动 live ISO,驱动 fortos-installer 完成安装;
-#   2. 关闭 live 环境,直接从目标系统盘引导(BIOS/GRUB);
-#   3. 断言出现 "VFS: Mounted root"(成功)或捕获 panic / extent 错误(失败)。
+# The existing installer-e2e.sh only does "install + offline assertions" and never reboots from the target disk,
+# so regressions like "install completes but reboot gives a VFS panic (e.g. corrupt ext4 extent / initramfs not
+# effective)" slip through completely. This script adds that last step:
+#   1. QEMU boots the live ISO and drives fortos-installer to complete the installation;
+#   2. Shuts down the live environment and boots directly from the target system disk (BIOS/GRUB);
+#   3. Asserts that "VFS: Mounted root" appears (success) or captures a panic / extent error (failure).
 #
-# 用法: fortos-reboot-test.sh <iso-path> <result-directory> [if=scsi|virtio]
-#   if=scsi   用 LSI Logic SCSI 控制器(lsi53c895a,VMware 默认,贴近用户环境)
-#   if=virtio 用 virtio-blk(与 installer-e2e.sh 一致,对照组)
-# 配置盘固定用 virtio(设备名恒为 /dev/vdb,避免 guest 内循环遍历)。
+# Usage: fortos-reboot-test.sh <iso-path> <result-directory> [if=scsi|virtio]
+#   if=scsi   use the LSI Logic SCSI controller (lsi53c895a, VMware default, closer to user environments)
+#   if=virtio use virtio-blk (same as installer-e2e.sh, control group)
+# The config disk is always virtio (device name is always /dev/vdb, avoiding a loop scan inside the guest).
 # -------------------------------------------------------------------------
 readonly ISO_PATH="${1:?usage: fortos-reboot-test.sh <iso> <result-dir> [if=scsi|virtio] [rootfs=ext4|btrfs]}"
 readonly RESULT_DIR="${2:?result directory is required}"
@@ -29,12 +29,12 @@ case "${ROOT_FS}" in
     *) echo "error: rootfs must be ext4 or btrfs." >&2; exit 1 ;;
 esac
 
-# 系统盘设备名:scsi → /dev/sda;virtio → /dev/vda。
+# System disk device name: scsi -> /dev/sda; virtio -> /dev/vda.
 readonly SYSTEM_DEV="/dev/$([ "${IF}" = scsi ] && echo sda || echo vda)"
-# 目标 root 分区:swap=off 时布局为 p1 BIOS boot / p2 EFI / p3 root。
+# Target root partition: with swap=off the layout is p1 BIOS boot / p2 EFI / p3 root.
 readonly TARGET_ROOT="/dev/$([ "${IF}" = scsi ] && echo sda3 || echo vda3)"
-# 配置盘固定 virtio:scsi 场景下 virtio 总线只有配置盘 → vda;virtio 场景下
-# 系统盘先注册(vda)、配置盘其次(vdb)。
+# Config disk is always virtio: in the scsi scenario only the config disk is on the virtio bus -> vda;
+# in the virtio scenario the system disk registers first (vda) and the config disk second (vdb).
 readonly CFG_DEV="/dev/$([ "${IF}" = scsi ] && echo vda || echo vdb)"
 readonly BOOT_DIR="${RESULT_DIR}/boot"
 readonly CONFIG_MNT="${RESULT_DIR}/cfg"
@@ -54,8 +54,8 @@ done
 rm -rf "${RESULT_DIR}"
 mkdir -p "${BOOT_DIR}" "${CONFIG_MNT}"
 
-# 系统盘 QEMU 参数:scsi 用 -device lsi53c895a(q35 不支持 -drive if=scsi)。
-sys_drive_args() { # $1 = 盘文件
+# System disk QEMU arguments: scsi uses -device lsi53c895a (q35 does not support -drive if=scsi).
+sys_drive_args() { # $1 = disk file
     if [[ "${IF}" = scsi ]]; then
         echo "-drive file=$1,if=none,id=sys0,format=qcow2 -device lsi53c895a,id=scsi0 -device scsi-hd,drive=sys0,bus=scsi0.0,scsi-id=0"
     else
@@ -63,7 +63,7 @@ sys_drive_args() { # $1 = 盘文件
     fi
 }
 
-# --- 1. 提取 live 内核与 initrd --------------------------------------------
+# --- 1. Extract live kernel and initrd --------------------------------------------
 extract_live() {
     local path="$1" dest="$2"
     xorriso -osirrox on -indev "${ISO_PATH}" -extract "${path}" "${dest}" >/dev/null 2>&1
@@ -75,7 +75,7 @@ extract_live /live/initrd.img "${BOOT_DIR}/initrd.img" || extract_live /isolinux
     exit 1
 }
 
-# --- 2. install.yaml + vfat 配置盘 ------------------------------------------
+# --- 2. install.yaml + vfat config disk ------------------------------------------
 {
     cat <<YAML
 # FortOS reboot test: controller=${IF} rootfs=${ROOT_FS}
@@ -101,11 +101,11 @@ for f in "${CONFIG_MNT}"/*; do
     mcopy -i "${CONFIG_IMG}" "${f}" "::/$(basename "${f}")"
 done
 
-# --- 3. 目标虚拟盘 ----------------------------------------------------------
+# --- 3. Target virtual disk ----------------------------------------------------------
 rm -f "${SYSTEM_DISK}"
 qemu-img create -q -f qcow2 "${SYSTEM_DISK}" "20G"
 
-# --- 4. QEMU + expect 驱动安装 ----------------------------------------------
+# --- 4. QEMU + expect driven install ----------------------------------------------
 SYS_DRIVE_ARGS="$(sys_drive_args "${SYSTEM_DISK}")"
 cat > "${RESULT_DIR}/drive-install.exp" <<EXP
 #!/usr/bin/expect -f
@@ -143,7 +143,7 @@ expect {
     timeout { puts "TIMEOUT waiting for live shell"; exit 2 }
 }
 
-# 配置盘恒为 virtio;设备名由 CFG_DEV 传入(避免 guest 循环变量的 Tcl 冲突)。
+# The config disk is always virtio; the device name is passed via CFG_DEV (avoiding a Tcl conflict with the guest loop variable).
 send "sudo sh -c 'mkdir -p /mnt/cfg; mount \${cfg_dev} /mnt/cfg 2>/dev/null; test -f /mnt/cfg/install.yaml && exit 0; exit 1'\r"
 expect {
     -re {password for user:} { send "live\r"; exp_continue }
@@ -153,12 +153,12 @@ expect {
 send "sudo fortos-installer --config /mnt/cfg/install.yaml --yes\r"
 expect {
     "FortOS installation completed successfully." {
-        # 不依赖 guest 关机(实测 poweroff -f 偶发不生效导致 expect eof
-        # 永久阻塞);直接退出,由 bash 侧清理残留 QEMU 进程。
+        # Do not rely on guest shutdown (in practice poweroff -f is occasionally ineffective, leaving expect eof
+        # blocked forever); exit directly and let the bash side clean up the leftover QEMU process.
         exit 0
     }
     -re {safe to re-run} {
-        # 失败路径最后一行:等完整错误消息(含 "at step ...")落盘后再退出。
+        # Last line of the failure path: wait for the full error message (including "at step ...") to hit the log before exiting.
         puts "INSTALL FAILED (see serial log for step details)"
         exit 3
     }
@@ -174,8 +174,8 @@ timeout 45m expect "${RESULT_DIR}/drive-install.exp" \
     "${SYS_DRIVE_ARGS}" "${TARGET_ROOT}" "${CFG_DEV}"
 expect_exit=$?
 set -e
-# 清理安装阶段残留的 QEMU(guest 未随 expect 退出而关闭)。
-# 先 SIGTERM 让 QEMU 优雅退出并 flush qcow2 缓存,超时再 SIGKILL。
+# Clean up the QEMU left over from the install phase (the guest does not shut down when expect exits).
+# First SIGTERM lets QEMU exit gracefully and flush qcow2 caches; SIGKILL after a timeout.
 pkill -TERM -f "qemu-system-x86_64.*${SYSTEM_DISK}" 2>/dev/null || true
 for _ in $(seq 1 10); do
     pgrep -f "qemu-system-x86_64.*${SYSTEM_DISK}" >/dev/null 2>&1 || break
@@ -191,10 +191,10 @@ if [[ ${expect_exit} -ne 0 ]]; then
 fi
 echo "=== install phase OK ==="
 
-# --- 5. Host 侧注入 console=ttyS0(qemu-nbd 挂载目标盘改 grub.cfg) ---------
-# 重启观测需要内核日志经串口输出;安装后 grub.cfg 的 linux 行默认无
-# console=ttyS0(QEMU -display none 下 VGA 输出不可捕获)。在 host 侧用
-# qemu-nbd 直接改目标系统 grub.cfg(仅测试用途,绕开 guest 交互)。
+# --- 5. Host-side injection of console=ttyS0 (mount the target disk with qemu-nbd to edit grub.cfg) ---------
+# Rebooting observation needs kernel logs over the serial port; after install, the linux lines in grub.cfg
+# have no console=ttyS0 by default (VGA output cannot be captured with -display none). On the host,
+# edit the target system's grub.cfg directly via qemu-nbd (test-only, bypassing guest interaction).
 inject_console() {
     modprobe nbd max_part=8 2>/dev/null || true
     qemu-nbd --connect=/dev/nbd0 "${SYSTEM_DISK}"
@@ -206,8 +206,8 @@ inject_console() {
     done
     mkdir -p "${RESULT_DIR}/inject-mnt"
     mount /dev/nbd0p3 "${RESULT_DIR}/inject-mnt"
-    # 在每条内核命令行的行尾注入 console=ttyS0(仅普通/recovery 内核条目,
-    # grub 脚本指令行(if/set/export 等)不含 vmlinuz,不受影响)。
+    # Inject console=ttyS0 at the end of each kernel command line (only the normal/recovery kernel entries,
+    # grub script command lines (if/set/export etc.) contain no vmlinuz and are unaffected).
     sed -i 's#^\(\s*linux[0-9a-z]*\s*/boot/vmlinuz[^ ]*\)#\1 console=ttyS0,115200n8#' \
         "${RESULT_DIR}/inject-mnt/boot/grub/grub.cfg"
     grep -n "vmlinuz" "${RESULT_DIR}/inject-mnt/boot/grub/grub.cfg" | head -5
@@ -216,7 +216,7 @@ inject_console() {
 }
 inject_console
 
-# --- 6. 从目标盘重启引导,观测 ---------------------------------------------
+# --- 6. Reboot boot from the target disk and observe ---------------------------------------------
 rm -f "${REBOOT_SERIAL}"
 # shellcheck disable=SC2046
 timeout 180 qemu-system-x86_64 \
@@ -236,9 +236,9 @@ trap cleanup EXIT
 
 verdict="TIMEOUT"
 for i in $(seq 1 150); do
-    # 成功:ext4 路径打印 "VFS: Mounted root";btrfs 路径打印
-    # "BTRFS info (device ...): first mount"(无 VFS: Mounted root 字样);
-    # 两者最终都落到 login 提示。
+    # Success: the ext4 path prints "VFS: Mounted root"; the btrfs path prints
+    # "BTRFS info (device ...): first mount" (no "VFS: Mounted root" text);
+    # both eventually land on the login prompt.
     if grep -qE "VFS: Mounted root|BTRFS info \(device .*\): first mount|login:" "${REBOOT_SERIAL}" 2>/dev/null; then
         verdict="BOOT_OK"
         break
@@ -250,7 +250,7 @@ for i in $(seq 1 150); do
     sleep 1
 done
 
-sleep 3  # 留出 panic 尾部输出落盘
+sleep 3  # allow the tail of a panic output to be flushed to disk
 if [[ "${verdict}" == "BOOT_OK" ]]; then
     echo "=== REBOOT TEST PASSED: kernel mounted the root filesystem (if=${IF}) ==="
     grep -m1 "VFS: Mounted root" "${REBOOT_SERIAL}"

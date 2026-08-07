@@ -38,8 +38,8 @@ public sealed class BackupExecutionService
         var lease = await _leases.AcquireAsync($"backup:{task.TaskId}", _owner, TimeSpan.FromMinutes(15), ct).ConfigureAwait(false);
         if (lease is null) throw new BackupExecutionException("BACKUP_LEASE_CONFLICT", "This backup task is already held by another executor.");
 
-        // 执行期间持续续租：rsync 可能远超 15 分钟租约 TTL，不续租会让租约过期后
-        // 被其他执行者抢占，导致同一任务并发双写目标。
+        // Keep renewing the lease while executing: rsync can run far beyond the 15-minute lease TTL, so without renewal the lease expires and
+        // another executor may preempt the task, causing concurrent dual-writes to the same target.
         using var leaseRenewal = StartLeaseRenewal(lease, ct);
 
         var queued = new BackupRunRecord { RunId = runId, TaskId = task.TaskId, Operation = operation, State = BackupRunState.Queued, StartedAt = started, LeaseToken = lease.FencingToken };
@@ -80,9 +80,9 @@ public sealed class BackupExecutionService
                 await ApplyRetentionAsync(task, target, ct).ConfigureAwait(false);
             }
 
-            // 成功记录必须先落盘并确认，然后才允许清理 checkpoint：若先删 checkpoint
-            // 再写记录，任何 DB/IO 异常都会让 catch 分支尝试从已删除的 checkpoint
-            // 回滚 —— 恢复数据与备份副本同时丢失（数据双丢）。
+            // The success record must be persisted and confirmed before the checkpoint may be cleaned up: if the checkpoint is deleted
+            // before the record is written, any DB/IO exception would make the catch branch try to roll back from an already-deleted
+            // checkpoint, losing both the restored data and the backup copy (double data loss).
             var succeeded = queued with
             {
                 State = BackupRunState.Succeeded, Success = true, ExitCode = result.ExitCode, Stdout = result.Stdout, Stderr = result.Stderr,
@@ -90,12 +90,12 @@ public sealed class BackupExecutionService
             };
             await _runs.AppendAsync(succeeded, ct).ConfigureAwait(false);
 
-            // 记录确认后 checkpoint 才可清理；清理是 best-effort，失败不能掩盖
-            // 已确认的成功结果（残留的 checkpoint 由保留策略回收）。
+            // Only after the record is confirmed may the checkpoint be cleaned up; cleanup is best-effort, so a failure must not mask
+            // the already-confirmed success result (leftover checkpoints are reclaimed by the retention policy).
             if (checkpoint is not null) DeleteCheckpointBestEffort(checkpoint);
 
-            // 完成事件是通知语义：发布失败只记日志，绝不能把已成功的备份
-            // 拖入 catch 分支触发回滚。
+            // The completion event is notification-only: a publish failure is merely logged and must never drag a successful backup
+            // into the catch branch to trigger a rollback.
             try
             {
                 await _events.PublishAsync($"backup.task.{operation}.completed", "backup.task.completed", JsonSerializer.Serialize(new { task.TaskId, runId, lease = lease.FencingToken }), ct).ConfigureAwait(false);
@@ -108,9 +108,9 @@ public sealed class BackupExecutionService
         }
         catch (BackupExecutionException ex)
         {
-            // 业务失败（命令失败、清单校验失败等）发生在成功记录写入之前，checkpoint
-            // 此时必然仍在；仍加存在性检查以防保留策略恰好并发回收。只有真正回滚成功
-            // 才标记 RolledBack，否则如实标记 Failed。
+            // Business failures (command failure, manifest verification failure, etc.) occur before the success record is written, so the checkpoint
+            // must still exist at this point; the existence check is kept in case the retention policy concurrently reclaims it. Only an actual rollback
+            // marks the run RolledBack; otherwise it is truthfully marked Failed.
             var state = BackupRunState.Failed;
             if (checkpoint is not null && Directory.Exists(checkpoint) && RestoreCheckpoint(target, checkpoint))
             {
@@ -128,8 +128,8 @@ public sealed class BackupExecutionService
             // run record and remove the checkpoint — otherwise the run stays "Running" forever and
             // the checkpoint directory leaks. Cleanup is best-effort so it cannot mask the original
             // exception.
-            // 只有 checkpoint 仍然存在时才尝试回滚：成功路径已在写记录后清理 checkpoint，
-            // 若此时它已不存在，如实标记 Failed（标记 RolledBack 会误导审计与用户）。
+            // Only attempt a rollback if the checkpoint still exists: the success path already cleaned it up after writing the record, so
+            // if it is gone by now, truthfully mark Failed (marking RolledBack would mislead audits and users).
             var state = BackupRunState.Failed;
             if (checkpoint is not null && Directory.Exists(checkpoint) && RestoreCheckpoint(target, checkpoint))
             {
@@ -178,8 +178,8 @@ public sealed class BackupExecutionService
     }
 
     /// <summary>
-    /// 启动租约后台续期：每隔 5 分钟调用 <see cref="SqliteLeaseService.RenewAsync"/> 续一次
-    /// （TTL 15 分钟，留有充足余量）。续期失败只记警告并继续尝试，不中断主流程。
+    /// Starts background lease renewal: calls <see cref="SqliteLeaseService.RenewAsync"/> every 5 minutes
+    /// (TTL is 15 minutes, leaving ample headroom). Renewal failures are only logged as warnings and retried; the main flow is not interrupted.
     /// </summary>
     private IDisposable StartLeaseRenewal(LeaseHandle lease, CancellationToken ct)
     {
@@ -211,13 +211,13 @@ public sealed class BackupExecutionService
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
-                // 正常取消。
+                // Normal cancellation.
             }
         }, CancellationToken.None);
         return new LeaseRenewalHandle(task, cts);
     }
 
-    /// <summary>租约续期任务句柄：Dispose 时取消续期并等待任务收敛。</summary>
+    /// <summary>Lease renewal task handle: cancels renewal on Dispose and waits for the task to settle.</summary>
     private sealed class LeaseRenewalHandle(Task task, CancellationTokenSource cts) : IDisposable
     {
         public void Dispose()
@@ -229,7 +229,7 @@ public sealed class BackupExecutionService
             }
             catch (Exception ex) when (ex is AggregateException or TimeoutException)
             {
-                // best-effort：续期任务退出失败不阻塞主流程。
+                // best-effort: a renewal task failing to exit must not block the main flow.
             }
             finally
             {
@@ -260,7 +260,7 @@ public sealed class BackupExecutionService
         catch { return false; }
     }
 
-    /// <summary>删除 checkpoint 目录；失败仅记警告，不向上传播（清理不得掩盖成功结果）。</summary>
+    /// <summary>Deletes the checkpoint directory; failures are only logged as warnings and not propagated (cleanup must not mask a success).</summary>
     private void DeleteCheckpointBestEffort(string checkpoint)
     {
         try

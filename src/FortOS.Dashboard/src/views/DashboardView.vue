@@ -1,12 +1,12 @@
 <!--
   FortOS Dashboard — System Overview
 
-  布局原则:信息分块,但块之间聚合不碎片化。
-  - 顶部「系统状态」一块:CPU/内存/存储三环 + 运行时间/网络/告警/服务关键指标,
-    核心信息一眼看全,不再散成独立小卡。
-  - 中部两列:左「存储」(文件系统/磁盘标签切换),右「服务与告警」(标签切换)。
-  - 底部次要:网络接口、Agent 容器。
-  - 数据有效性:SMART/温度缺失显示 "—";无传感器时不显示温度;无冗余重复指标。
+  Layout principle: information is grouped into blocks, but blocks stay cohesive rather than fragmented.
+  - Top: a single "System Status" block — CPU/memory/storage gauges plus uptime/network/alerts/service key metrics,
+    so the core information is visible at a glance instead of scattered into separate small cards.
+  - Middle: two columns — left "Storage" (filesystem/disk tab switch), right "Services & Alerts" (tab switch).
+  - Bottom, secondary: network interfaces, Agent containers.
+  - Data validity: missing SMART/temperature shows "—"; temperature is hidden when no sensor exists; no redundant metrics.
 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, h } from 'vue'
@@ -209,16 +209,16 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
 
 <template>
   <div class="zs-dashboard">
-    <!-- ===== 系统状态:核心指标聚合成一块 ===== -->
+    <!-- ===== System status: core metrics consolidated into one block ===== -->
     <NCard class="zs-status-card" :bordered="true" size="small">
       <div class="zs-status-body">
-        <!-- 左:三环 -->
+        <!-- Left: three gauges -->
         <div class="zs-gauges">
           <component :is="renderGauge(cpuPct, 'CPU', cpuDetail)" />
           <component :is="renderGauge(memPct, 'RAM', memDetail)" />
           <component :is="renderGauge(storagePct, t('nav.storage'), storageDetail)" />
         </div>
-        <!-- 右:关键指标,紧凑排列 -->
+        <!-- Right: key metrics, compact layout -->
         <div class="zs-status-side">
           <component :is="statusItem(t('dashboard.hostUptime'), uptimeText, bootedAtText || undefined)" />
           <component :is="statusItem(
@@ -244,9 +244,9 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
       </div>
     </NCard>
 
-    <!-- ===== 详情区:两列,相关块合并 ===== -->
+    <!-- ===== Detail area: two columns, related blocks merged ===== -->
     <div class="zs-dashboard-grid">
-      <!-- 左列:存储 + 网络 -->
+      <!-- Left column: storage + network -->
       <div class="zs-dashboard-col">
         <NCard :title="t('nav.storage')" size="small" :bordered="true" class="zs-dashboard-card">
           <template #header-extra>
@@ -285,7 +285,7 @@ const alertColumns: DataTableColumns<ActiveAlert> = [
         </NCard>
       </div>
 
-      <!-- 右列:服务与告警 + Agent -->
+      <!-- Right column: services & alerts + Agent -->
       <div class="zs-dashboard-col">
         <NCard :title="t('dashboard.servicesStatus')" size="small" :bordered="true" class="zs-dashboard-card">
           <template #header-extra>
@@ -339,7 +339,7 @@ import { NTag, NProgress } from 'naive-ui'
   margin: 0 auto;
 }
 
-/* ---- 系统状态块 ---- */
+/* ---- System status block ---- */
 .zs-status-card {
   border-radius: var(--zs-radius-xl) !important;
   border-color: var(--zs-border) !important;
@@ -397,7 +397,7 @@ import { NTag, NProgress } from 'naive-ui'
   text-align: center;
 }
 
-/* 右侧关键指标:网格排列,紧凑不散落 */
+/* Right-side key metrics: grid layout, compact and tidy */
 .zs-status-side {
   flex: 1 1 320px;
   display: grid;
@@ -434,7 +434,7 @@ import { NTag, NProgress } from 'naive-ui'
   text-overflow: ellipsis;
 }
 
-/* ---- 详情区 ---- */
+/* ---- Detail area ---- */
 .zs-dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

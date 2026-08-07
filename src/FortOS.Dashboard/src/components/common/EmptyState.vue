@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Empty State
+  FortOS Dashboard — JiSpace-style Empty State
   Displayed when a list/table has no data. Uses NEmpty with theme-aware colors.
 -->
 <script setup lang="ts">

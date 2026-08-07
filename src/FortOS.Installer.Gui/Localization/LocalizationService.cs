@@ -3,9 +3,10 @@ using System.ComponentModel;
 namespace FortOS.Installer.Gui.Localization;
 
 /// <summary>
-/// 安装器界面文案的中/英资源服务(设计稿 §1.1 多语言缺失的落点)。
-/// ViewModel 暴露 <c>L</c> 后,XAML 以 <c>{Binding L[key]}</c> 引用;
-/// 语言切换触发索引器变更通知,全部已绑定文案即时更新。
+/// Chinese/English resource service for installer UI text (the implementation point for the missing
+/// localization in design spec §1.1).
+/// Once the ViewModel exposes <c>L</c>, XAML references it via <c>{Binding L[key]}</c>;
+/// language switching triggers the indexer change notification, and all bound texts update immediately.
 /// </summary>
 public sealed class LocalizationService : INotifyPropertyChanged
 {
@@ -17,10 +18,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
     {
     }
 
-    /// <summary>当前 UI 语言:<c>en</c> / <c>zh</c>。</summary>
+    /// <summary>Current UI language: <c>en</c> / <c>zh</c>.</summary>
     public string Language => _language;
 
-    /// <summary>按 key 取文案;缺失时回退英文,再缺失时返回 key 本身。</summary>
+    /// <summary>Gets text by key; falls back to English when missing, and returns the key itself if still missing.</summary>
     public string this[string key] => Get(key);
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -34,7 +35,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         return Strings["en"].TryGetValue(key, out var fallback) ? fallback : key;
     }
 
-    /// <summary>切换 UI 语言并通知所有索引器绑定。</summary>
+    /// <summary>Switches the UI language and notifies all indexer bindings.</summary>
     public void SetLanguage(string language)
     {
         var normalized = language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh" : "en";
@@ -47,17 +48,17 @@ public sealed class LocalizationService : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Language)));
     }
 
-    /// <summary>供 VM 的 get-only 资源属性调用(触发 PropertyChanged 通道)。</summary>
+    /// <summary>Called by get-only resource properties on VMs (triggers the PropertyChanged channel).</summary>
     public void NotifyAll() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
 
     // ------------------------------------------------------------------
-    // 文案表。key 即英文原文,便于缺失时回退。
+    // String table. The key is the English source text, so missing keys can fall back to English.
     // ------------------------------------------------------------------
     private static readonly Dictionary<string, Dictionary<string, string>> Strings = new()
     {
         ["en"] = new Dictionary<string, string>
         {
-            // 通用 / 导航
+            // General / navigation
             ["window.title"] = "FortOS Installer",
             ["nav.next"] = "Next ›",
             ["nav.back"] = "‹ Back",
@@ -65,13 +66,13 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["status.noNetwork"] = "No network",
             ["status.managementTip"] = "FortOS management address — open in a web browser on another machine.",
 
-            // 欢迎
+            // Welcome
             ["welcome.title"] = "FortOS",
             ["welcome.subtitle"] = "NAS operating system installer",
             ["welcome.language"] = "Language",
             ["welcome.keyboard"] = "Keyboard layout",
 
-            // 磁盘布局
+            // Disk layout
             ["disk.warning"] = "Choose the system disk. Everything on it will be ERASED.",
             ["disk.systemDisk"] = "System disk",
             ["disk.rootFs"] = "Root filesystem",
@@ -83,7 +84,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["disk.label"] = "Label",
             ["disk.noDisks"] = "No writable disks found.",
 
-            // 网络
+            // Network
             ["network.hostname"] = "Hostname",
             ["network.mode"] = "Mode",
             ["network.address"] = "IP address (CIDR, e.g. 192.168.1.10/24)",
@@ -99,7 +100,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["network.wifi.failed"] = "Connection failed: {0}",
             ["network.wifi.none"] = "No wireless networks found. Scan again or use a wired connection.",
 
-            // 账户
+            // Account
             ["account.username"] = "Admin username",
             ["account.timezone"] = "Timezone",
             ["account.password"] = "Password",
@@ -110,7 +111,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["strength.ok"] = "OK",
             ["strength.strong"] = "Strong",
 
-            // 确认
+            // Confirmation
             ["confirm.title"] = "Review your installation plan",
             ["confirm.warning"] = "After this point you cannot go back.",
             ["confirm.begin"] = "Begin installation",
@@ -122,12 +123,12 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["confirm.summary.admin"] = "Admin user:   ",
             ["confirm.summary.locale"] = "Language:     ",
 
-            // 执行
+            // Execution
             ["install.phase"] = "Phase: {0}",
             ["install.retry"] = "Retry",
             ["install.reboot"] = "Reboot",
 
-            // 完成
+            // Completion
             ["complete.title"] = "✓ Installation complete",
             ["complete.guidance"] = "Installation complete. Reboot and remove the installation media.\nOn first boot, FortOS runs the first-boot wizard to create the admin token and mount the data disk.",
             ["complete.reboot"] = "Reboot now",

@@ -45,7 +45,7 @@ message CreatePartitionRequest {
   string filesystem = 3;
   int64 start_bytes = 4;
   int64 size_bytes = 5;
-  // 破坏性操作：修改分区表前必须显式确认，与 HTTP 端一致。
+  // Destructive operation: must be explicitly confirmed before modifying the partition table, consistent with the HTTP endpoint.
   bool confirm = 6;
 }
 
@@ -54,7 +54,7 @@ message CreateRaidRequest {
   repeated string disk_paths = 2;
   string pool_name = 3;
   string filesystem = 4;
-  // 破坏性操作：创建 RAID 会擦除所选磁盘数据，必须显式确认。
+  // Destructive operation: creating a RAID erases the selected disks' data and must be explicitly confirmed.
   bool confirm = 5;
 }
 

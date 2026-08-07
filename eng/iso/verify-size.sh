@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # -------------------------------------------------------------------------
-# verify-size.sh — FortOS ISO 体积护栏(设计稿 §8.5)
+# verify-size.sh — FortOS ISO size guardrail (design doc §8.5)
 #
-# 验收基准:图形安装器栈的镜像增量 ≤ 300 MiB。基线取自「无图形栈」的
-# FortOS ISO 大小。无基线时本脚本打印大小作为参考(CI 通过 workflow 输入
-# size_baseline 显式传入上一次构建的大小以强制执行增量预算)。
+# Acceptance baseline: the image delta of the graphical installer stack must be <= 300 MiB. The baseline comes from the
+# "no graphics stack" FortOS ISO size. Without a baseline this script only prints the size as a reference (CI passes
+# size_baseline explicitly via a workflow input with the previous build's size to enforce the delta budget).
 #
-# 用法:
-#   verify-size.sh <iso-path>                    # 打印大小(作为参考基线)
-#   verify-size.sh <iso-path> <baseline-bytes>   # 断言增量 ≤ 300 MiB
+# Usage:
+#   verify-size.sh <iso-path>                    # print the size (as a reference baseline)
+#   verify-size.sh <iso-path> <baseline-bytes>   # assert the delta is <= 300 MiB
 #
-# 退出码:0 通过;1 缺失/超限。
+# Exit codes: 0 pass; 1 missing / over budget.
 # -------------------------------------------------------------------------
 set -Eeuo pipefail
 

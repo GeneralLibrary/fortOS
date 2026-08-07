@@ -7,8 +7,8 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 第 3 页:网络配置。DHCP 为默认;可选静态地址;
-/// 无线网络经 nmcli(NetworkManager)扫描与连接,连接成功后由 DHCP 获取地址。
+/// Page 3: network configuration. DHCP is the default; a static address is optional;
+/// wireless networks are scanned and connected via nmcli (NetworkManager); after a successful connection the address is obtained via DHCP.
 /// </summary>
 public partial class NetworkViewModel : ViewModelBase, IWizardPage
 {
@@ -58,7 +58,7 @@ public partial class NetworkViewModel : ViewModelBase, IWizardPage
         !string.IsNullOrWhiteSpace(Hostname) &&
         (Mode == NetworkMode.Dhcp || !string.IsNullOrWhiteSpace(Address));
 
-    /// <summary>静态模式时显示 IP/网关/DNS 输入。</summary>
+    /// <summary>Shows the IP/gateway/DNS inputs in static mode.</summary>
     public bool ShowStaticFields => Mode == NetworkMode.Static;
 
     partial void OnModeChanged(NetworkMode value)
@@ -71,7 +71,7 @@ public partial class NetworkViewModel : ViewModelBase, IWizardPage
 
     partial void OnAddressChanged(string value) => RaiseIsValidChanged();
 
-    /// <summary>扫描无线网络并填充列表(可重复扫描刷新)。</summary>
+    /// <summary>Scans wireless networks and fills the list (can be re-scanned to refresh).</summary>
     [RelayCommand]
     private async Task ScanWifiAsync()
     {
@@ -103,7 +103,7 @@ public partial class NetworkViewModel : ViewModelBase, IWizardPage
         }
     }
 
-    /// <summary>连接选中的无线网络。</summary>
+    /// <summary>Connects to the selected wireless network.</summary>
     [RelayCommand]
     private async Task ConnectWifiAsync()
     {

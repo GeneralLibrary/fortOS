@@ -291,7 +291,7 @@ public sealed class AgentModule : NasModuleBase
         var mappings = config.VolumeMapping.Length == 0
             ? [new VolumeMapping
                 {
-                    HostPath = Path.Combine(GetDataRoot(), "agents-data", config.AgentId),
+                    HostPath = Path.Combine(FortOS.Core.PathSafety.ResolveDataRoot(Environment.GetEnvironmentVariable("FortOS_DATA_ROOT")), "agents-data", config.AgentId),
                     ContainerPath = "/data",
                     ReadOnly = false,
                 }]
@@ -411,8 +411,8 @@ public sealed class AgentModule : NasModuleBase
             throw new InvalidOperationException($"Docker 不可用，无法部署 Agent。请确认 docker 引擎与 socket 可访问：{TrimError(result.Stderr)}");
         }
 
-        // docker compose 插件缺失是最隐蔽的部署失败点：docker 本体正常但 `docker compose` 子命令
-        // 不存在时，compose up 会报 "docker: 'compose' is not a docker command"。
+        // A missing docker compose plugin is the most subtle deployment failure point: docker itself is
+        // fine but without the `docker compose` subcommand, compose up errors "docker: 'compose' is not a docker command".
         var compose = await processManager.ExecuteCommandAsync(new ProcessStartConfig
         {
             ExecutablePath = "docker",
@@ -554,16 +554,10 @@ public sealed class AgentModule : NasModuleBase
         }
 
         var roots = configured.Length == 0
-            ? [GetDataRoot()]
+            ? [PathSafety.ResolveDataRoot(Environment.GetEnvironmentVariable("FortOS_DATA_ROOT"))]
             : configured;
 
-        return roots.Select(FortOS.Core.PathSafety.NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-    }
-
-    private static string GetDataRoot()
-    {
-        var root = Environment.GetEnvironmentVariable("FortOS_DATA_ROOT");
-        return string.IsNullOrWhiteSpace(root) ? "/srv/nas" : root;
+        return roots.Select(PathSafety.NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static bool IsAbsolutePath(string path)

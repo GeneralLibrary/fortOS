@@ -3,7 +3,7 @@ using FortOS.Installer.Core.Models;
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>mkfs.*</c> / <c>mkswap</c> 适配器:文件系统格式化。
+/// <c>mkfs.*</c> / <c>mkswap</c> adapter: file system formatting.
 /// </summary>
 public sealed class MkfsTool : ITool
 {
@@ -14,7 +14,7 @@ public sealed class MkfsTool : ITool
 
     public string Name => "mkfs";
 
-    /// <summary>格式化设备为指定文件系统。label 为空时省略卷标参数。</summary>
+    /// <summary>Formats a device with the specified file system. When label is empty, the label parameter is omitted.</summary>
     public async Task FormatAsync(string device, PartitionFs fs, string? label, CancellationToken ct)
     {
         (var fileName, var args) = BuildCommand(device, fs, label);
@@ -42,13 +42,13 @@ public sealed class MkfsTool : ITool
                 args.Add("32");
                 break;
             case PartitionFs.Ext4:
-                // mkfs.ext4 的 force 选项是大写 -F(小写 -f 是 mkfs.xfs 的,
-                // ext4 传 -f 会报 "invalid option" 直接失败)。
+                // mkfs.ext4's force option is the uppercase -F (lowercase -f belongs to mkfs.xfs;
+                // passing -f to ext4 fails immediately with "invalid option").
                 args.Add("-F");
                 break;
             case PartitionFs.Xfs:
             case PartitionFs.Btrfs:
-                args.Add("-f"); // force,覆盖残留签名
+                args.Add("-f"); // force, overwriting leftover signatures
                 break;
             case PartitionFs.Swap:
                 break;
@@ -56,7 +56,7 @@ public sealed class MkfsTool : ITool
 
         if (!string.IsNullOrEmpty(label))
         {
-            // dosfstools 用 -n 设卷标;ext4/btrfs/xfs/swap 用 -L。
+            // dosfstools uses -n to set the label; ext4/btrfs/xfs/swap use -L.
             args.Add(fs == PartitionFs.Vfat ? "-n" : "-L");
             args.Add(label);
         }

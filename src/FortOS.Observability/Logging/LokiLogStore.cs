@@ -23,9 +23,10 @@ public sealed class LokiLogStore : ILogStore
     {
         _url = configuration?.GetValue("logging:loki:url");
         _enabled = !string.IsNullOrWhiteSpace(_url);
-        // 超时不设置到 HttpClient：全局 Timeout 抛出的 TaskCanceledException 与外部取消无法
-        // 区分，曾导致日志管道消费者被误杀（整个日志系统死锁）。改为每次推送使用独立的
-        // 超时 CTS（见 AppendAsync），外部取消与内部超时清晰分离。
+        // Timeout is not set on the HttpClient: the TaskCanceledException thrown by the global Timeout cannot be
+        // distinguished from an external cancellation, and once killed the log pipeline consumer by mistake (the whole
+        // logging system deadlocked). Instead each push uses an independent timeout CTS (see AppendAsync), so external
+        // cancellation and internal timeouts are cleanly separated.
         _httpClient = httpClient ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         _logger = logger;
     }
@@ -58,7 +59,7 @@ public sealed class LokiLogStore : ILogStore
                     }
                 }
             };
-            // 独立超时：Loki 挂起时只取消本次推送，绝不传播到管道消费者。
+            // Independent timeout: when Loki hangs, only this push is canceled; it never propagates to the pipeline consumer.
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
             using var response = await _httpClient.PostAsJsonAsync(endpoint, payload, timeoutCts.Token).ConfigureAwait(false);
@@ -69,7 +70,7 @@ public sealed class LokiLogStore : ILogStore
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            // 捕获内部超时与网络错误（记录一次）；外部取消（ct 已请求）则继续向上传播。
+            // Catch internal timeouts and network errors (reported once); an external cancellation (ct already requested) keeps propagating upward.
             ReportFailureOnce("Loki unreachable, skipping log push.", ex);
         }
     }

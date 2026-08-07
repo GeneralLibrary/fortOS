@@ -4,8 +4,8 @@ using FortOS.Installer.Core.Session;
 namespace FortOS.Installer.Core.Logging;
 
 /// <summary>
-/// 内存环形日志缓冲(设计稿 5.1):UI 实时日志 + 完成后落盘。
-/// 容量有限,最旧的条目被丢弃。
+/// In-memory ring log buffer (design doc 5.1): real-time UI logs + persistence on completion.
+/// The capacity is limited and the oldest entries are dropped.
 /// </summary>
 public sealed class RingLog
 {
@@ -18,7 +18,7 @@ public sealed class RingLog
         _capacity = capacity;
     }
 
-    /// <summary>新日志条目(供 UI 实时滚动)。</summary>
+    /// <summary>New log entry (for real-time UI scrolling).</summary>
     public event Action<InstallLogEntry>? EntryAdded;
 
     public void Info(string message) => Add("INFO", message);
@@ -39,6 +39,6 @@ public sealed class RingLog
         EntryAdded?.Invoke(entry);
     }
 
-    /// <summary>当前全部条目快照(安装完成后落盘)。</summary>
+    /// <summary>Snapshot of all current entries (persisted after installation completes).</summary>
     public IReadOnlyList<InstallLogEntry> Snapshot() => [.. _entries];
 }

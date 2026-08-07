@@ -6,8 +6,8 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 第 2 页:磁盘布局(设计稿 4)。系统盘将被清盘(红色警示由 View 表达);
-/// 数据盘 v1 支持单盘或暂不配置。
+/// Page 2: disk layout (design spec 4). The system disk will be wiped (the red warning is expressed by the View);
+/// the data disk supports a single disk or none for v1.
 /// </summary>
 public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
 {
@@ -28,8 +28,8 @@ public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
     public IReadOnlyList<SwapMode> SwapOptions { get; } = Enum.GetValues<SwapMode>();
 
     /// <summary>
-    /// 数据盘布局选项。GUI 仅暴露「单盘 / 暂不配置」;RAID 与 LUKS 通过
-    /// install.yaml(headless 路径)配置,故此处不显示。
+    /// Data disk layout options. The GUI only exposes "single disk / none"; RAID and LUKS are configured
+    /// via install.yaml (headless path), so they are not shown here.
     /// </summary>
     public IReadOnlyList<DataDiskMode> DataModeOptions { get; } = [DataDiskMode.None, DataDiskMode.Single];
 
@@ -62,10 +62,10 @@ public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
     [ObservableProperty]
     private string _error = string.Empty;
 
-    /// <summary>数据盘单盘模式时显示数据盘选择面板。</summary>
+    /// <summary>Shows the data disk selection panel when the data disk mode is single.</summary>
     public bool ShowDataDiskPanel => DataMode == DataDiskMode.Single;
 
-    /// <summary>swap 为固定大小时显示大小输入。</summary>
+    /// <summary>Shows the size input when swap is a fixed size.</summary>
     public bool ShowSwapSize => SwapMode == SwapMode.Fixed;
 
     public bool IsBusy { get; private set; }
@@ -77,7 +77,7 @@ public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
         (SwapMode != SwapMode.Fixed || long.TryParse(SwapSizeMiB, out var size) && size > 0) &&
         string.IsNullOrEmpty(Error);
 
-    /// <summary>加载磁盘列表(首次进入页面时调用;失败可在页内重试)。</summary>
+    /// <summary>Loads the disk list (called when first entering the page; on failure it can be retried on the page).</summary>
     public async Task LoadAsync()
     {
         if (_loaded || IsBusy)
@@ -95,9 +95,9 @@ public partial class DiskLayoutViewModel : ViewModelBase, IWizardPage
                 Disks.Add(disk);
             }
 
-            // 安全优先：绝不自动预选系统盘。系统盘将被整盘清空（PartitionStep 执行
-            // sgdisk --zap-all），自动选中第一块盘在多盘机器上极易误清装有数据的盘；
-            // 必须由用户在确认目标盘路径后显式选择，IsValid 才会放行进入下一步。
+            // Safety first: never auto-preselect the system disk. The system disk will be fully wiped (PartitionStep runs
+            // sgdisk --zap-all); auto-selecting the first disk on a multi-disk machine could easily wipe a disk with data;
+            // the user must explicitly select the target disk path, and only then does IsValid allow advancing.
             Error = Disks.Count == 0 ? L["disk.noDisks"] : string.Empty;
             _loaded = true;
         }

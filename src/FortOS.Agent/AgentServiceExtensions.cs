@@ -17,7 +17,7 @@ public static class AgentServiceExtensions
     /// </summary>
     /// <param name="services">Service collection.</param>
     /// <returns>Service collection.</returns>
-    public static IServiceCollection AddAgentServices(this IServiceCollection services)
+    public static IServiceCollection AddFortOSAgent(this IServiceCollection services)
     {
         services.AddSingleton<AgentTokenRegistry>();
         services.AddSingleton<IAgentCatalog, AgentCatalog>();

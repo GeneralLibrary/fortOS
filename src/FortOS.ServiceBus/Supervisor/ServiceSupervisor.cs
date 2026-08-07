@@ -40,7 +40,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         _serviceProvider = serviceProvider;
         _logger = logger;
         _crashSubscription = _eventBus.Subscribe("service.*.crashed", OnCrashedAsync);
-        // agent 容器崩溃同样走崩溃重启策略（此前只订阅 service.*，agent 崩溃不触发重启）。
+        // Agent container crashes also go through the crash-restart policy (previously only service.* was subscribed, so agent crashes did not trigger a restart).
         _agentCrashSubscription = _eventBus.Subscribe("agent.*.crashed", OnCrashedAsync);
     }
 
@@ -215,7 +215,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         }
         finally
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeout = new CancellationTokenSource(ServiceBusDefaults.ShutdownTimeout);
             await ShutdownAllAsync(timeout.Token).ConfigureAwait(false);
         }
     }
@@ -223,7 +223,10 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
     /// <inheritdoc />
     public override void Dispose()
     {
+        // Release both crash subscriptions; leaking _agentCrashSubscription would keep
+        // the supervisor attached to the event bus after shutdown.
         _crashSubscription.Dispose();
+        _agentCrashSubscription.Dispose();
         foreach (var gate in _locks.Values)
         {
             gate.Dispose();
@@ -264,7 +267,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
+            await Task.Delay(ServiceBusDefaults.HealthyWaitPollInterval, ct).ConfigureAwait(false);
         }
 
         throw new TimeoutException($"Service health check did not become Healthy within the timeout period: {serviceId}");
@@ -283,8 +286,8 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
             var definition = await _registry.GetAsync(serviceId, ct).ConfigureAwait(false)
                 ?? throw new ServiceNotFoundException($"Service does not exist: {serviceId}");
 
-            // 显式停止后到达的迟到/回放 crash 事件：保持 Stopped 状态，绝不「复活」
-            // 用户已停止的服务。
+            // Late/replayed crash events arriving after an explicit stop: keep the Stopped state and never "revive"
+            // a service the user has stopped.
             if (IsExplicitlyStopped(serviceId))
             {
                 return;
@@ -311,7 +314,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         }
     }
 
-    /// <summary>判断服务是否被显式停止（用户操作或依赖停止导致）。</summary>
+    /// <summary>Determines whether a service was explicitly stopped (by a user action or because a dependency stopped).</summary>
     private bool IsExplicitlyStopped(string serviceId)
         => _statuses.TryGetValue(serviceId, out var status) && status.Status == ServiceStatus.Stopped;
 
@@ -320,13 +323,13 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         // Every restart policy (except Never, which the caller already filtered) goes through the
         // same exponential backoff: a crash-looping service must not hammer the host with
         // zero-delay restarts. The counter resets after 10 minutes of stability.
-        if (_startedAt.TryGetValue(definition.ServiceId, out var start) && DateTimeOffset.UtcNow - start >= TimeSpan.FromMinutes(10))
+        if (_startedAt.TryGetValue(definition.ServiceId, out var start) && DateTimeOffset.UtcNow - start >= ServiceBusDefaults.BackoffResetAfter)
         {
             _backoffAttempts[definition.ServiceId] = 0;
         }
 
         var attempt = _backoffAttempts.AddOrUpdate(definition.ServiceId, 1, (_, value) => value + 1);
-        var seconds = Math.Min(60, 1 << Math.Min(5, attempt - 1));
+        var seconds = Math.Min(ServiceBusDefaults.MaxBackoffSeconds, 1 << Math.Min(ServiceBusDefaults.MaxBackoffShift, attempt - 1));
         return TimeSpan.FromSeconds(seconds);
     }
 
@@ -377,7 +380,7 @@ public sealed class ServiceSupervisor : BackgroundService, IServiceSupervisor
         return parts[0] switch
         {
             "service" => parts[1],
-            // agent.{AgentId}.crashed：Agent 注册的 ServiceId 为 agent-{AgentId}。
+            // agent.{AgentId}.crashed: the ServiceId registered by an Agent is agent-{AgentId}.
             "agent" => "agent-" + parts[1],
             _ => null,
         };

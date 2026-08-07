@@ -10,7 +10,7 @@ namespace FortOS.ServiceBus.Events;
 /// </summary>
 public sealed class EventBus : IEventBus, IDisposable
 {
-    /// <summary>每个订阅的事件队列容量：消费者缓慢/挂起时丢弃新事件而非无界积压。</summary>
+    /// <summary>Per-subscription event queue capacity: drops new events when the consumer is slow/hung instead of unbounded backlogging.</summary>
     private const int SubscriptionCapacity = 256;
 
     private readonly ConcurrentDictionary<Guid, Subscription> _subscriptions = new();
@@ -34,9 +34,9 @@ public sealed class EventBus : IEventBus, IDisposable
         {
             if (TopicMatcher.IsMatch(subscription.Pattern, envelope.Topic))
             {
-                // 有界背压：消费者缓慢/挂起时 TryWrite 失败则丢弃新事件并计数
-                // （限频告警），避免无界 channel 让内存无限增长拖垮宿主。
-                // 事件多为状态/进度通知，丢中间值优于丢整个订阅。
+                // Bounded backpressure: when the consumer is slow/hung, a failed TryWrite drops the new event and counts it
+                // (rate-limited alert), preventing an unbounded channel from growing memory without limit and taking down the host.
+                // Most events are state/progress notifications; dropping an intermediate value beats dropping the whole subscription.
                 if (!subscription.Writer.TryWrite(envelope))
                 {
                     var dropped = Interlocked.Increment(ref subscription.Dropped);
@@ -63,8 +63,8 @@ public sealed class EventBus : IEventBus, IDisposable
         ArgumentNullException.ThrowIfNull(handler);
 
         var id = Guid.NewGuid();
-        // 有界队列 + DropWrite：满时丢弃新事件（由 PublishAsync 计数并告警），
-        // 防止慢消费者（邮件/Webhook/磁盘写）导致事件在内存中无限积压。
+        // Bounded queue + DropWrite: when full, new events are dropped (counted and alerted by PublishAsync),
+        // preventing slow consumers (email/Webhook/disk writes) from backing up events in memory without limit.
         var channel = Channel.CreateBounded<EventEnvelope>(new BoundedChannelOptions(SubscriptionCapacity)
         {
             FullMode = BoundedChannelFullMode.DropWrite,
@@ -137,7 +137,7 @@ public sealed class EventBus : IEventBus, IDisposable
         public CancellationTokenSource Cancellation { get; } = cancellation;
         public Task? Consumer { get; set; }
 
-        /// <summary>因队列满而被丢弃的事件计数（用于限频告警）。</summary>
+        /// <summary>Count of events dropped due to a full queue (used for rate-limited alerts).</summary>
         public long Dropped;
     }
 

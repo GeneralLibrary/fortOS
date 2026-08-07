@@ -7,8 +7,8 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 主窗口 VM:组装向导页,负责把页面输入编译为 InstallConfig 并驱动执行。
-/// 依赖通过工厂注入,便于无头测试。
+/// Main window VM: assembles the wizard pages, compiles page input into InstallConfig, and drives execution.
+/// Dependencies are injected via factories, making headless testing easy.
 /// </summary>
 public partial class MainWindowViewModel : ViewModelBase
 {
@@ -33,7 +33,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         ManagementAddress = Networking.NetworkInfo.ManagementUrl() ?? string.Empty;
 
-        // 语言切换时刷新占位文案("No network"/"未检测到网络")。
+        // Refresh the placeholder text on language switch ("No network" / "No network detected").
         Localization.LocalizationService.Current.PropertyChanged += (_, _) => OnPropertyChanged(nameof(ManagementDisplay));
     }
 
@@ -51,24 +51,24 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public CompleteViewModel Complete { get; }
 
-    /// <summary>左下角状态栏:FortOS 管理入口地址(空表示未检测到网络)。</summary>
+    /// <summary>Bottom-left status bar: FortOS management address (empty means no network detected).</summary>
     [ObservableProperty]
     private string _managementAddress = string.Empty;
 
-    /// <summary>状态栏展示值:无网络时显示占位符。</summary>
+    /// <summary>Status bar display value: shows a placeholder when there is no network.</summary>
     public string ManagementDisplay => string.IsNullOrEmpty(ManagementAddress) ? L["status.noNetwork"] : ManagementAddress;
 
     partial void OnManagementAddressChanged(string value) => OnPropertyChanged(nameof(ManagementDisplay));
 
-    /// <summary>进入磁盘页时加载磁盘列表。</summary>
+    /// <summary>Loads the disk list when entering the disk page.</summary>
     [RelayCommand]
     private Task LoadDisksAsync() => DiskLayout.LoadAsync();
 
-    /// <summary>安装页「开始安装」:校验后启动引擎(按钮已位于执行页,无需跳转)。</summary>
+    /// <summary>Install page "Begin installation": validates then starts the engine (the button is already on the execution page, no navigation needed).</summary>
     [RelayCommand]
     private async Task BeginInstallAsync()
     {
-        // 防御:进入执行前必须确认目标盘已选。
+        // Defense: the target disk must be confirmed selected before entering execution.
         if (DiskLayout.SelectedSystemDisk is null)
         {
             return;
@@ -76,7 +76,7 @@ public partial class MainWindowViewModel : ViewModelBase
         await Install.StartCommand.ExecuteAsync(BuildInstallConfig());
     }
 
-    /// <summary>把各页输入编译为引擎配置(与 install.yaml 相同的 schema)。</summary>
+    /// <summary>Compiles each page's input into the engine configuration (same schema as install.yaml).</summary>
     public InstallConfig BuildInstallConfig() => new()
     {
         SystemDisk = DiskLayout.SelectedSystemDisk!.Path,

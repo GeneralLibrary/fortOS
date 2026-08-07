@@ -3,9 +3,9 @@ using FortOS.Installer.Core.Exceptions;
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>blkid</c> 适配器:读取块设备上的文件系统 UUID(设计稿 5.4)。
-/// 独立于 <see cref="LsblkTool"/>:loop 等设备上 lsblk 的内核块属性在 mkfs 后
-/// 可能不刷新,而 blkid 直接探测磁盘,结果可靠。
+/// <c>blkid</c> adapter: reads the file system UUID on block devices (design draft 5.4).
+/// Independent of <see cref="LsblkTool"/>: on devices such as loop, lsblk's kernel block attributes
+/// may not refresh after mkfs, whereas blkid probes the disk directly and the result is reliable.
 /// </summary>
 public sealed class BlkidTool : ITool
 {
@@ -16,7 +16,7 @@ public sealed class BlkidTool : ITool
     public string Name => "blkid";
 
     /// <summary>
-    /// 返回设备的文件系统 UUID;无文件系统(如 BIOS boot 分区)或 blkid 不可用时返回 null。
+    /// Returns the device's file system UUID; returns null when there is no file system (e.g. a BIOS boot partition) or blkid is unavailable.
     /// </summary>
     public async Task<string?> GetUuidAsync(string devicePath, CancellationToken ct)
     {

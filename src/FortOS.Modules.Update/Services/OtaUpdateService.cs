@@ -18,7 +18,7 @@ public sealed class OtaUpdateService
         this.rootDirectory = rootDirectory;
     }
 
-    /// <summary>更新包最大体积（2 GiB）：防止恶意/异常 URL 无限下载填满磁盘。</summary>
+    /// <summary>Maximum update package size (2 GiB): prevents a malicious or abnormal URL from downloading endlessly and filling the disk.</summary>
     private const long MaxPackageBytes = 2L * 1024 * 1024 * 1024;
 
     /// <summary>Download the update package to the staging directory and verify SHA256.</summary>
@@ -30,8 +30,8 @@ public sealed class OtaUpdateService
             Directory.CreateDirectory(staging);
             var filePath = Path.Combine(staging, Path.GetFileName(packageUri.LocalPath));
 
-            // 先读响应头校验 Content-Length，再流式下载并在写入时计数：
-            // 双重防护，缺省或虚假的 Content-Length 也无法绕过大小上限。
+            // Validate Content-Length from the response headers first, then stream the download while counting bytes written:
+            // dual protection so a missing or bogus Content-Length cannot bypass the size limit.
             using var response = await httpClient.GetAsync(packageUri, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength is > MaxPackageBytes)
@@ -90,8 +90,8 @@ public sealed class OtaUpdateService
 
     /// <summary>
     /// Rollback to the previous version in the previous directory.
-    /// 使用 rename 原子切换：任何时刻 current 都是完整可用的版本（旧版或回滚版），
-    /// 崩溃不会留下残缺的 current（旧实现先删 current 再逐文件复制，中途失败即丢版本）。
+    /// Uses an atomic rename switch: at any moment current is a fully usable version (the old or the rolled-back one), so a
+    /// crash never leaves a partial current (the old implementation deleted current first and then copied file by file, losing the version on a mid-way failure).
     /// </summary>
     public Task RollbackAsync(CancellationToken ct)
     {
@@ -105,7 +105,7 @@ public sealed class OtaUpdateService
 
         ct.ThrowIfCancellationRequested();
 
-        // 1. 若 current 存在，先原子挪到临时名：保留旧版，失败时可原样恢复。
+        // 1. If current exists, atomically move it to a temporary name: the old version is preserved and can be restored as-is on failure.
         if (Directory.Exists(current))
         {
             if (Directory.Exists(backup)) Directory.Delete(backup, recursive: true);
@@ -114,12 +114,12 @@ public sealed class OtaUpdateService
 
         try
         {
-            // 2. previous → current：同文件系统内的 rename 是原子操作。
+            // 2. previous → current: a rename within the same filesystem is atomic.
             Directory.Move(previous, current);
         }
         catch
         {
-            // 3. 切换失败：把临时名挪回 current，保持原状后重新抛出。
+            // 3. Switch failed: move the temporary name back to current, restoring the original state, then rethrow.
             if (Directory.Exists(backup) && !Directory.Exists(current))
             {
                 Directory.Move(backup, current);
@@ -128,7 +128,7 @@ public sealed class OtaUpdateService
             throw;
         }
 
-        // 4. 成功：清理临时副本。
+        // 4. Success: clean up the temporary copy.
         if (Directory.Exists(backup)) Directory.Delete(backup, recursive: true);
         return Task.CompletedTask;
     }

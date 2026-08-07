@@ -2,21 +2,21 @@
 set -Eeuo pipefail
 
 # -------------------------------------------------------------------------
-# test-boot.sh — FortOS ISO 引导冒烟测试(QEMU)。
+# test-boot.sh — FortOS ISO boot smoke test (QEMU).
 #
-# 从 ISO 的默认 boot 菜单启动(默认项「FortOS Graphical Installer」→
-# live 环境),等待 fortos-installer-diag.service 通过 ttyS1 报告
-# Avalonia 安装器状态,断言 Xorg 与 fortos-installer-gui 均已拉起,
-# 最后抓取显示截图。BIOS(默认)与 UEFI(-firmware)两种模式都覆盖。
+# Boots from the ISO's default boot menu (default item "FortOS Graphical Installer" →
+# live environment), waits for fortos-installer-diag.service to report the
+# Avalonia installer status via ttyS1, asserts that both Xorg and fortos-installer-gui
+# are up, then captures a display screenshot. Both BIOS (default) and UEFI (-firmware) modes are covered.
 #
-# 用法:test-boot.sh <iso-path> <bios|uefi> <result-directory>
+# Usage: test-boot.sh <iso-path> <bios|uefi> <result-directory>
 # -------------------------------------------------------------------------
 readonly ISO_PATH="${1:?usage: test-boot.sh <iso-path> <bios|uefi> <result-directory>}"
 readonly FIRMWARE="${2:?firmware must be bios or uefi}"
 readonly RESULT_DIR="${3:?result directory is required}"
 readonly OVMF_CODE="${OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
 readonly OVMF_VARS_TEMPLATE="${OVMF_VARS_TEMPLATE:-/usr/share/OVMF/OVMF_VARS_4M.fd}"
-# 非 readonly:TCG 模式会放宽诊断超时。
+# Not readonly: TCG mode relaxes the diagnostics timeout.
 DIAG_TIMEOUT_S="${DIAG_TIMEOUT_S:-150}"
 
 if [[ "${FIRMWARE}" != "bios" && "${FIRMWARE}" != "uefi" ]]; then
@@ -46,11 +46,12 @@ readonly LIVE_BOOT_APPEND="boot=live components hostname=fortos locales=en_US.UT
 rm -f "${SCREENSHOT}" "${MONITOR_LOG}" "${SERIAL_LOG}" "${DIAG_LOG}" "${MONITOR_SOCK}"
 
 # -------------------------------------------------------------------------
-# 从 ISO 中提取 live 内核和 initrd,直接传给 QEMU(-kernel/-initrd/-append),
-# 绕过 ISO 引导器(isolinux/GRUB)。ISO 引导器在 TCG 软件仿真模式下会因
-# vesamenu.c32 初始化或超时配置问题停止响应,导致内核从未启动、串口日志
-# 为空。直接引导可复现与引导器相同的内核命令行(boot=live …),同时将
-# 内核启动推前 30-40 秒(省去引导菜单倒计时),让 420 s 诊断窗口充裕。
+# Extract the live kernel and initrd from the ISO and pass them directly to QEMU (-kernel/-initrd/-append),
+# bypassing the ISO bootloader (isolinux/GRUB). Under TCG software emulation the ISO bootloader can stop
+# responding because of vesamenu.c32 initialization or timeout configuration issues, so the kernel never
+# boots and the serial log stays empty. Direct boot reproduces the same kernel command line as the bootloader
+# (boot=live ...), advancing kernel startup by 30-40 seconds (skipping the boot menu countdown) and giving
+# the 420 s diagnostics window ample room.
 # -------------------------------------------------------------------------
 mkdir -p "${BOOT_DIR}"
 _iso_extract() {
@@ -64,8 +65,8 @@ _iso_extract /live/initrd.img "${INITRD}" \
     || _iso_extract /isolinux/live/initrd.img "${INITRD}" \
     || { echo "error: live initrd.img not found in ISO." >&2; exit 1; }
 
-# 提取后校验:空文件或非内核镜像会令 QEMU 静默挂起 420 s 而无任何输出,
-# 尽早失败并把实际内容(类型/大小)写进日志,便于定位提取环节的问题。
+# Validate after extraction: an empty file or a non-kernel image makes QEMU hang silently for 420 s with no output,
+# so fail early and write the actual content (type/size) to the log to help diagnose extraction problems.
 if [[ ! -s "${VMLINUZ}" ]]; then
     echo "error: extracted vmlinuz is empty or missing: ${VMLINUZ}" >&2
     exit 1
@@ -89,8 +90,8 @@ if [[ "${FIRMWARE}" == "uefi" ]]; then
 fi
 
 # -------------------------------------------------------------------------
-# 加速器选择:GitHub-hosted runner 的嵌套虚拟化是实验性支持(/dev/kvm
-# 不保证存在),KVM 不可用时回退 TCG 软件模拟(慢,放宽诊断超时)。
+# Accelerator selection: nested virtualization on GitHub-hosted runners is experimental (/dev/kvm
+# is not guaranteed to exist); fall back to TCG software emulation when KVM is unavailable (slower, relaxed diagnostics timeout).
 # -------------------------------------------------------------------------
 accel_args=(-machine q35,accel=tcg -cpu qemu64)
 accel_name="tcg"
@@ -107,9 +108,9 @@ else
     QEMU_TIMEOUT_S=240
 fi
 
-# 后台启动 QEMU:ttyS0 留内核日志,ttyS1 收 GUI 诊断输出,monitor 走 unix socket。
-# -cdrom 挂载 ISO 供 live-boot initramfs 定位 squashfs;引导由 -kernel/-initrd 完成。
-# earlycon 在串行驱动完整初始化之前就输出内核消息,便于诊断早期崩溃。
+# Start QEMU in the background: ttyS0 keeps kernel logs, ttyS1 receives GUI diagnostics output, monitor over a unix socket.
+# -cdrom attaches the ISO so the live-boot initramfs can locate the squashfs; booting is done via -kernel/-initrd.
+# earlycon prints kernel messages before the serial driver is fully initialized, helping diagnose early crashes.
 timeout "${QEMU_TIMEOUT_S}s" qemu-system-x86_64 \
     "${accel_args[@]}" \
     -m 2048 \
@@ -133,7 +134,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 通过 QEMU monitor socket 执行动作(screendump <file> / quit)。
+# Execute actions through the QEMU monitor socket (screendump <file> / quit).
 monitor_cmd() {
     local action="${1:?action}"
     local arg="${2:-}"
@@ -161,8 +162,8 @@ s.close()
 PYEOF
 }
 
-# 等待 fortos-installer-diag.service 报告 GUI 状态。
-# 等待期间每 ~60s 截一张图,超时后可凭截图判断卡在哪个阶段。
+# Wait for fortos-installer-diag.service to report GUI status.
+# Take a screenshot every ~60s while waiting; on timeout the screenshots show which stage it is stuck on.
 shot_no=0
 loop=0
 deadline=$((SECONDS + DIAG_TIMEOUT_S))
@@ -196,10 +197,10 @@ if ! grep -q 'FORTOS_INSTALLER_DIAG_END' "${DIAG_LOG}" 2>/dev/null; then
     else
         echo "qemu exited — monitor log above shows why" >&2
     fi
-    # 通过 monitor socket 读取 guest CPU 状态:如果 RIP 停在复位向量
-    # (0xfffffff0)附近,说明内核从未被 QEMU 跳转执行(-kernel 加载了但
-    # guest 没跑);如果 RIP 在内核代码段,说明内核执行中卡住。这是区分
-    # "QEMU 未启动 guest" 与 "guest 启动后崩溃" 的决定性证据。
+    # Read the guest CPU state via the monitor socket: if RIP is stuck near the reset vector
+    # (0xfffffff0), the kernel was never jumped to by QEMU (-kernel was loaded but the guest never
+    # ran); if RIP is inside the kernel code segment, the kernel is stuck while executing. This is the
+    # decisive evidence distinguishing "QEMU did not start the guest" from "the guest crashed after boot".
     echo "--- QEMU guest state (via monitor socket) ---" >&2
     python3 - "${MONITOR_SOCK}" <<'PYEOF' || echo "(monitor socket unavailable)" >&2
 import socket, sys, time
@@ -228,7 +229,7 @@ PYEOF
     exit 1
 fi
 
-# 抓取最终显示帧并退出虚拟机。
+# Capture the final display frame and exit the virtual machine.
 monitor_cmd screendump "${SCREENSHOT}"
 monitor_rc=$?
 monitor_cmd quit
@@ -240,7 +241,7 @@ if [[ ${monitor_rc} -ne 0 ]]; then
     exit 1
 fi
 
-# 断言:GUI 与 Xorg 均已拉起,且有显示帧。
+# Assertions: both the GUI and Xorg are up, and a display frame was produced.
 echo "--- FortOS installer GUI diagnostics ---"
 cat "${DIAG_LOG}"
 grep -q 'gui=alive' "${DIAG_LOG}" \

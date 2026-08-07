@@ -1,14 +1,14 @@
 #!/bin/sh
 # -------------------------------------------------------------------------
 # FortOS installer kiosk launcher (design: docs/installer-design.md §3.2).
-# 在 tty7 拉起 Xorg,然后执行 X 会话脚本(openbox + Avalonia 安装器)。
-# 由 fortos-installer.service 以 root 调用。
+# Starts Xorg on tty7, then runs the X session script (openbox + the Avalonia installer).
+# Invoked as root by fortos-installer.service.
 #
-# -nolisten tcp 阻止远程 X 连接。显示号用 :1:live 环境默认会启动一个
-# 用户 X 会话占用 :0(如 Debian live 的 xinit :0 vt1),若 kiosk 也用 :0
-# 会因显示号冲突导致 Xorg 启动失败。Xorg ≥1.21(Debian bookworm)不识别
-# -allow-root 选项(会打印 usage 后退出),且 Debian 构建未启用 root 检查,
-# root 运行无需该选项。
+# -nolisten tcp blocks remote X connections. Display number :1 is used: the live environment starts
+# a user X session on :0 by default (e.g. Debian live's xinit :0 vt1); if the kiosk also used :0,
+# Xorg would fail to start because of the display number conflict. Xorg >= 1.21 (Debian bookworm) does not
+# recognize the -allow-root option (it prints usage and exits), and the Debian build does not enable the root
+# check, so running as root does not need that option.
 # -------------------------------------------------------------------------
 set -eu
 

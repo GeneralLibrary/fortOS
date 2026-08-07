@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Top Header Bar
+  FortOS Dashboard — JiSpace-style Top Header Bar
   Page title on the left, system-health stat pills in the center,
   theme/locale/user controls on the right.
 -->
@@ -35,7 +35,7 @@ const theme = useThemeStore()
 const message = useMessage()
 const { t, locale } = useI18n()
 
-/** 当前 Web 管理访问地址(用户实际访问的 origin,含 IP/端口)。 */
+/** Current Web admin access URL (the origin the user actually visits, including IP/port). */
 const accessUrl = window.location.origin
 
 async function copyAccessUrl() {

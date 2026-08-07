@@ -9,6 +9,16 @@ namespace FortOS.Api.Controllers;
 [Route("api/recycle")]
 public sealed class RecycleController : FortOSControllerBase
 {
+    private readonly RecycleBinService _recycleBin;
+    private readonly FilePathResolver _resolver;
+
+    /// <summary>Initializes the recycle bin controller.</summary>
+    public RecycleController(RecycleBinService recycleBin, FilePathResolver resolver)
+    {
+        _recycleBin = recycleBin;
+        _resolver = resolver;
+    }
+
     /// <summary>List recycle bin contents.</summary>
     [HttpGet("{share}")]
     public object List(string share) => Directory.Exists(Path.Combine(share, ".recycle"))
@@ -17,28 +27,31 @@ public sealed class RecycleController : FortOSControllerBase
 
     /// <summary>Restore recycle bin file (compatible with old routes).</summary>
     [HttpPost("restore/{id}")]
-    public object RestoreLegacy(string id, [FromBody] RestoreRecycleRequest? request)
+    public async Task<object> RestoreLegacy(string id, [FromBody] RestoreRecycleRequest? request, CancellationToken ct)
     {
         // Legacy route carries no share segment; derive the share root from the
         // ".recycle" marker inside the encoded source path, then apply the same
         // safety checks as the parameterized route.
         var share = InferShareRoot(DecodeRecyclePath(id));
-        return RestoreCore(id, share, request?.TargetPath);
+        return await RestoreCore(id, share, request?.TargetPath, ct).ConfigureAwait(false);
     }
 
     /// <summary>Restore recycle bin file.</summary>
     [HttpPost("{share}/restore/{id}")]
-    public object Restore(string share, string id, [FromBody] RestoreRecycleRequest? request)
-        => RestoreCore(id, Path.GetFullPath(share), request?.TargetPath);
+    public Task<object> Restore(string share, string id, [FromBody] RestoreRecycleRequest? request, CancellationToken ct)
+        => RestoreCore(id, Path.GetFullPath(share), request?.TargetPath, ct);
 
-    private static object RestoreCore(string id, string shareRoot, string? targetPath)
+    private async Task<object> RestoreCore(string id, string shareRoot, string? targetPath, CancellationToken ct)
     {
         // Security: both source and destination are attacker-influenced strings, so every
-        // restore is constrained to the share directory. All paths must be normalized via
-        // Path.GetFullPath before the boundary check — otherwise a raw string prefix test
-        // can be bypassed with ".." segments (e.g. "<share>/.recycle/../../etc/passwd").
-        var source = Path.GetFullPath(DecodeRecyclePath(id));
-        if (!PathSafety.IsPathUnderRoot(source, Path.Combine(shareRoot, ".recycle")))
+        // restore is constrained to the share directory. Real paths are resolved first so a
+        // symlinked .recycle entry cannot escape the share via a lexical prefix check.
+        var source = await _resolver.ResolveRealPathAsync(Path.GetFullPath(DecodeRecyclePath(id)), ct).ConfigureAwait(false);
+        // The share root itself may be a symlink (e.g. /srv/nas -> /mnt/diskX/nas), so it must be
+        // resolved to its real form too; comparing resolved paths against a lexical root would
+        // reject every restore for such a share.
+        var shareReal = await _resolver.ResolveRealPathAsync(Path.GetFullPath(shareRoot), ct).ConfigureAwait(false);
+        if (!PathSafety.IsPathUnderRoot(source, Path.Combine(shareReal, ".recycle")))
         {
             throw new ArgumentException("Recycle bin item does not belong to the specified share path.", nameof(id));
         }
@@ -49,7 +62,8 @@ public sealed class RecycleController : FortOSControllerBase
         }
 
         var destination = string.IsNullOrWhiteSpace(targetPath) ? InferOriginalPath(source) : Path.GetFullPath(targetPath);
-        if (!PathSafety.IsPathUnderRoot(destination, shareRoot))
+        destination = await _resolver.ResolveRealPathAsync(destination, ct).ConfigureAwait(false);
+        if (!PathSafety.IsPathUnderRoot(destination, shareReal))
         {
             throw new ArgumentException("Restore target must stay within the share directory.", nameof(targetPath));
         }
@@ -75,12 +89,12 @@ public sealed class RecycleController : FortOSControllerBase
     /// <summary>Empty recycle bin.</summary>
     [HttpDelete("empty")]
     public object EmptyRecycle([FromQuery] string share, [FromQuery] int retentionDays = 0)
-        => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
+        => new { deleted = _recycleBin.Cleanup(share, retentionDays) };
 
     /// <summary>Empty recycle bin by share path.</summary>
     [HttpDelete("{share}/empty")]
     public object EmptyRecycleByRoute(string share, [FromQuery] int retentionDays = 0)
-        => new { deleted = new RecycleBinService().Cleanup(share, retentionDays) };
+        => new { deleted = _recycleBin.Cleanup(share, retentionDays) };
 
     /// <summary>Extracts the share root from a recycle bin path (the part before "/.recycle/").</summary>
     private static string InferShareRoot(string recyclePath)

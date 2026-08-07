@@ -17,7 +17,7 @@ public static class ServiceBusExtensions
     /// </summary>
     /// <param name="services">Service collection.</param>
     /// <returns>Service collection.</returns>
-    public static IServiceCollection AddServiceBus(this IServiceCollection services)
+    public static IServiceCollection AddFortOSServiceBus(this IServiceCollection services)
     {
         services.AddSingleton<IEventBus, EventBus>();
         services.AddSingleton<IServiceRegistry, ServiceRegistry>();

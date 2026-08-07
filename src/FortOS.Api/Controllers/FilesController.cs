@@ -14,13 +14,15 @@ namespace FortOS.Api.Controllers;
 public sealed class FilesController : FortOSControllerBase
 {
     private readonly FileManagerService _files;
+    private readonly UploadSessionService _uploads;
     private readonly ILogPipeline _logs;
     private readonly IPermissionEngine _permissions;
 
     /// <summary>Initializes the file management controller.</summary>
-    public FilesController(FileManagerService files, ILogPipeline logs, IPermissionEngine permissions)
+    public FilesController(FileManagerService files, UploadSessionService uploads, ILogPipeline logs, IPermissionEngine permissions)
     {
         _files = files;
+        _uploads = uploads;
         _logs = logs;
         _permissions = permissions;
     }
@@ -58,15 +60,7 @@ public sealed class FilesController : FortOSControllerBase
     [HttpGet("download")]
     public async Task<IActionResult> Download([FromQuery] string path, CancellationToken ct)
     {
-        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-        if (configuration.GetValue("security:require_auth", true))
-        {
-            var decision = await _permissions.CheckPermissionAsync(OwnerToken, "files:file:read", path, NasDataLevel.Personal, ct).ConfigureAwait(false);
-            if (!decision.Granted)
-            {
-                throw new PermissionDeniedException(decision.DenyReason ?? "No permission to read this file.");
-            }
-        }
+        await EnsureAuthorizedAsync("files:file:read", "files.download", path, ct).ConfigureAwait(false);
         var stat = await _files.StatAsync(path, ct).ConfigureAwait(false);
         if (!stat.Exists || stat.IsDirectory) return NotFound();
         var etag = await _files.GetEtagAsync(path, ct).ConfigureAwait(false);
@@ -81,7 +75,7 @@ public sealed class FilesController : FortOSControllerBase
     [RequiresCapability("files:file:write", NasDataLevel.Personal)]
     [HttpPost("uploads")]
     public async Task<UploadSession> CreateUpload([FromBody] CreateUploadRequest request, CancellationToken ct)
-        => await ExecuteAuditedAsync("files:file:write", "files.upload.create", request.Path, () => _files.CreateUploadSessionAsync(request.Path, CurrentSubject, request.SizeBytes, request.Sha256, ct), ct).ConfigureAwait(false);
+        => await ExecuteAuditedAsync("files:file:write", "files.upload.create", request.Path, () => _uploads.CreateUploadSessionAsync(request.Path, CurrentSubject, request.SizeBytes, request.Sha256, ct), ct).ConfigureAwait(false);
 
     /// <summary>Append an upload chunk; Content-Range must match the server's expected offset.</summary>
     [RequiresCapability("files:file:write", NasDataLevel.Personal)]
@@ -90,7 +84,7 @@ public sealed class FilesController : FortOSControllerBase
     {
         var range = Request.Headers.ContentRange.ToString();
         if (!TryParseContentRange(range, out var start, out var length)) throw new ArgumentException("Invalid Content-Range format.");
-        try { return await _files.AppendUploadAsync(sessionId, CurrentSubject, start, Request.Body, length, ct).ConfigureAwait(false); }
+        try { return await _uploads.AppendUploadAsync(sessionId, CurrentSubject, start, Request.Body, length, ct).ConfigureAwait(false); }
         catch (UploadOffsetConflictException ex) { Response.Headers["Upload-Offset"] = ex.ExpectedOffset.ToString(System.Globalization.CultureInfo.InvariantCulture); throw; }
     }
 
@@ -98,17 +92,17 @@ public sealed class FilesController : FortOSControllerBase
     [RequiresCapability("files:file:write", NasDataLevel.Personal)]
     [HttpPost("uploads/{sessionId}/finalize")]
     public Task<ManagedFileStat> FinalizeUpload(string sessionId, CancellationToken ct)
-        => _files.FinalizeUploadAsync(sessionId, CurrentSubject, Request.Headers.IfMatch.ToString(), ct);
+        => _uploads.FinalizeUploadAsync(sessionId, CurrentSubject, Request.Headers.IfMatch.ToString(), ct);
 
     /// <summary>Query upload session status.</summary>
     [RequiresCapability("files:file:read", NasDataLevel.Personal)]
     [HttpGet("uploads/{sessionId}")]
-    public Task<UploadSession> UploadStatus(string sessionId, CancellationToken ct) => _files.GetUploadSessionAsync(sessionId, CurrentSubject, ct);
+    public Task<UploadSession> UploadStatus(string sessionId, CancellationToken ct) => _uploads.GetUploadSessionAsync(sessionId, CurrentSubject, ct);
 
     /// <summary>Abort upload session and delete temporary files.</summary>
     [RequiresCapability("files:file:write", NasDataLevel.Personal)]
     [HttpDelete("uploads/{sessionId}")]
-    public Task AbortUpload(string sessionId, CancellationToken ct) => _files.AbortUploadAsync(sessionId, CurrentSubject, ct);
+    public Task AbortUpload(string sessionId, CancellationToken ct) => _uploads.AbortUploadAsync(sessionId, CurrentSubject, ct);
 
     /// <summary>Create file.</summary>
     [RequiresCapability("files:file:write", NasDataLevel.Personal)]
@@ -155,21 +149,21 @@ public sealed class FilesController : FortOSControllerBase
     /// <summary>Modify Linux permission bits.</summary>
     [RequiresCapability("files:file:admin", NasDataLevel.Personal)]
     [HttpPost("chmod")]
-    public Task<object> Chmod([FromBody] ChmodRequest request, CancellationToken ct)
-        => ExecuteAuditedAsync<object>("files:file:admin", "files.chmod", request.Path, async () =>
+    public Task<ChmodResult> Chmod([FromBody] ChmodRequest request, CancellationToken ct)
+        => ExecuteAuditedAsync("files:file:admin", "files.chmod", request.Path, async () =>
         {
             await _files.ApplyChmodAsync(request.Path, request.Mode, ct).ConfigureAwait(false);
-            return new { success = true, path = request.Path, mode = request.Mode };
+            return new ChmodResult(request.Path, request.Mode);
         }, ct);
 
     /// <summary>Modify Linux owner.</summary>
     [RequiresCapability("files:file:admin", NasDataLevel.Personal)]
     [HttpPost("chown")]
-    public Task<object> Chown([FromBody] ChownRequest request, CancellationToken ct)
-        => ExecuteAuditedAsync<object>("files:file:admin", "files.chown", request.Path, async () =>
+    public Task<ChownResult> Chown([FromBody] ChownRequest request, CancellationToken ct)
+        => ExecuteAuditedAsync("files:file:admin", "files.chown", request.Path, async () =>
         {
             await _files.ApplyChownAsync(request.Path, request.Owner, ct).ConfigureAwait(false);
-            return new { success = true, path = request.Path, owner = request.Owner };
+            return new ChownResult(request.Path, request.Owner);
         }, ct);
 
     private string CurrentSubject
@@ -177,19 +171,7 @@ public sealed class FilesController : FortOSControllerBase
 
     private async Task<T> ExecuteAuditedAsync<T>(string requiredCapability, string action, string resource, Func<Task<T>> execute, CancellationToken ct)
     {
-        // The central CapabilityAuthorizationFilter already enforces authorization; when authentication is
-        // disabled (development/evaluation mode) it lets every request through, so the in-controller check
-        // must mirror that instead of rejecting token-less requests (OwnerToken would be empty).
-        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-        if (configuration.GetValue("security:require_auth", true))
-        {
-            var decision = await _permissions.CheckPermissionAsync(OwnerToken, requiredCapability, resource, NasDataLevel.Personal, ct).ConfigureAwait(false);
-            if (!decision.Granted)
-            {
-                await WriteAuditAsync(action, resource, granted: false, decision.DenyReason, ct).ConfigureAwait(false);
-                throw new PermissionDeniedException($"Execution of {action} was denied: {decision.DenyReason}");
-            }
-        }
+        await EnsureAuthorizedAsync(requiredCapability, action, resource, ct).ConfigureAwait(false);
 
         try
         {
@@ -201,6 +183,26 @@ public sealed class FilesController : FortOSControllerBase
         {
             await WriteAuditAsync(action, resource, granted: false, ex.Message, ct).ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Enforces capability authorization for the current request. The central
+    /// CapabilityAuthorizationFilter already enforces authorization; when authentication is
+    /// disabled (development/evaluation mode) it lets every request through, so the in-controller
+    /// check must mirror that instead of rejecting token-less requests (OwnerToken would be empty).
+    /// </summary>
+    private async Task EnsureAuthorizedAsync(string requiredCapability, string action, string resource, CancellationToken ct)
+    {
+        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        if (configuration.GetValue("security:require_auth", true))
+        {
+            var decision = await _permissions.CheckPermissionAsync(OwnerToken, requiredCapability, resource, NasDataLevel.Personal, ct).ConfigureAwait(false);
+            if (!decision.Granted)
+            {
+                await WriteAuditAsync(action, resource, granted: false, decision.DenyReason, ct).ConfigureAwait(false);
+                throw new PermissionDeniedException($"Execution of {action} was denied: {decision.DenyReason}");
+            }
         }
     }
 
@@ -254,5 +256,9 @@ public sealed record RestoreFileRequest(string RecyclePath, string TargetPath);
 public sealed record ChmodRequest(string Path, string Mode);
 /// <summary>Chown request.</summary>
 public sealed record ChownRequest(string Path, string Owner);
+/// <summary>Chmod result.</summary>
+public sealed record ChmodResult(string Path, string Mode);
+/// <summary>Chown result.</summary>
+public sealed record ChownResult(string Path, string Owner);
 /// <summary>Create resumable upload request.</summary>
 public sealed record CreateUploadRequest(string Path, long? SizeBytes, string? Sha256);

@@ -4,7 +4,7 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Core.Steps;
 
 /// <summary>
-/// 系统复制步骤:rsync live rootfs(或 squashfs)到目标系统(设计稿 5.3)。
+/// System copy step: rsync the live rootfs (or squashfs) to the target system (design doc 5.3).
 /// </summary>
 public sealed class CopyStep : IInstallStep
 {

@@ -29,16 +29,16 @@ if (!OperatingSystem.IsLinux())
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 运行时配置覆盖（api_config 表）接入 IConfiguration 读取链：
-// 必须在 appsettings 之后注册，使覆盖值优先于静态配置文件生效。
+// Runtime configuration overrides (api_config table) are wired into the IConfiguration read chain:
+// Must be registered after appsettings so overrides take precedence over the static configuration files.
 builder.Configuration.Add<FortOS.Core.Configuration.SqliteConfigurationSource>(null);
 
 #region Service Registration
 builder.Services.AddFortOSCore();
-builder.Services.AddPlatformServices();
+builder.Services.AddFortOSPlatform();
 builder.Services.AddFortOSSecurity(builder.Configuration);
-builder.Services.AddServiceBus();
-builder.Services.AddModuleHost();
+builder.Services.AddFortOSServiceBus();
+builder.Services.AddFortOSModuleHost();
 builder.Services.AddSingleton<StorageModule>();
 builder.Services.AddSingleton<ShareModule>();
 builder.Services.AddSingleton<NetworkModule>();
@@ -51,13 +51,16 @@ builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<NetworkMod
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<AgentModule>());
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<BackupModule>());
 builder.Services.AddSingleton<INasModule>(sp => sp.GetRequiredService<UpdateModule>());
+builder.Services.AddSingleton<FilePathResolver>();
+builder.Services.AddSingleton<RecycleBinService>();
 builder.Services.AddSingleton<FileManagerService>();
+builder.Services.AddSingleton<UploadSessionService>();
 builder.Services.AddSingleton<BackupRunHistoryStore>();
 builder.Services.AddSingleton<BackupExecutionService>();
 // FortOS runs only on Linux; synchronizes system users with smbpasswd so SMB clients can use the same credentials.
 builder.Services.AddSingleton<ISystemUserProvisioner, SambaUserProvisioner>();
-builder.Services.AddAgentServices();
-builder.Services.AddObservability(builder.Configuration);
+builder.Services.AddFortOSAgent();
+builder.Services.AddFortOSObservability(builder.Configuration);
 builder.Services.AddHostedService<StartupOrchestrator>();
 builder.Services.AddGrpc(options => options.Interceptors.Add<GrpcAuthorizationInterceptor>());
 builder.Services.AddControllers(options => { options.Filters.Add<FortOSExceptionFilter>(); options.Filters.Add<CapabilityAuthorizationFilter>(); options.Conventions.Add(new CapabilityConvention()); })
@@ -67,9 +70,9 @@ builder.Services.AddControllers(options => { options.Filters.Add<FortOSException
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-// CORS 白名单：默认仅本地来源；部署时用 cors:allowed_origins（逗号分隔）显式放开。
-// 不再 AllowAnyOrigin —— NAS token 走 Authorization 头（非 cookie），跨站脚本无法
-// 直接携带，但收紧仍是纵深防御，防止 require_auth=false 的部署被任意网页调用管理 API。
+// CORS allowlist: local-only origins by default; deployments explicitly open it up via cors:allowed_origins (comma-separated).
+// No more AllowAnyOrigin — the NAS token travels in the Authorization header (not a cookie), so cross-site scripts
+// cannot carry it directly, but tightening remains defense in depth to prevent deployments with require_auth=false from letting any web page call the management API.
 var allowedOrigins = (builder.Configuration.GetValue<string>("cors:allowed_origins") ?? "http://localhost:5000,http://127.0.0.1:5000")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader()));
@@ -95,7 +98,6 @@ app.UseMiddleware<AuditMiddleware>();
 app.UseMiddleware<RateLimitMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseMiddleware<HttpMetricsMiddleware>();
-app.UseCors();
 
 if (app.Configuration.GetValue("dashboard:enabled", false))
 {
@@ -105,9 +107,9 @@ if (app.Configuration.GetValue("dashboard:enabled", false))
     app.UseDefaultFiles();
     app.UseStaticFiles();
     // Friendly entry point: visiting the host root lands on the dashboard.
-    // 注意:不要为 /dashboard 单独注册重定向——UseDefaultFiles 对目录请求
-    // (无尾斜杠)会自动 302 到 /dashboard/,若再用 MapGet("/dashboard") 拦截,
-    // /dashboard/ 也会命中该端点重定向回自身,形成无限循环。
+    // Note: do not register a separate redirect for /dashboard — UseDefaultFiles responds to directory requests
+    // (without a trailing slash) with an automatic 302 to /dashboard/; if MapGet("/dashboard") also intercepts,
+    // /dashboard/ would hit that endpoint and redirect back to itself, forming an infinite loop.
     app.MapGet("/", () => Results.Redirect("/dashboard/"));
 }
 

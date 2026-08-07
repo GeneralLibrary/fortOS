@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Error Boundary
+  FortOS Dashboard — JiSpace-style Error Boundary
   Catches unhandled errors in child component subtrees via
   Vue's onErrorCaptured hook and shows a fallback UI.
 -->

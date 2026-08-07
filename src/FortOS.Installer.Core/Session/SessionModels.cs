@@ -1,61 +1,61 @@
 namespace FortOS.Installer.Core.Session;
 
 /// <summary>
-/// 安装会话状态机阶段(设计稿 5.1)。确认(Confirm)由前端在调用引擎前完成,
-/// 引擎内的阶段为确认后的顺序执行区。
+/// Installation session state-machine phases (design doc 5.1). Confirmation (Confirm) is handled by the frontend before calling the engine,
+/// so the engine phases cover the sequential execution after confirmation.
 /// </summary>
 public enum InstallerPhase
 {
-    /// <summary>空闲/未开始。</summary>
+    /// <summary>Idle / not started.</summary>
     Idle,
 
-    /// <summary>收集环境信息(检测引导方式、校验磁盘)。</summary>
+    /// <summary>Collects environment info (detects boot mode, validates disks).</summary>
     CollectInfo,
 
-    /// <summary>确认页(前端语义,引擎不执行)。</summary>
+    /// <summary>Confirmation page (frontend semantics; the engine does not run it).</summary>
     Confirm,
 
-    /// <summary>磁盘分区。</summary>
+    /// <summary>Disk partitioning.</summary>
     Partitioning,
 
-    /// <summary>文件系统格式化与挂载。</summary>
+    /// <summary>Filesystem formatting and mounting.</summary>
     Formatting,
 
-    /// <summary>系统复制(rsync live rootfs → 目标)。</summary>
+    /// <summary>System copy (rsync live rootfs → target).</summary>
     Copying,
 
-    /// <summary>chroot 目标系统配置。</summary>
+    /// <summary>chroot configuration of the target system.</summary>
     Configuring,
 
-    /// <summary>引导安装。</summary>
+    /// <summary>Bootloader installation.</summary>
     Bootloader,
 
-    /// <summary>收尾(卸载、写摘要)。</summary>
+    /// <summary>Finalization (unmount, write summary).</summary>
     Finalize,
 
-    /// <summary>安装完成。</summary>
+    /// <summary>Installation complete.</summary>
     Done,
 
-    /// <summary>失败(可重试/重启重装)。</summary>
+    /// <summary>Failed (retryable / reinstall after reboot).</summary>
     Failed,
 }
 
-/// <summary>一条安装日志(内存环形缓冲 + 落盘)。</summary>
+/// <summary>A single installation log entry (in-memory ring buffer + to disk).</summary>
 public sealed record InstallLogEntry(DateTimeOffset Timestamp, string Level, string Message);
 
-/// <summary>步骤级进度(用于 UI 进度条)。</summary>
+/// <summary>Step-level progress (for UI progress bars).</summary>
 public sealed record InstallStepProgress(string Step, double Percent, string Message);
 
-/// <summary>安装结果。</summary>
+/// <summary>Installation result.</summary>
 public sealed class InstallResult
 {
     public required bool Success { get; init; }
 
-    /// <summary>失败的步骤名;为 null 表示失败发生在任何步骤之前(如 CollectInfo 校验)。</summary>
+    /// <summary>Name of the failed step; null when the failure happened before any step (e.g. CollectInfo validation).</summary>
     public string? FailedStep { get; init; }
 
     public string? ErrorMessage { get; init; }
 
-    /// <summary>安装摘要(最终落盘 /etc/fortos/install-summary.json)。</summary>
+    /// <summary>Installation summary (finally written to /etc/fortos/install-summary.json).</summary>
     public Models.InstallSummary? Summary { get; init; }
 }

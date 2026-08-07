@@ -1,14 +1,14 @@
 #!/bin/sh
 # -------------------------------------------------------------------------
-# FortOS installer X session:openbox 作为窗口管理器,安装器在前台全屏运行。
-# xinit 以本脚本为 X 客户端(须可执行)。
+# FortOS installer X session: openbox as the window manager, with the installer running fullscreen in the foreground.
+# xinit uses this script as its X client (must be executable).
 # -------------------------------------------------------------------------
 set -eu
 
-# 键盘布局默认 us;安装向导内可再改(写入目标系统时生效)。
+# Keyboard layout defaults to us; it can be changed inside the install wizard (takes effect when written to the target system).
 setxkbmap us 2>/dev/null || true
 
 openbox &
 
-# Avalonia 安装器(主进程;退出即会话结束)。
+# The Avalonia installer (main process; when it exits, the session ends).
 exec /opt/fortos/installer/gui/fortos-installer-gui

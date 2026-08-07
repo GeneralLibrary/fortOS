@@ -1,4 +1,5 @@
 using FortOS.Core;
+using FortOS.Core.Configuration;
 using FortOS.Modules.Share.Services;
 using System.Security.Cryptography;
 
@@ -11,7 +12,7 @@ public class FileManagerServiceTests
     public async Task WriteReadSoftDeleteAndRestore_RoundTripsFile()
     {
         using var root = new TemporaryDataRoot(nameof(WriteReadSoftDeleteAndRestore_RoundTripsFile));
-        var service = new FileManagerService();
+        var service = CreateFileService(root.Root);
         var filePath = Path.Combine(root.Root, "documents", "demo.txt");
 
         await service.WriteAsync(filePath, "hello", "text", overwrite: true, CancellationToken.None);
@@ -32,7 +33,7 @@ public class FileManagerServiceTests
     public async Task ResolvePath_OutsideDataRoot_ThrowsPermissionDenied()
     {
         using var root = new TemporaryDataRoot(nameof(ResolvePath_OutsideDataRoot_ThrowsPermissionDenied));
-        var service = new FileManagerService();
+        var service = CreateFileService(root.Root);
         var outside = Path.GetTempFileName();
         try
         {
@@ -50,33 +51,41 @@ public class FileManagerServiceTests
     {
         using var root = new TemporaryDataRoot(nameof(ResumableUpload_RejectsWrongOffsetAndFinalizesAtomically));
         var database = new DatabaseProvider(root.Root);
-        var service = new FileManagerService(database: database);
+        var fileService = CreateFileService(root.Root);
+        var uploads = new UploadSessionService(new FilePathResolver(new FortOSConfiguration()), database, fileService);
         var target = Path.Combine(root.Root, "uploads", "large.bin");
         var payload = "chunk-onechunk-two"u8.ToArray();
         var sha256 = Convert.ToHexString(SHA256.HashData(payload));
-        var session = await service.CreateUploadSessionAsync(target, "user:test", payload.Length, sha256, CancellationToken.None);
+        var session = await uploads.CreateUploadSessionAsync(target, "user:test", payload.Length, sha256, CancellationToken.None);
 
         await using (var first = new MemoryStream(payload[..9]))
         {
-            session = await service.AppendUploadAsync(session.SessionId, "user:test", 0, first, 9, CancellationToken.None);
+            session = await uploads.AppendUploadAsync(session.SessionId, "user:test", 0, first, 9, CancellationToken.None);
         }
         Assert.Equal(9, session.ReceivedBytes);
 
         await using (var invalid = new MemoryStream(payload[9..]))
         {
             var conflict = await Assert.ThrowsAsync<UploadOffsetConflictException>(
-                () => service.AppendUploadAsync(session.SessionId, "user:test", 0, invalid, payload.Length - 9, CancellationToken.None));
+                () => uploads.AppendUploadAsync(session.SessionId, "user:test", 0, invalid, payload.Length - 9, CancellationToken.None));
             Assert.Equal(9, conflict.ExpectedOffset);
         }
 
         await using (var second = new MemoryStream(payload[9..]))
         {
-            await service.AppendUploadAsync(session.SessionId, "user:test", 9, second, payload.Length - 9, CancellationToken.None);
+            await uploads.AppendUploadAsync(session.SessionId, "user:test", 9, second, payload.Length - 9, CancellationToken.None);
         }
-        await service.FinalizeUploadAsync(session.SessionId, "user:test", null, CancellationToken.None);
+        await uploads.FinalizeUploadAsync(session.SessionId, "user:test", null, CancellationToken.None);
 
         Assert.Equal(payload, await File.ReadAllBytesAsync(target));
-        Assert.Equal("completed", (await service.GetUploadSessionAsync(session.SessionId, "user:test", CancellationToken.None)).State);
+        Assert.Equal("completed", (await uploads.GetUploadSessionAsync(session.SessionId, "user:test", CancellationToken.None)).State);
+    }
+
+    private static FileManagerService CreateFileService(string dataRoot)
+    {
+        var configuration = new FortOSConfiguration();
+        var resolver = new FilePathResolver(configuration);
+        return new FileManagerService(resolver, new RecycleBinService(resolver), configuration);
     }
 
     private sealed class TemporaryDataRoot : IDisposable

@@ -5,7 +5,7 @@
              x:Class="FortOS.Installer.Gui.Views.WelcomeView">
     <StackPanel Spacing="20" MaxWidth="640" VerticalAlignment="Center" HorizontalAlignment="Center">
         <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center">
-            <!-- 品牌色块 -->
+            <!-- Brand color block -->
             <Border Width="48" Height="48" CornerRadius="10" Background="#00B4D8">
                 <TextBlock Text="F" FontSize="28" FontWeight="Bold" Foreground="White"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>

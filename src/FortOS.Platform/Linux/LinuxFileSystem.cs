@@ -50,7 +50,7 @@ public sealed partial class LinuxFileSystem : IFileSystem
     {
         ValidatePath(device, nameof(device));
         ValidateFsType(fsType);
-        // 格式化会破坏设备上的所有数据：拒绝已挂载的设备（纵深防御，不依赖调用方确认）。
+        // Formatting destroys all data on the device: refuse devices that are mounted (defense in depth, not relying on the caller's confirmation).
         await LinuxMountProbe.EnsureNotMountedAsync(_executor, device, ct).ConfigureAwait(false);
         await _executor.ExecuteAsync($"mkfs.{fsType.ToLowerInvariant()}", Quote(device), ct).ConfigureAwait(false);
     }
@@ -89,8 +89,8 @@ public sealed partial class LinuxFileSystem : IFileSystem
     /// <summary>
     /// Persists mount changes to /etc/fstab, ensuring they survive reboot.
     /// Persistence failure (e.g., read-only /etc inside a container) only logs a warning and does not affect the current mount operation.
-    /// 写入采用「临时文件 + rename」的原子替换：直接覆盖 /etc/fstab 在写一半时崩溃
-    /// 会截断文件，导致重启后根分区可能无法挂载。
+    /// Writes use an atomic "temp file + rename" replacement: directly overwriting /etc/fstab and crashing mid-write
+    /// would truncate the file, so the root partition might not mount after reboot.
     /// </summary>
     private async Task PersistFstabAsync(Func<string, string> transform, CancellationToken ct)
     {
@@ -99,14 +99,14 @@ public sealed partial class LinuxFileSystem : IFileSystem
         try
         {
             var content = File.Exists(FstabPath) ? await File.ReadAllTextAsync(FstabPath, ct).ConfigureAwait(false) : string.Empty;
-            // 先写临时文件再原子 rename：避免目标文件出现「写一半」的中间态。
+            // Write the temp file first, then atomically rename: avoids the target file ever being in a "half-written" state.
             await File.WriteAllTextAsync(tempPath, transform(content), ct).ConfigureAwait(false);
             File.Move(tempPath, FstabPath, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Unable to update {FstabPath}, mount will not be automatically restored after reboot.", FstabPath);
-            // 清理可能残留的临时文件（best-effort，不掩盖原始异常）。
+            // Clean up any leftover temporary file (best-effort, without masking the original exception).
             try
             {
                 if (File.Exists(tempPath)) File.Delete(tempPath);

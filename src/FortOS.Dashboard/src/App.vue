@@ -37,7 +37,7 @@ watch(() => theme.isDark, (dark) => {
   document.documentElement.classList.toggle('zspace-light', !dark)
 }, { immediate: true })
 
-/** Per-theme Naive UI overrides — tuned to match the 极空间 design palette. */
+/** Per-theme Naive UI overrides — tuned to match the JiSpace design palette. */
 const themeOverrides = computed(() => ({
   common: {
     primaryColor: '#4a90d9',

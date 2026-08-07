@@ -1,4 +1,5 @@
-﻿using FortOS.Core;
+﻿using FortOS.Api.Middleware;
+using FortOS.Core;
 using FortOS.Security.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -56,8 +57,7 @@ public sealed class CapabilityAuthorizationFilter : IAsyncAuthorizationFilter
         var requireAuth = configuration.GetValue("security:require_auth", true);
         if (!requireAuth) return; // Auth disabled — allow all requests.
 
-        var token = context.HttpContext.Request.Headers.Authorization.ToString();
-        token = token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? token[7..].Trim() : context.HttpContext.Request.Headers["X-Nas-Token"].ToString();
+        var token = TokenExtraction.FromRequest(context.HttpContext.Request);
         var payload = context.HttpContext.Items["NasTokenPayload"] as NasTokenPayload;
         if (string.IsNullOrWhiteSpace(token) || payload is null) { context.Result = new UnauthorizedResult(); return; }
         if (payload.Capabilities.Satisfies("admin:**")) return;

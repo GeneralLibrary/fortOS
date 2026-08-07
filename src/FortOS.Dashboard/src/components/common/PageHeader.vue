@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style Page Header
+  FortOS Dashboard — JiSpace-style Page Header
   Consistent page title bar with optional action buttons.
   Uses zspace CSS custom properties for theme-aware colors.
 -->

@@ -3,8 +3,8 @@ using System.Diagnostics;
 namespace FortOS.Installer.Gui.ViewModels;
 
 /// <summary>
-/// 安装完成/失败后的系统控制(重启/关机)。GUI 多个页面共用,
-/// 避免 systemctl 调用重复实现。
+/// System control after installation completes/fails (reboot / shutdown). Shared by multiple GUI pages,
+/// avoiding duplicate systemctl call implementations.
 /// </summary>
 public static class SystemControl
 {

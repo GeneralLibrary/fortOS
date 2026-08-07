@@ -7,10 +7,6 @@ public interface IIdentityService
     Task<AuthResult> AuthenticateLocalAsync(string username, string password, CancellationToken ct);
     /// <summary>TOTP two-factor authentication.</summary>
     Task<AuthResult> AuthenticateTotpAsync(string username, string code, CancellationToken ct);
-    /// <summary>LDAP authentication.</summary>
-    Task<AuthResult> AuthenticateLdapAsync(string domain, string username, string password, CancellationToken ct);
-    /// <summary>OAuth/OIDC authentication.</summary>
-    Task<AuthResult> AuthenticateOAuthAsync(string provider, string authorizationCode, string? redirectUri, CancellationToken ct);
     /// <summary>Service account authentication.</summary>
     Task<AuthResult> AuthenticateServiceAsync(string accountId, string apiKey, CancellationToken ct);
     /// <summary>Agent authentication.</summary>

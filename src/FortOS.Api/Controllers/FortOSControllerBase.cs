@@ -1,3 +1,4 @@
+using FortOS.Api.Middleware;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FortOS.Api.Controllers;
@@ -9,8 +10,6 @@ public abstract class FortOSControllerBase : ControllerBase
     /// <summary>Current trace identifier.</summary>
     protected string? TraceId => HttpContext.Items["X-Trace-Id"]?.ToString();
 
-    /// <summary>Current request token.</summary>
-    protected string OwnerToken => Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-        ? Request.Headers.Authorization.ToString()[7..].Trim()
-        : Request.Headers["X-Nas-Token"].ToString();
+    /// <summary>Current request token; empty when the request carries no NAS token.</summary>
+    protected string OwnerToken => TokenExtraction.FromRequest(Request) ?? string.Empty;
 }

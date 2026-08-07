@@ -32,7 +32,7 @@ public sealed class TokenRenewalService : BackgroundService
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        using var timer = new PeriodicTimer(AgentDefaults.RenewalPollInterval);
         while (!stoppingToken.IsCancellationRequested)
         {
             await RenewExpiringTokensAsync(stoppingToken).ConfigureAwait(false);
@@ -53,16 +53,16 @@ public sealed class TokenRenewalService : BackgroundService
         // retrying tokens that can no longer be renewed.
         _registry.PruneExpired();
 
-        var threshold = DateTimeOffset.UtcNow.AddHours(1);
+        var threshold = DateTimeOffset.UtcNow.Add(AgentDefaults.RenewalLeadTime);
         foreach (var state in _registry.Snapshot().Where(s => s.ExpiresAt <= threshold))
         {
             try
             {
                 await _eventBus.PublishAsync($"agent.{state.AgentId}.token.expiring", "agent.token.expiring", JsonSerializer.Serialize(new { state.AgentId, state.ExpiresAt }), ct).ConfigureAwait(false);
                 var renewed = await _broker.RenewAgentTokenAsync(state.AgentId, state.Token, ct).ConfigureAwait(false);
-                // 续期会撤销旧 token，必须把新 token 写回 agent 的 .env 并重建容器，
-                // 否则容器内的 NAS_TOKEN 仍是已撤销的旧值，agent 在过期前必然失联
-                // （.env 只在部署时写入，续期不会自动同步）。
+                // Renewing revokes the old token, so write the new token back to the agent's .env and
+                // recreate the container; otherwise NAS_TOKEN inside it stays the revoked old value and
+                // the agent will lose connectivity before expiry (.env is written only at deploy time).
                 await ApplyRenewedTokenAsync(state.AgentId, renewed.Token, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -80,17 +80,17 @@ public sealed class TokenRenewalService : BackgroundService
     }
 
     /// <summary>
-    /// 将续期后的 token 写回 agent 的 .env（原子替换、保持 600 权限）并重建其容器，
-    /// 使容器内的 NAS_TOKEN 与已签发的新 token 一致。两步均为 best-effort：任一步
-    /// 失败只记日志，不中断后续 agent 的续期（token 本身已续期成功，容器重建后生效）。
+    /// Writes the renewed token back to the agent's .env (atomic replace, keeping 600 perms)
+    /// and recreates its container so the NAS_TOKEN inside matches the newly issued token.
+    /// Both steps are best-effort: a failure in either only logs and never blocks later renewals.
     /// </summary>
     private async Task ApplyRenewedTokenAsync(string agentId, string token, CancellationToken ct)
     {
         try
         {
             await UpdateEnvTokenAsync(agentId, token, ct).ConfigureAwait(false);
-            // RestartAsync 内部为 down + up -d：必须重建容器，docker restart 不会
-            // 重新读取 env_file，无法应用新的 NAS_TOKEN。
+            // RestartAsync does down + up -d internally: the container must be recreated;
+            // docker restart does not re-read env_file, so the new NAS_TOKEN is not applied.
             await _supervisor.RestartAsync($"agent-{agentId}", ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -99,7 +99,7 @@ public sealed class TokenRenewalService : BackgroundService
         }
     }
 
-    /// <summary>替换 .env 中的 NAS_TOKEN 行；文件缺失时静默跳过（部署流程尚未完成）。</summary>
+    /// <summary>Replaces the NAS_TOKEN line in .env; silently skips if the file is missing (deployment not yet completed).</summary>
     private static async Task UpdateEnvTokenAsync(string agentId, string token, CancellationToken ct)
     {
         var envPath = Path.Combine(AgentPaths.AgentsRoot, agentId, ".env");
@@ -124,7 +124,7 @@ public sealed class TokenRenewalService : BackgroundService
             return;
         }
 
-        // 原子替换：先写临时文件（600 权限，与 ComposeGenerator 一致）再 rename。
+        // Atomic replace: write a temp file first (600 permissions, matching ComposeGenerator) then rename.
         var tempPath = envPath + ".tmp";
         await File.WriteAllLinesAsync(tempPath, lines, ct).ConfigureAwait(false);
         File.SetUnixFileMode(tempPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);

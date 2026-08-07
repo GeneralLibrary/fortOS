@@ -1,8 +1,8 @@
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>chroot</c> 适配器:目标系统配置阶段在 /target 内执行命令
-/// (设计稿 5.4)。绑定挂载 /dev /proc /sys /run 后 chroot。
+/// <c>chroot</c> adapter: executes commands inside /target during the target system configuration phase
+/// (design draft 5.4). Chroots after bind-mounting /dev /proc /sys /run.
 /// </summary>
 public sealed class ChrootRunner : ITool
 {
@@ -12,14 +12,14 @@ public sealed class ChrootRunner : ITool
 
     public string Name => "chroot";
 
-    /// <summary>绑定挂载虚拟文件系统到目标 rootfs,chroot 前置条件。</summary>
+    /// <summary>Bind-mounts virtual file systems into the target rootfs; a precondition for chroot.</summary>
     public async Task BindMountsAsync(string target, CancellationToken ct)
     {
         foreach (var dir in new[] { "dev", "proc", "sys", "run" })
         {
             var host = $"/{dir}";
             var dst = $"{target}/{dir}";
-            // rsync 排除清单不复制这些目录,必须先在目标上创建,否则 mount --bind 目标不存在。
+            // The rsync exclude list does not copy these directories, so they must be created in the target first, otherwise mount --bind fails because the target does not exist.
             Directory.CreateDirectory(dst);
             await _runner
                 .RunAsync("mount", ["--bind", host, dst], ct, throwOnNonZeroExit: false)
@@ -27,11 +27,11 @@ public sealed class ChrootRunner : ITool
         }
     }
 
-    /// <summary>在目标 rootfs 内执行 bash 脚本。</summary>
-    /// <param name="standardInput">可选 stdin(如 chpasswd 的账户行),避免密码进命令行。</param>
+    /// <summary>Executes a bash script inside the target rootfs.</summary>
+    /// <param name="standardInput">Optional stdin (e.g. account lines for chpasswd), to avoid passwords entering the command line.</param>
     public async Task RunScriptAsync(string target, string script, CancellationToken ct, TimeSpan? timeout = null, string? standardInput = null)
     {
-        // chroot <target> /bin/bash -euc "<script>" — ProcessRunner 参数列表传递,无 shell 注入风险。
+        // chroot <target> /bin/bash -euc "<script>" — passed via the ProcessRunner argument list, so there is no shell injection risk.
         await _runner
             .RunAsync(
                 "chroot",
@@ -42,7 +42,7 @@ public sealed class ChrootRunner : ITool
             .ConfigureAwait(false);
     }
 
-    /// <summary>卸载目标 rootfs 上的绑定挂载(忽略失败,保证幂等)。</summary>
+    /// <summary>Unmounts the bind mounts on the target rootfs (ignores failures to stay idempotent).</summary>
     public async Task UnmountAllAsync(string target, CancellationToken ct)
     {
         foreach (var dir in new[] { "dev", "proc", "sys", "run" })

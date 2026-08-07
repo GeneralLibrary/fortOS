@@ -43,13 +43,13 @@ public sealed class FortOSSerilogSink : ILogEventSink
             return;
         }
 
-        // 管道饱和（消费者慢/挂起）时的有界溢出策略：丢弃并计数。绝不逐条
-        // spawn Task 重试 —— 那会在线程池中堆积无界阻塞任务（Task 风暴），
-        // 放大内存与调度压力，最终拖垮整个宿主。
+        // Bounded overflow policy when the pipeline is saturated (slow/hung consumer): drop and count. Never spawn
+        // a Task to retry per entry — that would pile up unbounded blocking tasks on the thread pool (a task storm),
+        // amplifying memory and scheduling pressure and eventually taking down the whole host.
         var dropped = Interlocked.Increment(ref _dropped);
         if (dropped == 1 || dropped % 1000 == 0)
         {
-            // 按数量阈值限频记录，避免「每丢一条打一条日志」反而加剧拥塞。
+            // Rate-limit logging by count threshold, so that logging every single drop does not worsen congestion.
             _logger?.LogWarning("Log pipeline is saturated; {Dropped} log entries have been dropped so far.", dropped);
         }
     }

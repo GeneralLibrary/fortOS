@@ -100,8 +100,8 @@ public sealed class AgentsController : FortOSControllerBase
             ExecutablePath = "docker",
             Arguments = $"image inspect {QuoteShell(imageName)}",
             TimeoutSeconds = 30,
-            // 镜像不存在时 exit≠0 是正常探测结果（意味着需要拉取），不能按命令失败抛异常——
-            // 否则第一次部署永远挂在"检查镜像"这一步，报笼统的 "Command execution failed: docker"。
+            // A non-zero exit when the image does not exist is a normal probe result (meaning it must be pulled);
+            // otherwise the first deployment would hang on the "check image" step and report a generic "Command execution failed: docker".
             ThrowOnNonZeroExit = false,
         }, CancellationToken.None).ConfigureAwait(false);
         return result.ExitCode == 0;

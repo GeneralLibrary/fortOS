@@ -1,62 +1,63 @@
 namespace FortOS.Installer.Core.Models;
 
-/// <summary>分区文件系统类型(格式化阶段使用)。</summary>
+/// <summary>Partition file system type (used during the formatting phase).</summary>
 public enum PartitionFs
 {
-    /// <summary>不格式化(如 BIOS boot 分区)。</summary>
+    /// <summary>Do not format (e.g. BIOS boot partition).</summary>
     None,
 
-    /// <summary>FAT32(EFI System Partition)。</summary>
+    /// <summary>FAT32 (EFI System Partition).</summary>
     Vfat,
 
-    /// <summary>ext4。</summary>
+    /// <summary>ext4.</summary>
     Ext4,
 
-    /// <summary>btrfs。</summary>
+    /// <summary>btrfs.</summary>
     Btrfs,
 
-    /// <summary>xfs。</summary>
+    /// <summary>xfs.</summary>
     Xfs,
 
-    /// <summary>swap。</summary>
+    /// <summary>swap.</summary>
     Swap,
 }
 
-/// <summary>单个分区规格(模板的一部分)。</summary>
+/// <summary>A single partition specification (part of a template).</summary>
 public sealed record PartitionSpec
 {
-    /// <summary>分区号(1 起)。</summary>
+    /// <summary>Partition number (starting at 1).</summary>
     public required int Number { get; init; }
 
-    /// <summary>分区大小(MiB);0 表示消耗全部剩余空间。</summary>
+    /// <summary>Partition size (MiB); 0 means consume all remaining space.</summary>
     public long SizeMiB { get; init; }
 
-    /// <summary>gdisk 类型码,如 <c>ef02</c>(BIOS boot)、<c>ef00</c>(EFI System)、<c>8304</c>(Linux x86-64 root)、<c>8200</c>(swap)。</summary>
+    /// <summary>gdisk type code, e.g. <c>ef02</c> (BIOS boot), <c>ef00</c> (EFI System), <c>8304</c> (Linux x86-64 root), <c>8200</c> (swap).</summary>
     public required string TypeCode { get; init; }
 
-    /// <summary>分区名(GPT name)。</summary>
+    /// <summary>Partition name (GPT name).</summary>
     public string? Label { get; init; }
 
-    /// <summary>格式化文件系统。</summary>
+    /// <summary>File system used for formatting.</summary>
     public PartitionFs Fs { get; init; } = PartitionFs.None;
 }
 
-/// <summary>系统盘 GPT 布局模板。v1 固定模板,不做自由布图(见设计稿 1.3)。</summary>
+/// <summary>GPT layout template for the system disk. A fixed v1 template, no free-form layout (see design doc 1.3).</summary>
 public static class PartitionTemplates
 {
-    /// <summary>BIOS boot 分区大小(MiB)。</summary>
+    /// <summary>BIOS boot partition size (MiB).</summary>
     public const long BiosBootMiB = 1;
 
-    /// <summary>EFI System Partition 大小(MiB)。</summary>
+    /// <summary>EFI System Partition size (MiB).</summary>
     public const long EfiMiB = 512;
 
     /// <summary>
-    /// 生成系统盘默认布局:p1 BIOS boot → p2 EFI → 根分区(剩余)。
-    /// 需要 swap 时 swap 分区先于根分区创建(分区大小按创建顺序从盘头分配,
-    /// 「收尾分区」必须是最后一个),根分区依旧收尾。
-    /// 分区号与设计稿 5.2 的 p4 swap 位置不同,功能等价。
+    /// Generates the default system disk layout: p1 BIOS boot → p2 EFI → root partition (remaining).
+    /// When swap is needed, the swap partition is created before the root partition (partition sizes are
+    /// allocated from the disk start in creation order, so the "tail partition" must be the last one),
+    /// and the root partition is still the tail.
+    /// The partition numbering differs from the p4 swap position in design doc 5.2; functionally equivalent.
     /// </summary>
-    /// <param name="swapMiB">swap 大小(MiB);0 或负值表示不创建 swap。</param>
+    /// <param name="swapMiB">Swap size (MiB); 0 or a negative value means no swap is created.</param>
     public static IReadOnlyList<PartitionSpec> SystemDefault(long swapMiB)
     {
         var partitions = new List<PartitionSpec>
@@ -71,7 +72,7 @@ public static class PartitionTemplates
         }
 
         var rootNumber = partitions.Count + 1;
-        // 根分区 Fs 由 FormatStep 按配置决定(TypeCode=8304 分支),此处仅占位。
+        // The root partition Fs is determined by FormatStep based on the configuration (TypeCode=8304 branch); this is only a placeholder.
         partitions.Add(new() { Number = rootNumber, SizeMiB = 0, TypeCode = GptTypeCode.LinuxX8664Root, Label = "FortOS root", Fs = PartitionFs.Ext4 });
         return partitions;
     }

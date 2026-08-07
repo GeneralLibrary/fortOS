@@ -1,5 +1,5 @@
 <!--
-  FortOS Dashboard — 极空间-style File Manager
+  FortOS Dashboard — JiSpace-style File Manager
   Directory navigation with grid/thumbnail and list view modes,
   image/video preview, text editing, upload, and CRUD operations.
 -->

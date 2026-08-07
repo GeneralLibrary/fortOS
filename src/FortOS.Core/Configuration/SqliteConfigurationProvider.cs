@@ -4,15 +4,15 @@ using Microsoft.Extensions.Configuration;
 namespace FortOS.Core.Configuration;
 
 /// <summary>
-/// 以 api_config 表为数据源的配置提供者：把运行时写入的配置覆盖项接入
-/// IConfiguration 读取链，使 ConfigController.Put 的写入真正生效
-/// （此前该表只写不读，配置 API 是「假成功」）。
+/// Configuration provider backed by the api_config table: feeds runtime-written
+/// configuration overrides into the IConfiguration read chain so that ConfigController.Put
+/// writes take effect (previously the table was write-only, making the config API a "false success").
 /// </summary>
 public sealed class SqliteConfigurationSource : IConfigurationSource
 {
     private readonly string _databasePath;
 
-    /// <summary>初始化配置源；<paramref name="databasePath"/> 为空时与 DatabaseProvider 使用同一解析逻辑。</summary>
+    /// <summary>Initializes the configuration source; when <paramref name="databasePath"/> is null, uses the same resolution logic as DatabaseProvider.</summary>
     public SqliteConfigurationSource(string? databasePath = null)
     {
         var root = Environment.GetEnvironmentVariable("FortOS_DATA_ROOT");
@@ -20,7 +20,7 @@ public sealed class SqliteConfigurationSource : IConfigurationSource
         _databasePath = databasePath ?? Path.GetFullPath(Path.Combine(dataRoot, "database", "nas.db"));
     }
 
-    /// <summary>无参构造（供 <see cref="ConfigurationExtensions.Add{TSource}"/> 使用）。</summary>
+    /// <summary>Parameterless constructor (for use by <see cref="ConfigurationExtensions.Add{TSource}"/>).</summary>
     public SqliteConfigurationSource()
         : this(databasePath: null)
     {
@@ -30,12 +30,12 @@ public sealed class SqliteConfigurationSource : IConfigurationSource
     public IConfigurationProvider Build(IConfigurationBuilder builder) => new SqliteConfigurationProvider(_databasePath);
 }
 
-/// <summary>从 api_config 表读取覆盖值的配置提供者。</summary>
+/// <summary>Configuration provider that reads override values from the api_config table.</summary>
 public sealed class SqliteConfigurationProvider : ConfigurationProvider
 {
     private readonly string _databasePath;
 
-    /// <summary>初始化提供者。</summary>
+    /// <summary>Initializes the provider.</summary>
     public SqliteConfigurationProvider(string databasePath) => _databasePath = databasePath;
 
     /// <inheritdoc />
@@ -61,8 +61,8 @@ public sealed class SqliteConfigurationProvider : ConfigurationProvider
         }
         catch (SqliteException)
         {
-            // 数据库未初始化或不可读（如损坏）时不阻塞配置系统启动，保持空覆盖集；
-            // 后续 Put 写入会重建表并触发 Reload。
+            // Do not block configuration startup when the database is uninitialized or unreadable (e.g. corrupt); keep the override set empty.
+            // A subsequent Put write will rebuild the table and trigger Reload.
             data.Clear();
         }
 

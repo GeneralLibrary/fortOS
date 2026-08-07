@@ -3,7 +3,7 @@ using FortOS.Installer.Core.Models;
 namespace FortOS.Installer.Core.Tools;
 
 /// <summary>
-/// <c>sgdisk</c> 适配器:GPT 分区表创建/校验。
+/// <c>sgdisk</c> adapter: GPT partition table creation/verification.
 /// </summary>
 public sealed class SgdiskTool : ITool
 {
@@ -13,11 +13,11 @@ public sealed class SgdiskTool : ITool
 
     public string Name => "sgdisk";
 
-    /// <summary>清空磁盘上的所有分区表与数据(安装目标盘,先于布局创建)。</summary>
+    /// <summary>Zaps all partition tables and data on the disk (the install target disk, before layout creation).</summary>
     public Task ZapAsync(string disk, CancellationToken ct)
         => RunAsync(disk, ["--zap-all", disk], ct);
 
-    /// <summary>按模板创建分区。每个 spec 生成 --new / --typecode / --change-name 三连。</summary>
+    /// <summary>Creates partitions according to the template. Each spec generates the --new / --typecode / --change-name triplet.</summary>
     public async Task CreatePartitionsAsync(string disk, IReadOnlyList<PartitionSpec> specs, CancellationToken ct)
     {
         var args = new List<string>();
@@ -35,7 +35,7 @@ public sealed class SgdiskTool : ITool
         await RunAsync(disk, args, ct).ConfigureAwait(false);
     }
 
-    /// <summary>校验分区表(自检)。</summary>
+    /// <summary>Verifies the partition table (self-check).</summary>
     public Task VerifyAsync(string disk, CancellationToken ct)
         => RunAsync(disk, ["--verify", disk], ct);
 

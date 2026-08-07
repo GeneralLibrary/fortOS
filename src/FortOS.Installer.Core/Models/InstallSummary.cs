@@ -1,8 +1,8 @@
 namespace FortOS.Installer.Core.Models;
 
 /// <summary>
-/// 安装摘要。安装完成后写入目标系统
-/// <c>/etc/fortos/install-summary.json</c>(设计稿 4/5.1)。
+/// Installation summary. Written to the target system after installation completes
+/// at <c>/etc/fortos/install-summary.json</c> (design doc 4/5.1).
 /// </summary>
 public sealed class InstallSummary
 {
@@ -12,7 +12,7 @@ public sealed class InstallSummary
 
     public bool Success { get; set; }
 
-    /// <summary>FortOS 版本(取自 /etc/fortos/version)。</summary>
+    /// <summary>FortOS version (taken from /etc/fortos/version).</summary>
     public string? FortosVersion { get; set; }
 
     public string? SystemDisk { get; set; }
@@ -29,7 +29,7 @@ public sealed class InstallSummary
 
     public string? DataUuid { get; set; }
 
-    /// <summary>实际引导方式:uefi / bios。</summary>
+    /// <summary>Actual boot mode: uefi / bios.</summary>
     public string? BootMode { get; set; }
 
     public string? Hostname { get; set; }

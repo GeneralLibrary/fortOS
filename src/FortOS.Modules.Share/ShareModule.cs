@@ -58,8 +58,8 @@ public sealed class ShareModule : NasModuleBase
     public async Task<ShareDefinition> CreateShareAsync(ShareDefinition share, CancellationToken ct)
     {
         ShareValidation.ValidateShare(share);
-        // 整个「读-改-写-应用」在锁内串行：Apply（重启/重载 SMB/NFS 服务）若在锁外，
-        // 两个并发操作会互相覆盖配置应用状态，导致静默配置不一致。
+        // The whole read-modify-write-apply sequence is serialized under the lock: if Apply (restart/reload SMB/NFS services) ran outside the lock,
+        // two concurrent operations would overwrite each other's config application state, silently leaving the configuration inconsistent.
         await sync.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -86,7 +86,7 @@ public sealed class ShareModule : NasModuleBase
     /// <summary>Delete share and refresh service configuration.</summary>
     public async Task DeleteShareAsync(string shareId, CancellationToken ct)
     {
-        // 与 Create 相同：Apply 在锁内串行，避免并发删除互相覆盖应用状态。
+        // Same as Create: Apply is serialized under the lock, keeping concurrent deletes from overwriting each other's application state.
         await sync.WaitAsync(ct).ConfigureAwait(false);
         ShareDefinition? removed;
         try

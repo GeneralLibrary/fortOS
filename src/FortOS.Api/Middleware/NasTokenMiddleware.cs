@@ -31,7 +31,7 @@ public sealed class NasTokenMiddleware
         }
 
         var requireAuth = configuration.GetValue("security:require_auth", true);
-        var token = ExtractToken(context.Request);
+        var token = TokenExtraction.FromRequest(context.Request);
         if (!requireAuth && string.IsNullOrWhiteSpace(token))
         {
             await next(context).ConfigureAwait(false);
@@ -54,8 +54,8 @@ public sealed class NasTokenMiddleware
         var validation = await tokenManager.ValidateTokenAsync(token, context.RequestAborted).ConfigureAwait(false);
         if (!validation.IsValid)
         {
-            // 对外统一返回固定文案，避免泄露内部状态（密钥存在性、吊销机制、
-            // 设备绑定策略等可被攻击者用于枚举探测）；详细原因仅写入日志。
+            // Always return a fixed message to the outside, avoiding leaks of internal state (key existence, revocation mechanism,
+            // device binding policy, etc., which attackers could use for enumeration probing); the detailed reason is only written to the log.
             logger.LogDebug("Token validation failed for request {Method} {Path}: {Reason}", context.Request.Method, context.Request.Path, validation.ErrorMessage);
             await UnauthorizedAsync(context, "Invalid token.", "TOKEN_INVALID").ConfigureAwait(false);
             return;
@@ -81,20 +81,9 @@ public sealed class NasTokenMiddleware
             || value.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("/grpc.reflection", StringComparison.OrdinalIgnoreCase)
-            // /metrics 由端点自身依据 metrics:allow_anonymous 决定是否放行匿名访问；
-            // 若在中间件层拦截，该配置永远不生效（Prometheus 采集不到数据）。
+            // /metrics itself decides whether to allow anonymous access based on metrics:allow_anonymous;
+            // if intercepted at the middleware layer, that setting would never take effect (Prometheus would fail to scrape).
             || value.Equals("/metrics", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? ExtractToken(HttpRequest request)
-    {
-        var authorization = request.Headers.Authorization.ToString();
-        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            return authorization[7..].Trim();
-        }
-
-        return request.Headers.TryGetValue("X-Nas-Token", out var token) ? token.ToString() : null;
     }
 
     private static async Task<bool> NoUsersExistAsync(IDatabaseProvider database, CancellationToken ct)

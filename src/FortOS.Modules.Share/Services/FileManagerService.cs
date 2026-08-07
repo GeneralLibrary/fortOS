@@ -7,29 +7,33 @@ namespace FortOS.Modules.Share.Services;
 
 /// <summary>
 /// File management service restricted to the NAS sandbox root directory.
+/// Path resolution, upload sessions, and the recycle bin live in their own services
+/// (FilePathResolver, UploadSessionService, RecycleBinService); this class owns only
+/// the CRUD operations, metadata, and Unix permission helpers.
 /// </summary>
 public sealed partial class FileManagerService
 {
-    private readonly IFortOSConfiguration? _configuration;
-    private readonly ShareModule? _shareModule;
-    private readonly IProcessManager? _processManager;
-    private readonly IDatabaseProvider? _database;
+    private readonly FilePathResolver _resolver;
+    private readonly RecycleBinService _recycleBin;
+    private readonly IFortOSConfiguration _configuration;
 
     /// <summary>
     /// Initialize the file management service.
     /// </summary>
-    public FileManagerService(IFortOSConfiguration? configuration = null, ShareModule? shareModule = null, IProcessManager? processManager = null, IDatabaseProvider? database = null)
+    /// <param name="resolver">Path resolution and sandbox-root validation.</param>
+    /// <param name="recycleBin">Recycle bin moves for soft deletes and restores.</param>
+    /// <param name="configuration">Configuration provider (files:legacy_max_bytes).</param>
+    public FileManagerService(FilePathResolver resolver, RecycleBinService recycleBin, IFortOSConfiguration configuration)
     {
+        _resolver = resolver;
+        _recycleBin = recycleBin;
         _configuration = configuration;
-        _shareModule = shareModule;
-        _processManager = processManager;
-        _database = database;
     }
 
     /// <summary>List directory contents.</summary>
     public async Task<IReadOnlyList<ManagedFileEntry>> ListAsync(string path, bool recursive, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (!Directory.Exists(fullPath))
         {
             throw new DirectoryNotFoundException($"Directory does not exist: {fullPath}");
@@ -77,7 +81,7 @@ public sealed partial class FileManagerService
     /// <summary>Read file content.</summary>
     public async Task<ManagedFileContent> ReadAsync(string path, bool asBase64, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (!File.Exists(fullPath))
         {
             throw new FileNotFoundException("File does not exist.", fullPath);
@@ -95,7 +99,7 @@ public sealed partial class FileManagerService
     /// <summary>Write file.</summary>
     public async Task<ManagedFileStat> WriteAsync(string path, string content, string encoding, bool overwrite, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (File.Exists(fullPath) && !overwrite)
         {
             throw new IOException($"File already exists: {fullPath}");
@@ -111,7 +115,7 @@ public sealed partial class FileManagerService
     /// <summary>Create directory.</summary>
     public async Task<ManagedFileStat> CreateDirectoryAsync(string path, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         var info = Directory.CreateDirectory(fullPath);
         return new ManagedFileStat
         {
@@ -126,8 +130,8 @@ public sealed partial class FileManagerService
     /// <summary>Move path.</summary>
     public async Task<ManagedFileStat> MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken ct)
     {
-        var source = await ResolvePathAsync(sourcePath, ct).ConfigureAwait(false);
-        var destination = await ResolvePathAsync(destinationPath, ct).ConfigureAwait(false);
+        var source = await _resolver.ResolvePathAsync(sourcePath, ct).ConfigureAwait(false);
+        var destination = await _resolver.ResolvePathAsync(destinationPath, ct).ConfigureAwait(false);
 
         EnsureExists(source);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
@@ -156,8 +160,9 @@ public sealed partial class FileManagerService
     /// <summary>Copy path.</summary>
     public async Task<ManagedFileStat> CopyAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken ct)
     {
-        var source = await ResolvePathAsync(sourcePath, ct).ConfigureAwait(false);
-        var destination = await ResolvePathAsync(destinationPath, ct).ConfigureAwait(false);
+        var source = await _resolver.ResolvePathAsync(sourcePath, ct).ConfigureAwait(false);
+        var destination = await _resolver.ResolvePathAsync(destinationPath, ct).ConfigureAwait(false);
+
         EnsureExists(source);
         if (File.Exists(source))
         {
@@ -173,7 +178,7 @@ public sealed partial class FileManagerService
     /// <summary>Delete path (soft delete or hard delete).</summary>
     public async Task<ManagedDeleteResult> DeleteAsync(string path, bool hardDelete, string requestedBy, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         EnsureExists(fullPath);
         if (hardDelete)
         {
@@ -181,7 +186,7 @@ public sealed partial class FileManagerService
             return new ManagedDeleteResult { DeletedPath = fullPath, HardDeleted = true };
         }
 
-        var recycleTarget = await MoveToRecycleAsync(fullPath, requestedBy, ct).ConfigureAwait(false);
+        var recycleTarget = await _recycleBin.MoveToRecycleAsync(fullPath, requestedBy, ct).ConfigureAwait(false);
         return new ManagedDeleteResult
         {
             DeletedPath = fullPath,
@@ -193,37 +198,14 @@ public sealed partial class FileManagerService
     /// <summary>Restore softly deleted path.</summary>
     public async Task<ManagedFileStat> RestoreAsync(string recyclePath, string targetPath, CancellationToken ct)
     {
-        var source = await ResolvePathAsync(recyclePath, ct).ConfigureAwait(false);
-        var destination = await ResolvePathAsync(targetPath, ct).ConfigureAwait(false);
-        if (!source.Contains($"{Path.DirectorySeparatorChar}.recycle{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
-            && !source.Contains("/.recycle/", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException("The restore source path must be located under the .recycle directory.", nameof(recyclePath));
-        }
-
-        EnsureExists(source);
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        if (File.Exists(source))
-        {
-            File.Move(source, destination, overwrite: true);
-        }
-        else
-        {
-            if (Directory.Exists(destination))
-            {
-                Directory.Delete(destination, recursive: true);
-            }
-
-            Directory.Move(source, destination);
-        }
-
+        var destination = await _recycleBin.MoveBackAsync(recyclePath, targetPath, ct).ConfigureAwait(false);
         return await StatAsync(destination, ct).ConfigureAwait(false);
     }
 
     /// <summary>Query path metadata.</summary>
     public async Task<ManagedFileStat> StatAsync(string path, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         if (File.Exists(fullPath))
         {
             var file = new FileInfo(fullPath);
@@ -263,7 +245,7 @@ public sealed partial class FileManagerService
     /// <summary>Set Linux permission bits.</summary>
     public async Task ApplyChmodAsync(string path, string mode, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         EnsureExists(fullPath);
         if (!ModeRegex().IsMatch(mode))
         {
@@ -276,7 +258,7 @@ public sealed partial class FileManagerService
     /// <summary>Set Linux owner.</summary>
     public async Task ApplyChownAsync(string path, string owner, CancellationToken ct)
     {
-        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var fullPath = await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false);
         EnsureExists(fullPath);
         if (!OwnerRegex().IsMatch(owner))
         {
@@ -286,300 +268,23 @@ public sealed partial class FileManagerService
         await ExecuteUnixCommandAsync("chown", $"{owner} {Quote(fullPath)}", ct).ConfigureAwait(false);
     }
 
+    /// <summary>Computes the SHA-256 ETag of a file (used for conditional upload/read requests).</summary>
+    public async Task<string> GetEtagAsync(string path, CancellationToken ct)
+    {
+        await using var stream = File.OpenRead(await _resolver.ResolvePathAsync(path, ct).ConfigureAwait(false));
+        return Convert.ToHexString(await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
+    }
+
     private static byte[] DecodeContent(string content, string encoding)
         => string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase)
             ? Convert.FromBase64String(content)
             : Encoding.UTF8.GetBytes(content);
 
-    /// <summary>Create a persistent resumable upload session; the temporary file and target file are in the same directory to ensure atomic replacement.</summary>
-    public async Task<UploadSession> CreateUploadSessionAsync(string targetPath, string subject, long? expectedSize, string? expectedSha256, CancellationToken ct)
-    {
-        var database = RequireDatabase();
-        var target = await ResolvePathAsync(targetPath, ct).ConfigureAwait(false);
-        if (expectedSize is < 0) throw new ArgumentOutOfRangeException(nameof(expectedSize));
-        await database.InitializeAsync(ct).ConfigureAwait(false);
-        await CleanupExpiredUploadsAsync(ct).ConfigureAwait(false);
-        await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using (var count = connection.CreateCommand())
-        {
-            count.CommandText = "SELECT COUNT(*) FROM upload_sessions WHERE subject=$subject AND state='open' AND expires_at > $now;";
-            count.Parameters.AddWithValue("$subject", subject);
-            count.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-            if ((long)(await count.ExecuteScalarAsync(ct).ConfigureAwait(false) ?? 0L) >= 4)
-                throw new IOException("UPLOAD_CONCURRENCY_LIMIT");
-        }
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        var id = Guid.CreateVersion7().ToString();
-        var temporary = Path.Combine(Path.GetDirectoryName(target)!, $".{Path.GetFileName(target)}.{id}.upload");
-        await using (File.Create(temporary)) { }
-        var expires = DateTimeOffset.UtcNow.AddHours(24);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "INSERT INTO upload_sessions(session_id,subject,target_path,temporary_path,expected_size,expected_sha256,received_bytes,state,expires_at,updated_at) VALUES($id,$subject,$target,$temporary,$size,$sha,0,'open',$expires,$now);";
-        command.Parameters.AddWithValue("$id", id); command.Parameters.AddWithValue("$subject", subject); command.Parameters.AddWithValue("$target", target); command.Parameters.AddWithValue("$temporary", temporary);
-        command.Parameters.AddWithValue("$size", (object?)expectedSize ?? DBNull.Value); command.Parameters.AddWithValue("$sha", (object?)expectedSha256 ?? DBNull.Value);
-        command.Parameters.AddWithValue("$expires", expires.ToString("O")); command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        return new UploadSession(id, target, 0, expectedSize, expectedSha256, "open", expires, null);
-    }
+    private const long LegacyWriteDefaultBytes = 1024 * 1024;
+    private const long LegacyWriteMinimumBytes = 1;
+    private const long LegacyWriteMaximumBytes = 16 * 1024 * 1024;
 
-    public async Task<UploadSession> AppendUploadAsync(string sessionId, string subject, long offset, Stream content, long? length, CancellationToken ct)
-    {
-        var session = await GetUploadSessionAsync(sessionId, subject, ct).ConfigureAwait(false);
-        if (session.State != "open") throw new IOException("UPLOAD_SESSION_NOT_OPEN");
-        if (session.ReceivedBytes != offset) throw new UploadOffsetConflictException(session.ReceivedBytes);
-        await using (var file = new FileStream(session.TemporaryPath!, FileMode.Open, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
-        {
-            file.Position = offset;
-            await content.CopyToAsync(file, ct).ConfigureAwait(false);
-            await file.FlushAsync(ct).ConfigureAwait(false);
-            file.Flush(flushToDisk: true);
-        }
-        var received = new FileInfo(session.TemporaryPath!).Length;
-        if (length.HasValue && received != offset + length.Value) throw new IOException("UPLOAD_CONTENT_RANGE_INVALID");
-        if (session.ExpectedSize.HasValue && received > session.ExpectedSize.Value) throw new IOException("UPLOAD_SIZE_EXCEEDED");
-        return await UpdateUploadAsync(session with { ReceivedBytes = received }, ct).ConfigureAwait(false);
-    }
-
-    public async Task<ManagedFileStat> FinalizeUploadAsync(string sessionId, string subject, string? ifMatch, CancellationToken ct)
-    {
-        var session = await GetUploadSessionAsync(sessionId, subject, ct).ConfigureAwait(false);
-        if (session.State != "open") throw new IOException("UPLOAD_SESSION_NOT_OPEN");
-        if (session.ExpectedSize.HasValue && session.ReceivedBytes != session.ExpectedSize.Value) throw new IOException("UPLOAD_SIZE_MISMATCH");
-        string actual;
-        await using (var stream = File.OpenRead(session.TemporaryPath!))
-        {
-            actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
-        }
-        if (!string.IsNullOrWhiteSpace(session.ExpectedSha256) && !string.Equals(actual, session.ExpectedSha256, StringComparison.OrdinalIgnoreCase)) throw new IOException("UPLOAD_CHECKSUM_MISMATCH");
-        var existingEtag = File.Exists(session.TargetPath) ? await GetEtagAsync(session.TargetPath!, ct).ConfigureAwait(false) : null;
-        if (!string.IsNullOrWhiteSpace(ifMatch) && !string.Equals(ifMatch.Trim('"'), existingEtag, StringComparison.OrdinalIgnoreCase)) throw new UploadVersionConflictException(existingEtag);
-        File.Move(session.TemporaryPath!, session.TargetPath!, overwrite: true);
-        await UpdateUploadAsync(session with { State = "completed", Etag = actual }, ct).ConfigureAwait(false);
-        return await StatAsync(session.TargetPath!, ct).ConfigureAwait(false);
-    }
-
-    public async Task AbortUploadAsync(string sessionId, string subject, CancellationToken ct)
-    {
-        var session = await GetUploadSessionAsync(sessionId, subject, ct).ConfigureAwait(false);
-        if (File.Exists(session.TemporaryPath)) File.Delete(session.TemporaryPath!);
-        await UpdateUploadAsync(session with { State = "aborted" }, ct).ConfigureAwait(false);
-    }
-
-    public async Task<UploadSession> GetUploadSessionAsync(string sessionId, string subject, CancellationToken ct)
-    {
-        var database = RequireDatabase();
-        await database.InitializeAsync(ct).ConfigureAwait(false);
-        await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT target_path, temporary_path, expected_size, expected_sha256, received_bytes, state, expires_at, etag FROM upload_sessions WHERE session_id=$id AND subject=$subject;";
-        command.Parameters.AddWithValue("$id", sessionId); command.Parameters.AddWithValue("$subject", subject);
-        await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        if (!await reader.ReadAsync(ct).ConfigureAwait(false)) throw new FileNotFoundException("UPLOAD_SESSION_NOT_FOUND");
-        var expires = DateTimeOffset.Parse(reader.GetString(6), null, System.Globalization.DateTimeStyles.RoundtripKind);
-        if (expires <= DateTimeOffset.UtcNow) throw new IOException("UPLOAD_SESSION_EXPIRED");
-        return new UploadSession(sessionId, reader.GetString(0), reader.GetInt64(4), reader.IsDBNull(2) ? null : reader.GetInt64(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(5), expires, reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetString(1));
-    }
-
-    public async Task<string> GetEtagAsync(string path, CancellationToken ct)
-    {
-        await using var stream = File.OpenRead(await ResolvePathAsync(path, ct).ConfigureAwait(false));
-        return Convert.ToHexString(await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
-    }
-
-    private async Task<UploadSession> UpdateUploadAsync(UploadSession session, CancellationToken ct)
-    {
-        var database = RequireDatabase();
-        await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE upload_sessions SET received_bytes=$received,state=$state,etag=$etag,updated_at=$updated WHERE session_id=$id;";
-        command.Parameters.AddWithValue("$received", session.ReceivedBytes); command.Parameters.AddWithValue("$state", session.State); command.Parameters.AddWithValue("$etag", (object?)session.Etag ?? DBNull.Value);
-        command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O")); command.Parameters.AddWithValue("$id", session.SessionId);
-        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        return session;
-    }
-
-    private async Task CleanupExpiredUploadsAsync(CancellationToken ct)
-    {
-        var database = RequireDatabase();
-        await using var connection = await database.GetConnectionAsync(ct).ConfigureAwait(false);
-        await using var select = connection.CreateCommand();
-        select.CommandText = "SELECT temporary_path FROM upload_sessions WHERE expires_at <= $now AND state='open';";
-        select.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-        var paths = new List<string>();
-        await using (var reader = await select.ExecuteReaderAsync(ct).ConfigureAwait(false)) while (await reader.ReadAsync(ct).ConfigureAwait(false)) paths.Add(reader.GetString(0));
-        foreach (var path in paths) if (File.Exists(path)) File.Delete(path);
-        await using var delete = connection.CreateCommand();
-        delete.CommandText = "DELETE FROM upload_sessions WHERE expires_at <= $now;";
-        delete.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-        await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-    }
-
-    private IDatabaseProvider RequireDatabase() => _database ?? throw new InvalidOperationException("Upload requires IDatabaseProvider.");
-    private long ReadMaximumLegacyBytes() => Math.Clamp(long.TryParse(_configuration?.GetValue("files:legacy_max_bytes"), out var value) ? value : 1024 * 1024, 1, 16 * 1024 * 1024);
-
-    private async Task<string> ResolvePathAsync(string path, CancellationToken ct)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (path.Contains('\n') || path.Contains('\r'))
-        {
-            throw new ArgumentException("Path cannot contain newlines.", nameof(path));
-        }
-
-        // 先解析真实路径（含符号链接）：共享目录内的 symlink 可指向外部目录，
-        // 仅做字符串前缀校验时 /share/link-to-/etc 会被误判为在允许根内。
-        var resolvedPath = await ResolveRealPathAsync(Path.GetFullPath(path), ct).ConfigureAwait(false);
-        var allowedRoots = await GetAllowedRootsAsync(ct).ConfigureAwait(false);
-        if (!allowedRoots.Any(root => PathSafety.IsPathUnderRoot(resolvedPath, root)))
-        {
-            throw new PermissionDeniedException($"Path exceeds allowed directories: {path}");
-        }
-
-        // 返回真实路径：后续所有 IO 都基于它，避免校验后 symlink 被替换的 TOCTOU 窗口。
-        return resolvedPath;
-    }
-
-    /// <summary>
-    /// 解析路径的真实形式：用 realpath -m 展开已存在组件的符号链接（-m 不要求路径
-    /// 存在，覆盖新建文件的场景）。realpath 不可用（如容器缺工具）或执行失败时退回
-    /// 归一化路径，至少保留对 ".." 的防护。
-    /// </summary>
-    private async Task<string> ResolveRealPathAsync(string path, CancellationToken ct)
-    {
-        if (_processManager is null)
-        {
-            return PathSafety.NormalizePath(path);
-        }
-
-        try
-        {
-            var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
-            {
-                ExecutablePath = "realpath",
-                Arguments = "-m " + QuoteForShell(path),
-                TimeoutSeconds = 5,
-            }, ct).ConfigureAwait(false);
-            if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Stdout))
-            {
-                return PathSafety.NormalizePath(result.Stdout.Trim());
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // best-effort：realpath 不可用时退回归一化路径，不阻断文件操作。
-        }
-
-        return PathSafety.NormalizePath(path);
-    }
-
-    private static string QuoteForShell(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
-
-    private async Task<IReadOnlyList<string>> GetAllowedRootsAsync(CancellationToken ct)
-    {
-        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            PathSafety.NormalizePath(GetDataRoot()),
-        };
-        foreach (var root in ReadConfiguredRoots())
-        {
-            roots.Add(PathSafety.NormalizePath(root));
-        }
-
-        if (_shareModule is not null)
-        {
-            foreach (var share in await SafeListSharesAsync(ct).ConfigureAwait(false))
-            {
-                roots.Add(PathSafety.NormalizePath(Path.GetFullPath(share.Path)));
-            }
-        }
-
-        return roots.ToArray();
-    }
-
-    private async Task<IReadOnlyList<ShareDefinition>> SafeListSharesAsync(CancellationToken ct)
-    {
-        try
-        {
-            return await _shareModule!.ListSharesAsync(ct).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException)
-        {
-            // Share module has not been initialized yet (module host not started / degraded mode);
-            // there are no shares to include, file operations must keep working regardless.
-            return [];
-        }
-    }
-
-    private string[] ReadConfiguredRoots()
-    {
-        var values = _configuration?.GetArray("files:allowed_roots") ?? [];
-        if (values.Length > 0)
-        {
-            return values;
-        }
-
-        var scalar = _configuration?.GetValue("files:allowed_roots");
-        return string.IsNullOrWhiteSpace(scalar)
-            ? []
-            : scalar.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    }
-
-    private static string GetDataRoot()
-    {
-        var value = Environment.GetEnvironmentVariable("FortOS_DATA_ROOT");
-        return string.IsNullOrWhiteSpace(value) ? "/srv/nas" : value;
-    }
-
-    private async Task<string> MoveToRecycleAsync(string path, string requestedBy, CancellationToken ct)
-    {
-        var root = await ResolveRecycleRootAsync(path, ct).ConfigureAwait(false);
-        var user = SanitizeUser(requestedBy);
-        var relativePath = Path.GetRelativePath(root, path);
-        var target = Path.Combine(root, ".recycle", user, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        if (File.Exists(path))
-        {
-            if (File.Exists(target))
-            {
-                File.Delete(target);
-            }
-
-            File.Move(path, target);
-            return target;
-        }
-
-        if (Directory.Exists(target))
-        {
-            Directory.Delete(target, recursive: true);
-        }
-
-        Directory.Move(path, target);
-        return target;
-    }
-
-    private async Task<string> ResolveRecycleRootAsync(string path, CancellationToken ct)
-    {
-        var candidates = new List<string>();
-        if (_shareModule is not null)
-        {
-            candidates.AddRange((await SafeListSharesAsync(ct).ConfigureAwait(false)).Select(s => Path.GetFullPath(s.Path)));
-        }
-
-        candidates.Add(GetDataRoot());
-        var fullPath = Path.GetFullPath(path);
-        var normalizedPath = PathSafety.NormalizePath(fullPath);
-        var root = candidates
-            .Select(Path.GetFullPath)
-            .Select(p => new { Original = p, Normalized = PathSafety.NormalizePath(p) })
-            .Where(c => PathSafety.IsPathUnderRoot(normalizedPath, c.Normalized))
-            .OrderByDescending(c => c.Normalized.Length)
-            .FirstOrDefault();
-        if (root is null)
-        {
-            throw new PermissionDeniedException($"Path is not under a shared directory or the data root directory: {path}");
-        }
-
-        return root.Original;
-    }
+    private long ReadMaximumLegacyBytes() => Math.Clamp(long.TryParse(_configuration.GetValue("files:legacy_max_bytes"), out var value) ? value : LegacyWriteDefaultBytes, LegacyWriteMinimumBytes, LegacyWriteMaximumBytes);
 
     private static void DeletePath(string path)
     {
@@ -636,12 +341,8 @@ public sealed partial class FileManagerService
 
     private async Task ExecuteUnixCommandAsync(string executable, string arguments, CancellationToken ct)
     {
-        if (_processManager is null)
-        {
-            throw new InvalidOperationException($"IProcessManager is not registered; cannot execute {executable}.");
-        }
-
-        var result = await _processManager.ExecuteCommandAsync(new ProcessStartConfig
+        var processManager = _resolver.ProcessManager;
+        var result = await processManager.ExecuteCommandAsync(new ProcessStartConfig
         {
             ExecutablePath = executable,
             Arguments = arguments,
@@ -651,19 +352,6 @@ public sealed partial class FileManagerService
         {
             throw new InvalidOperationException($"{executable} execution failed: {result.Stderr}");
         }
-    }
-
-    private static string SanitizeUser(string requestedBy)
-    {
-        var value = string.IsNullOrWhiteSpace(requestedBy) ? "unknown" : requestedBy;
-        value = value.Replace('\\', '_').Replace('/', '_').Replace(':', '_');
-        // 拒绝路径穿越段：用户名必须是单一目录段，".." 会让回收站目录逃逸出共享根。
-        if (value.Contains("..", StringComparison.Ordinal))
-        {
-            return "unknown";
-        }
-
-        return value;
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";

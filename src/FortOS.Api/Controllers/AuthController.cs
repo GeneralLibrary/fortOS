@@ -48,7 +48,7 @@ public sealed class AuthController : FortOSControllerBase
         return new { success = true, username = request.Username };
     }
 
-    /// <summary>Refresh token：已认证用户自服务操作，显式标注会话刷新能力（默认约定是 admin:**）。</summary>
+    /// <summary>Refresh token: a self-service operation for authenticated users, explicitly labeled with the session refresh capability (default convention is admin:**).</summary>
     [RequiresCapability(NAbilityConstants.SessionRefresh)]
     [HttpPost("refresh")]
     public async Task<object> Refresh([FromServices] ITokenManager tokens, CancellationToken ct)

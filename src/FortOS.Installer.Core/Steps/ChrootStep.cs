@@ -5,12 +5,13 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Core.Steps;
 
 /// <summary>
-/// chroot 目标系统配置步骤(设计稿 5.4):fstab、hostname、时区/locale/键盘、
-/// 管理员账户、服务启用、fortos.env、网络、清理 live 残留。
+/// Chroot target system configuration step (design doc 5.4): fstab, hostname,
+/// timezone/locale/keyboard, admin account, service enabling, fortos.env,
+/// network, and cleanup of live residue.
 /// </summary>
 public sealed class ChrootStep : IInstallStep
 {
-    /// <summary>与 eng/iso/config/hooks/live/0100-fortos-runtime.hook.chroot 一致的服务启用清单(含可选 nut-monitor)。</summary>
+    /// <summary>Service enable list consistent with eng/iso/config/hooks/live/0100-fortos-runtime.hook.chroot (including the optional nut-monitor).</summary>
     private static readonly string[] EnabledServices =
     [
         "docker.service", "containerd.service", "smbd.service", "nmbd.service",
@@ -43,28 +44,31 @@ public sealed class ChrootStep : IInstallStep
         WriteFortosEnv(context, target);
 
         await ConfigureUserAsync(context, target, ct).ConfigureAwait(false);
-        // 把向导设置的账号密码写入 FortOS 用户库(/srv/nas/database/nas.db),
-        // 首次启动 Web 管理界面即可用同一账号密码登录,无需匿名注册。
+        // Write the account password set in the wizard into the FortOS user database
+        // (/srv/nas/database/nas.db), so the Web admin UI can log in with the same
+        // credentials on first boot without anonymous registration.
         await SeedFortosUserAsync(context, target, ct).ConfigureAwait(false);
         await EnableServicesAsync(target, ct).ConfigureAwait(false);
         await ConfigureNetworkAsync(context, target, ct).ConfigureAwait(false);
         await ConfigureRaidAsync(context, target, ct).ConfigureAwait(false);
-        // 无条件重建 initramfs(非仅 RAID 模式):目标系统必须以标准 initramfs
-        // 启动,live 环境遗留的 initrd 是 live-boot 引导专用的,复制到目标盘后
-        // 可能缺失、损坏或不含目标磁盘控制器/rootfs 驱动——grub-mkconfig 找
-        // 不到 initrd 时会静默生成无 initrd 行的 grub.cfg,重启即内核
-        // "VFS: Unable to mount root fs on unknown-block(0,0)" panic。
+        // Rebuild initramfs unconditionally (not only in RAID mode): the target
+        // system must boot with a standard initramfs; the initrd left over from the
+        // live environment is specific to live-boot booting, and after being copied
+        // to the target disk it may be missing, corrupted, or lack the target disk
+        // controller/rootfs drivers — when grub-mkconfig cannot find an initrd it
+        // silently generates a grub.cfg without an initrd line, and the kernel panics
+        // on reboot with "VFS: Unable to mount root fs on unknown-block(0,0)".
         await RebuildInitramfsAsync(target, ct).ConfigureAwait(false);
         await CleanupLiveResidueAsync(target, ct).ConfigureAwait(false);
 
-        context.Summary.Hostname = SanitizeHostname(config.Network.Hostname); // 记录实际写入的值
+        context.Summary.Hostname = SanitizeHostname(config.Network.Hostname); // record the actual value written
         context.Summary.Username = config.Account.Username;
         context.Summary.Language = config.Locale.Language;
         context.Summary.Timezone = config.Account.Timezone;
     }
 
     // ---------------------------------------------------------------------
-    // 文件写入(直接操作 /target,可单测)
+    // File writing (operates directly on /target, unit-testable)
     // ---------------------------------------------------------------------
 
     private static void WriteFstab(InstallContext context, string target)
@@ -79,11 +83,11 @@ public sealed class ChrootStep : IInstallStep
         }
     }
 
-    /// <summary>生成 /etc/fstab 内容(纯函数,可单测)。</summary>
+    /// <summary>Generate /etc/fstab content (pure function, unit-testable).</summary>
     internal static string BuildFstab(InstallContext context)
     {
         var rootFs = context.Config.RootFs == RootFileSystem.Btrfs ? "btrfs" : "ext4";
-        // root UUID 缺失说明 blkid 收集失败,直接报错而非生成坏 fstab。
+        // A missing root UUID means blkid collection failed; error out rather than generate a broken fstab.
         if (!context.Uuids.TryGetValue("root", out var rootUuid))
         {
             throw new Exceptions.StepException("Configure", "Root partition UUID was not collected — cannot build /etc/fstab.");
@@ -104,8 +108,10 @@ public sealed class ChrootStep : IInstallStep
         if (context.Uuids.TryGetValue("data", out var dataUuid))
         {
             var dataFs = context.Config.Data.FileSystem.ToString().ToLowerInvariant();
-            // LUKS 数据盘必须经 crypttab 解锁后以 mapper 设备挂载。
-            // 若容器 UUID 缺失(收集失败),应失败而非回退到直挂——那会在重启后挂载失败。
+            // LUKS data disks must be unlocked via crypttab and mounted through the
+            // mapper device. If the container UUID is missing (collection failed),
+            // fail rather than fall back to direct mounting — that would fail to
+            // mount after reboot.
             if (context.Config.Data.Mode == DataDiskMode.Luks)
             {
                 if (!context.Uuids.ContainsKey("data-luks"))
@@ -122,7 +128,7 @@ public sealed class ChrootStep : IInstallStep
         return string.Join('\n', lines) + "\n";
     }
 
-    /// <summary>生成 /etc/crypttab 内容(LUKS 数据盘;纯函数,可单测)。</summary>
+    /// <summary>Generate /etc/crypttab content (LUKS data disk; pure function, unit-testable).</summary>
     internal static string BuildCrypttab(InstallContext context)
     {
         if (!context.Uuids.TryGetValue("data-luks", out var luksUuid))
@@ -143,7 +149,7 @@ public sealed class ChrootStep : IInstallStep
     {
         var tz = context.Config.Account.Timezone;
         WriteFile(target, "etc/timezone", tz + "\n");
-        // 替换可能存在的旧符号链接。
+        // Replace an existing old symlink.
         var localtime = Path.Combine(target, "etc/localtime");
         try
         {
@@ -154,7 +160,7 @@ public sealed class ChrootStep : IInstallStep
         }
         catch
         {
-            // 符号链接删除失败不致命。
+            // Failure to delete the symlink is not fatal.
         }
         try
         {
@@ -162,7 +168,7 @@ public sealed class ChrootStep : IInstallStep
         }
         catch
         {
-            // 目标 zoneinfo 不存在时跳过(时区值本身已写入 /etc/timezone)。
+            // Skip when the target zoneinfo does not exist (the timezone value itself was already written to /etc/timezone).
         }
     }
 
@@ -174,11 +180,13 @@ public sealed class ChrootStep : IInstallStep
 
     private static void WriteFortosEnv(InstallContext context, string target)
     {
-        // 与 eng/iso/config/includes.chroot/etc/fortos/fortos.env 保持一致:
-        // ASPNETCORE_URLS 必须显式监听 0.0.0.0,否则 Kestrel 默认只监听
-        // localhost,局域网/虚拟机外部访问不到管理页面。
-        // dashboard__enabled=true:Web 管理界面默认开启(appsettings.json 默认
-        // false 会导致 /dashboard 404)。环境变量的 __ 对应配置节 :。
+        // Keep consistent with eng/iso/config/includes.chroot/etc/fortos/fortos.env:
+        // ASPNETCORE_URLS must explicitly listen on 0.0.0.0, otherwise Kestrel by
+        // default listens only on localhost and the admin UI is unreachable from
+        // outside the LAN/VM.
+        // dashboard__enabled=true: the Web admin UI is enabled by default
+        // (appsettings.json defaults to false, which would make /dashboard 404).
+        // In environment variables, __ maps to the configuration section separator :.
         WriteFile(
             target,
             "etc/fortos/fortos.env",
@@ -196,18 +204,18 @@ public sealed class ChrootStep : IInstallStep
     }
 
     // ---------------------------------------------------------------------
-    // chroot 内命令
+    // Commands inside the chroot
     // ---------------------------------------------------------------------
 
     private async Task ConfigureUserAsync(InstallContext context, string target, CancellationToken ct)
     {
         var username = context.Config.Account.Username;
         var home = $"/home/{username}";
-        // 用户名已由 ValidateConfig 限定为安全子集;这里仍加引号做纵深防御。
+        // The username is already restricted to a safe subset by ValidateConfig; quotes are still added here for defense in depth.
         var qUsername = ShellQuote(username);
         var qHome = ShellQuote(home);
 
-        // 幂等创建:用户已存在(重试场景)则跳过,其余失败(磁盘满等)如实报错。
+        // Idempotent creation: skip if the user already exists (retry scenario); report other failures (disk full, etc.) as-is.
         await _chroot.RunScriptAsync(
             target,
             $"id -u '{qUsername}' >/dev/null 2>&1 || useradd -m -d '{qHome}' -s /bin/bash -G sudo {qUsername}",
@@ -215,16 +223,18 @@ public sealed class ChrootStep : IInstallStep
 
         if (!string.IsNullOrEmpty(context.Config.Account.Password))
         {
-            // 密码经 stdin 传给 chpasswd,不进命令行。
+            // The password is passed to chpasswd via stdin, not on the command line.
             await _chroot.RunScriptAsync(
                 target,
                 "chpasswd",
                 ct,
                 standardInput: $"{username}:{context.Config.Account.Password}\n").ConfigureAwait(false);
 
-            // Samba 用户密码:seed 进 FortOS 用户库后,IdentityService 的
-            // ProvisionSystemUsersAsync(SambaUserProvisioner)不会触发,必须显式
-            // smbpasswd -a,否则 SMB 共享用同一账号密码认证失败。密码走 stdin。
+            // Samba user password: once seeded into the FortOS user database,
+            // IdentityService's ProvisionSystemUsersAsync (SambaUserProvisioner)
+            // will not trigger, so smbpasswd -a must be run explicitly; otherwise
+            // SMB shares fail to authenticate with the same account password. The
+            // password goes through stdin.
             await _chroot.RunScriptAsync(
                 target,
                 $"pdbedit -L 2>/dev/null | grep -q '^{username}' || smbpasswd -s -a {username}",
@@ -232,12 +242,13 @@ public sealed class ChrootStep : IInstallStep
                 standardInput: $"{context.Config.Account.Password}\n{context.Config.Account.Password}\n").ConfigureAwait(false);
         }
 
-        // sudoers:FortOS 管理员无密码 sudo。
+        // sudoers: FortOS admin gets passwordless sudo.
         WriteFile(target, "etc/sudoers.d/90-fortos-admin", $"{username} ALL=(ALL) NOPASSWD:ALL\n");
 
-        // 自动登录:安装完成后首次启动直接进入系统(免输账号密码),NAS 本地
-        // 场景常见取舍。注意安全影响:物理接触控制台即获得 shell(admin 无
-        // 密码 sudo)。SSH 仍要求账号密码,不受影响。
+        // Autologin: the first boot after install enters the system directly (no
+        // account password), a common trade-off for local NAS scenarios. Note the
+        // security impact: physical console access yields a shell (admin has
+        // passwordless sudo). SSH still requires the account password, unaffected.
         WriteFile(
             target,
             "etc/systemd/system/getty@tty1.service.d/autologin.conf",
@@ -252,7 +263,7 @@ public sealed class ChrootStep : IInstallStep
             var sshDir = Path.Combine(target, home.TrimStart('/'), ".ssh");
             Directory.CreateDirectory(sshDir);
             WriteFile(target, $"{home.TrimStart('/')}/.ssh/authorized_keys", context.Config.Account.SshPublicKey.TrimEnd() + "\n");
-            // 权限由 chroot 内 chown 校正。
+            // Permissions are corrected by chown inside the chroot.
             await _chroot.RunScriptAsync(
                 target,
                 $"chown -R '{qUsername}':'{qUsername}' '{qHome}/.ssh' && chmod 700 '{qHome}/.ssh' && chmod 600 '{qHome}/.ssh/authorized_keys'",
@@ -262,8 +273,10 @@ public sealed class ChrootStep : IInstallStep
 
     private async Task EnableServicesAsync(string target, CancellationToken ct)
     {
-        // 主服务启用失败必须可见(否则安装报成功但目标系统服务全没启用)。
-        // nut-monitor 为可选(NAS 无 UPS 时不存在),单独容忍。
+        // Failures enabling the main services must be visible (otherwise the install
+        // reports success but none of the target system's services are enabled).
+        // nut-monitor is optional (absent when the NAS has no UPS), so it is
+        // tolerated separately.
         var enable = string.Join(' ', EnabledServices);
         await _chroot.RunScriptAsync(
             target,
@@ -276,7 +289,7 @@ public sealed class ChrootStep : IInstallStep
         var network = context.Config.Network;
         if (network.Mode == NetworkMode.Dhcp)
         {
-            // NetworkManager 默认对以太网启用 DHCP,无需写入 connection。
+            // NetworkManager enables DHCP on Ethernet by default; no connection file needs to be written.
             return;
         }
 
@@ -313,8 +326,10 @@ public sealed class ChrootStep : IInstallStep
         {
             return;
         }
-        // 记录数组供重启后自动组装(mdadm 失败必须可见)。initramfs 重建由
-        // RebuildInitramfsAsync 统一负责(先写 mdadm.conf 再重建,RAID 配置进 initrd)。
+        // Record the array for automatic assembly after reboot (mdadm failures must
+        // be visible). Initramfs rebuild is handled uniformly by
+        // RebuildInitramfsAsync (write mdadm.conf first, then rebuild, so the RAID
+        // configuration goes into the initrd).
         await _chroot.RunScriptAsync(
             target,
             "mdadm --detail --scan > /etc/mdadm/mdadm.conf || { echo 'mdadm scan failed' >&2; exit 1; }",
@@ -322,16 +337,18 @@ public sealed class ChrootStep : IInstallStep
     }
 
     /// <summary>
-    /// 在目标系统 chroot 内重建标准 initramfs(update-initramfs -u)。
-    /// 安装器把 live rootfs 原样 rsync 到目标盘,live 环境 /boot 里的 initrd 是
-    /// live-boot 引导专用的;必须基于目标系统自身的 /lib/modules 重新生成,才能
-    /// 保证 initrd 携带目标磁盘控制器与 rootfs 驱动,并被 grub-mkconfig 正确引用。
-    /// 重建失败(模块缺失、initramfs-tools 损坏等)必须让安装失败并给出可见错误,
-    /// 而不是产出无法启动的系统。
+    /// Rebuilds a standard initramfs inside the target system's chroot
+    /// (update-initramfs -u). The installer rsyncs the live rootfs verbatim to the
+    /// target disk, and the initrd in the live environment's /boot is specific to
+    /// live-boot booting; it must be regenerated from the target system's own
+    /// /lib/modules so the initrd carries the target disk controller and rootfs
+    /// drivers and is referenced correctly by grub-mkconfig. A rebuild failure
+    /// (missing modules, corrupted initramfs-tools, etc.) must fail the install
+    /// with a visible error rather than produce an unbootable system.
     /// </summary>
     private async Task RebuildInitramfsAsync(string target, CancellationToken ct)
     {
-        // RunScriptAsync 默认非零退出码即抛 ToolException —— 不吞错误。
+        // RunScriptAsync throws ToolException on a non-zero exit code by default — errors are not swallowed.
         await _chroot.RunScriptAsync(
             target,
             "update-initramfs -u",
@@ -340,12 +357,16 @@ public sealed class ChrootStep : IInstallStep
     }
 
     /// <summary>
-    /// 把安装向导设置的账号密码写入目标系统的 FortOS 用户库
-    /// (/srv/nas/database/nas.db,SQLite)。这样目标系统首次启动后,Web 管理
-    /// 界面与 fortos CLI 直接使用同一账号密码登录,不再经过匿名注册步骤。
-    /// 表结构与 <c>FortOS.Core/Data/DatabaseProvider.cs</c> 的 users 表一致,
-    /// 首用户自动获得 admin+user 角色(与 IdentityService.CreateLocalUserAsync 行为一致)。
-    /// 失败必须让安装失败:否则安装报成功但 Web 无法用约定凭据登录。
+    /// Writes the account password set in the install wizard into the target
+    /// system's FortOS user database (/srv/nas/database/nas.db, SQLite). On the
+    /// target system's first boot, the Web admin UI and the fortos CLI then log in
+    /// directly with the same account password, skipping the anonymous
+    /// registration step. The table schema matches the users table in
+    /// <c>FortOS.Core/Data/DatabaseProvider.cs</c>, and the first user
+    /// automatically gets the admin+user roles (consistent with
+    /// IdentityService.CreateLocalUserAsync). A failure must fail the install:
+    /// otherwise the install reports success but the Web UI cannot log in with the
+    /// agreed credentials.
     /// </summary>
     private async Task SeedFortosUserAsync(InstallContext context, string target, CancellationToken ct)
     {
@@ -353,8 +374,9 @@ public sealed class ChrootStep : IInstallStep
         var password = context.Config.Account.Password;
         if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
         {
-            // 未配置账号密码(如纯自动化流程未提供时)跳过,由 FortOS 首次启动的
-            // BootstrapOnly 注册兜底。
+            // Skip when no account password is configured (e.g. a pure automated
+            // flow did not provide one); the BootstrapOnly registration on FortOS
+            // first boot covers this.
             return;
         }
 
@@ -366,8 +388,9 @@ public sealed class ChrootStep : IInstallStep
     }
 
     /// <summary>
-    /// 在指定 SQLite 文件上幂等创建 FortOS 用户库并写入首个管理员。
-    /// 纯函数(仅依赖 dbPath 指向的文件),便于单元测试。
+    /// Idempotently creates the FortOS user database at the given SQLite file and
+    /// writes the first admin. Pure function (depends only on the file referenced
+    /// by dbPath), convenient for unit testing.
     /// </summary>
     internal static void SeedFortosUserDb(string databasePath, string username, string password)
     {
@@ -375,7 +398,7 @@ public sealed class ChrootStep : IInstallStep
         {
             DataSource = databasePath,
             DefaultTimeout = 30,
-            // 一次性写库,禁用连接池避免句柄残留(安装进程后续还要卸载目标盘)。
+            // One-time database write; pooling is disabled to avoid lingering handles (the install process still has to unmount the target disk afterwards).
             Pooling = false,
         }.ToString();
 
@@ -384,7 +407,7 @@ public sealed class ChrootStep : IInstallStep
 
         using (var create = connection.CreateCommand())
         {
-            // 与 FortOS.Core/Data/DatabaseProvider.cs 的 users 表 schema 保持一致。
+            // Keep consistent with the users table schema in FortOS.Core/Data/DatabaseProvider.cs.
             create.CommandText = """
                 CREATE TABLE IF NOT EXISTS users (
                     username TEXT PRIMARY KEY,
@@ -408,7 +431,7 @@ public sealed class ChrootStep : IInstallStep
             var exists = Convert.ToInt64(count.ExecuteScalar() ?? 0L) > 0;
             if (exists)
             {
-                // 重试安装场景:库已含该用户则跳过,不覆盖既有数据。
+                // Retry install scenario: skip if the database already contains this user; do not overwrite existing data.
                 return;
             }
         }
@@ -423,8 +446,10 @@ public sealed class ChrootStep : IInstallStep
         insert.Parameters.AddWithValue("$display_name", username);
         insert.Parameters.AddWithValue("$email", DBNull.Value);
         insert.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
-        // 首个用户自动获得 admin 角色(与 IdentityService.CreateLocalUserAsync 一致)。
-        // 用源生成上下文序列化(安装器 PublishTrimmed 下禁用反射式 JsonSerializer)。
+        // The first user automatically gets the admin role (consistent with
+        // IdentityService.CreateLocalUserAsync).
+        // Serialize with the source-generated context (reflection-based
+        // JsonSerializer is disabled under the installer's PublishTrimmed).
         insert.Parameters.AddWithValue(
             "$roles_json",
             System.Text.Json.JsonSerializer.Serialize(
@@ -434,13 +459,13 @@ public sealed class ChrootStep : IInstallStep
 
     private async Task CleanupLiveResidueAsync(string target, CancellationToken ct)
     {
-        // 禁用 live-config 服务,避免目标系统启动时仍按 live 会话处理。
+        // Disable live-config services so the target system is not treated as a live session at boot.
         await _chroot.RunScriptAsync(
             target,
             "systemctl disable live-config.service 2>/dev/null || true; systemctl disable live-boot.service 2>/dev/null || true; systemctl disable fortos-installer.service 2>/dev/null || true",
             ct).ConfigureAwait(false);
 
-        // 删除复制的 SSH 主机密钥,首次启动重新生成。
+        // Delete copied SSH host keys; they are regenerated on first boot.
         try
         {
             foreach (var file in Directory.GetFiles(Path.Combine(target, "etc/ssh"), "ssh_host_*", SearchOption.TopDirectoryOnly))
@@ -450,15 +475,15 @@ public sealed class ChrootStep : IInstallStep
         }
         catch
         {
-            // 目录不存在或权限不足时跳过。
+            // Skip if the directory does not exist or permissions are insufficient.
         }
     }
 
     // ---------------------------------------------------------------------
-    // 辅助
+    // Helpers
     // ---------------------------------------------------------------------
 
-    /// <summary>规范化主机名:保留字母数字与连字符(hostname 标准允许 [a-zA-Z0-9-])。</summary>
+    /// <summary>Normalize a hostname: keep alphanumerics and hyphens (the hostname standard allows [a-zA-Z0-9-]).</summary>
     private static string SanitizeHostname(string hostname)
     {
         var sanitized = string.Concat(hostname.Where(c => char.IsLetterOrDigit(c) || c == '-'));

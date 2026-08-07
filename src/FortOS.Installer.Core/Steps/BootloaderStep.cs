@@ -6,15 +6,15 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Core.Steps;
 
 /// <summary>
-/// 引导安装步骤(设计稿 5.5):按检测到的引导方式安装 GRUB 并生成配置。
+/// Bootloader installation step (design doc 5.5): install GRUB according to the detected boot mode and generate its configuration.
 /// </summary>
 public sealed class BootloaderStep : IInstallStep
 {
-    /// <summary>grub.cfg 中引导内核的命令行(linux / linux16 / linuxefi),要求携带内核路径。</summary>
+    /// <summary>grub.cfg line that boots a kernel (linux / linux16 / linuxefi); must include the kernel path.</summary>
     private static readonly Regex LinuxEntryLine = new(
         @"^\s*linux(?:16|efi)?\s+\S+", RegexOptions.Compiled);
 
-    /// <summary>grub.cfg 中加载 initramfs 的命令行(initrd / initrdefi),要求携带镜像路径。</summary>
+    /// <summary>grub.cfg line that loads initramfs (initrd / initrdefi); must include the image path.</summary>
     private static readonly Regex InitrdEntryLine = new(
         @"^\s*initrd(?:efi)?\s+\S+", RegexOptions.Compiled);
 
@@ -46,24 +46,28 @@ public sealed class BootloaderStep : IInstallStep
                 throw new Exceptions.StepException(Name, $"Unknown boot mode: {context.BootMode}");
         }
 
-        // 需要绑定挂载(grub-mkconfig 在 chroot 内执行)。ChrootStep 已绑定过,
-        // 重复调用是幂等的(重复 mount --bind 失败被忽略);重试场景(失败清理
-        // 已卸载)下保证 chroot 环境就绪。
+        // Bind mounts are required (grub-mkconfig runs inside the chroot). ChrootStep
+        // has already bound them; calling again is idempotent (repeated mount --bind
+        // failures are ignored), which guarantees the chroot environment is ready in
+        // retry scenarios (where cleanup after failure has unmounted them).
         await _chroot.BindMountsAsync(target, ct).ConfigureAwait(false);
         await _grub.MakeConfigAsync(target, ct).ConfigureAwait(false);
 
-        // grub-mkconfig 在 chroot 内静默探测;若它找不到内核/initrd 或探测
-        // root 设备失败,会输出缺失 linux/initrd/root= 的 grub.cfg 而**不报错**,
-        // 安装照常"成功"但重启必崩(VFS: Unable to mount root fs on
-        // unknown-block(0,0))。生成后必须校验,失败即中止安装并给出可诊断信息。
+        // grub-mkconfig probes silently inside the chroot; if it cannot find a
+        // kernel/initrd or fails to probe the root device, it emits a grub.cfg
+        // missing linux/initrd/root= **without reporting an error**, and the install
+        // reports "success" while the system crashes on reboot (VFS: Unable to mount
+        // root fs on unknown-block(0,0)). The generated file must be validated; on
+        // failure the install aborts with diagnostic information.
         var grubCfg = await File.ReadAllTextAsync(
             Path.Combine(target, "boot/grub/grub.cfg"), ct).ConfigureAwait(false);
         ValidateGrubConfig(grubCfg);
     }
 
     /// <summary>
-    /// 校验 grub-mkconfig 产出的 grub.cfg 具备可启动要素:至少一个 menuentry,
-    /// linux 行携带 root= 参数,且存在 initrd 行。纯函数,可单测。
+    /// Validates that the grub.cfg produced by grub-mkconfig has the bootable
+    /// essentials: at least one menuentry, a linux line carrying the root=
+    /// parameter, and an initrd line. Pure function, unit-testable.
     /// </summary>
     internal static void ValidateGrubConfig(string grubConfig)
     {
@@ -83,8 +87,9 @@ public sealed class BootloaderStep : IInstallStep
                 "grub.cfg contains no menuentry — grub-mkconfig failed to enumerate installed kernels.");
         }
 
-        // 只统计实际内核条目(路径含 vmlinuz);memtest86+ 的
-        // "linux16 /boot/memtest86+.bin" 等非内核行不参与校验,避免误报。
+        // Only actual kernel entries are counted (path contains vmlinuz);
+        // non-kernel lines such as memtest86+'s "linux16 /boot/memtest86+.bin"
+        // do not participate in validation, avoiding false positives.
         var linuxLines = lines
             .Where(l => LinuxEntryLine.IsMatch(l) && l.Contains("/boot/vmlinuz", StringComparison.Ordinal))
             .ToList();
@@ -94,8 +99,9 @@ public sealed class BootloaderStep : IInstallStep
                 "Bootloader",
                 "grub.cfg contains no linux kernel lines — /boot has no installed kernel image.");
         }
-        // grub-mkconfig 对每个内核条目使用同一 root 探测结果,所有内核行都应携带
-        // root=;逐条要求可防止个别条目缺失时被当作可启动配置放行。
+        // grub-mkconfig uses the same root probe result for every kernel entry, so
+        // all kernel lines must carry root=; requiring it per line prevents a single
+        // missing entry from being passed as a bootable configuration.
         if (linuxLines.Any(l => !l.Contains("root=", StringComparison.Ordinal)))
         {
             throw new Exceptions.StepException(

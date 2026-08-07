@@ -5,8 +5,8 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Core.Steps;
 
 /// <summary>
-/// 格式化步骤:格式化系统盘各分区(EFI/根/swap)、挂载 root 与 EFI 到目标、
-/// 格式化数据盘(单盘)并收集 UUID。
+/// Format step: format the system disk partitions (EFI/root/swap), mount root and
+/// EFI to the target, format the data disk (single disk), and collect UUIDs.
 /// </summary>
 public sealed class FormatStep : IInstallStep
 {
@@ -33,33 +33,34 @@ public sealed class FormatStep : IInstallStep
         foreach (var spec in context.SystemPartitions)
         {
             var device = context.SystemPartitionDevices[spec.Number];
-            // 按 GPT 类型码决定文件系统;模板 spec.Fs 仅作未知类型码的兜底。
+            // The filesystem is decided by the GPT type code; the template spec.Fs only serves as a fallback for unknown type codes.
             var fs = spec.TypeCode switch
             {
                 GptTypeCode.EfiSystem => PartitionFs.Vfat,
                 GptTypeCode.LinuxSwap => PartitionFs.Swap,
-                GptTypeCode.LinuxX8664Root => rootFs, // 根分区文件系统由配置决定(模板 Fs 不适用)
+                GptTypeCode.LinuxX8664Root => rootFs, // root filesystem is decided by config (template Fs does not apply)
                 _ => spec.Fs,
             };
             if (fs == PartitionFs.None)
             {
-                continue; // BIOS boot 等无需格式化
+                continue; // BIOS boot, etc., does not need formatting
             }
 
             await _mkfs.FormatAsync(device, fs, LabelFor(fs), ct).ConfigureAwait(false);
         }
 
-        // 收集系统盘 UUID 并挂载到目标。
+        // Collect the system disk UUIDs and mount to the target.
         var rootDevice = context.SystemPartitionDevices[FindRootNumber(context)];
         await CollectUuidAsync(context, "root", rootDevice, ct).ConfigureAwait(false);
 
         Directory.CreateDirectory(target);
         await _runner.RunAsync("mount", [rootDevice, target], ct).ConfigureAwait(false);
-        // 注意:boot/efi 必须在 root 挂载之后创建——挂载前创建的目录会被
-        // 新文件系统的根目录覆盖(真实环境踩到的顺序 bug)。
+        // Note: boot/efi must be created after the root mount — a directory
+        // created before mounting is hidden by the new filesystem's root (a real
+        // ordering bug hit in production).
         Directory.CreateDirectory($"{target}/boot/efi");
 
-        // EFI 分区按类型码定位(勿用固定分区号,与模板解耦)。
+        // Locate the EFI partition by type code (do not use a fixed partition number; stay decoupled from the template).
         var efiSpec = context.SystemPartitions.FirstOrDefault(s => s.TypeCode == GptTypeCode.EfiSystem);
         if (efiSpec is not null && context.SystemPartitionDevices.TryGetValue(efiSpec.Number, out var efiDevice))
         {
@@ -77,7 +78,7 @@ public sealed class FormatStep : IInstallStep
             await CollectUuidAsync(context, "swap", context.SystemPartitionDevices[swapSpec.Number], ct).ConfigureAwait(false);
         }
 
-        // 数据盘:单盘/RAID 直接格式化;LUKS 先记录容器 UUID(crypttab)再格式化 mapper。
+        // Data disk: single/RAID formats directly; LUKS records the container UUID first (crypttab) then formats the mapper.
         if (context.Config.Data.Mode != DataDiskMode.None && context.DataDevice is not null)
         {
             var dataFs = ToPartitionFs(context.Config.Data.FileSystem);
@@ -94,7 +95,7 @@ public sealed class FormatStep : IInstallStep
 
         context.Summary.SystemRootFs = context.Config.RootFs.ToString().ToLowerInvariant();
         context.Summary.BootMode = context.BootMode?.ToLowerInvariant();
-        // 回填 UUID 到摘要(install-summary.json);用 TryGetValue 避免扩展方法依赖。
+        // Backfill UUIDs into the summary (install-summary.json); TryGetValue is used to avoid extension-method dependencies.
         context.Summary.RootUuid = context.Uuids.TryGetValue("root", out var rootUuid) ? rootUuid : null;
         context.Summary.EfiUuid = context.Uuids.TryGetValue("efi", out var efiUuid) ? efiUuid : null;
         context.Summary.DataUuid = context.Uuids.TryGetValue("data", out var dataUuid) ? dataUuid : null;

@@ -98,8 +98,8 @@ public sealed class NasTokenManager : ITokenManager
             {
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = validationKey,
-                // 校验 issuer 与 audience：即使签名密钥泄露，其他发行方签发的
-                // token（错误的 iss/aud）也无法通过 —— 第二道防线。
+                // Validate the issuer and audience: even if the signing key leaks, tokens issued by other
+                // issuers (wrong iss/aud) cannot pass — this is the second line of defense.
                 ValidateIssuer = true,
                 ValidIssuer = GetIssuer(),
                 ValidateAudience = true,
@@ -329,16 +329,16 @@ CREATE TABLE IF NOT EXISTS resource_acls (
 
     private TimeSpan GetDefaultLifetime()
     {
-        // 默认 7 天:FortOS 是本地 NAS 管理,1 小时过期会导致 CLI/Web 频繁重登
-        // (CLI 的 fortos status 等命令每次都要重新交互登录)。可用
-        // security:token:lifetime_minutes 配置覆盖。
+        // Default 7 days: FortOS is local NAS management, and a 1-hour expiry would force CLI/Web users to
+        // re-authenticate frequently (CLI commands such as fortos status require an interactive login every time).
+        // Overridable via the security:token:lifetime_minutes setting.
         var configured = _configuration?.GetValue("security:token:lifetime_minutes");
         return int.TryParse(configured, out var minutes) && minutes > 0 ? TimeSpan.FromMinutes(minutes) : TimeSpan.FromDays(7);
     }
 
     private string GetIssuer() => _configuration?.GetValue("security:issuer") ?? "nas://local";
 
-    /// <summary>令牌受众：与 issuer 配套，可由 security:audience 覆盖。</summary>
+    /// <summary>Token audience: paired with the issuer, overridable via security:audience.</summary>
     private string GetAudience() => _configuration?.GetValue("security:audience") ?? "fortos";
 
     // Kept opaque on purpose: ErrorMessage is surfaced to HTTP clients verbatim (see the

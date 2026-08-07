@@ -6,8 +6,9 @@ using FortOS.Installer.Core.Tools;
 namespace FortOS.Installer.Core.Steps;
 
 /// <summary>
-/// 收尾步骤:写安装摘要与日志到目标系统、卸载挂载、关闭 LUKS/RAID 设备。
-/// 成功与失败路径共用 <see cref="UnmountAsync"/>,保证「可重跑」语义(设计稿 5.1)。
+/// Finalize step: write the install summary and log to the target system, unmount
+/// mounts, and close LUKS/RAID devices. Success and failure paths share
+/// <see cref="UnmountAsync"/>, preserving the "re-runnable" semantics (design doc 5.1).
 /// </summary>
 public sealed class FinalizeStep : IInstallStep
 {
@@ -42,21 +43,22 @@ public sealed class FinalizeStep : IInstallStep
         context.Summary.FinishedAt = DateTimeOffset.UtcNow;
         context.Summary.Success = true;
 
-        // 目标分区仍挂载:先写摘要与日志到目标 rootfs。
+        // The target partition is still mounted: write the summary and log to the target rootfs first.
         TargetFileWriter.Write(target, "etc/fortos/install-summary.json", JsonSerializer.Serialize(context.Summary, InstallerJsonContext.Default.InstallSummary));
         var logText = string.Join('\n', _logProvider().Select(l => $"{l.Timestamp:yyyy-MM-dd HH:mm:ss} [{l.Level}] {l.Message}"));
         TargetFileWriter.Write(target, "var/log/fortos-install.log", logText + "\n");
 
         await UnmountAsync(_chroot, _runner, _cryptsetup, _mdadm, context, ct).ConfigureAwait(false);
-        // sync 失败不应当把已完成安装标记为失败(数据已落盘,重启自愈)。
+        // A sync failure should not mark the completed install as failed (data is already on disk; it heals on reboot).
         await _runner.RunAsync("sync", [], ct, throwOnNonZeroExit: false).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 卸载/关闭安装期持有的设备,成功与失败路径共用:
-    /// 卸载绑定挂载与目标分区 → 关闭 LUKS 映射 / 停止 RAID 数组。
-    /// 全程容错(umount/cryptsetup close/mdadm --stop 的失败仅告警),
-    /// 保证「可重跑」(设计稿 5.1)。
+    /// Unmounts/closes devices held during the install, shared by success and
+    /// failure paths: unmount bind mounts and the target partition → close LUKS
+    /// mappings / stop RAID arrays. Fully fault-tolerant throughout (failures of
+    /// umount/cryptsetup close/mdadm --stop only warn), preserving the
+    /// "re-runnable" semantics (design doc 5.1).
     /// </summary>
     internal static async Task UnmountAsync(
         ChrootRunner chroot,
@@ -71,7 +73,7 @@ public sealed class FinalizeStep : IInstallStep
         await runner.RunAsync("umount", [$"{target}/boot/efi"], ct, throwOnNonZeroExit: false).ConfigureAwait(false);
         await runner.RunAsync("umount", [target], ct, throwOnNonZeroExit: false).ConfigureAwait(false);
 
-        // 数据盘设备:RAID 数组停止 / LUKS 映射关闭,否则重试时设备已存在。
+        // Data disk devices: stop RAID arrays / close LUKS mappings, otherwise the devices already exist on retry.
         if (context.Config.Data.Mode == DataDiskMode.Raid && context.DataDevice is not null)
         {
             await mdadm.StopAsync(context.DataDevice, ct).ConfigureAwait(false);
