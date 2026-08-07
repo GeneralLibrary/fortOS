@@ -1,8 +1,9 @@
 <!--
   FortOS Dashboard — System Settings View
   Categorized, semantically-labelled settings with graphical controls.
-  The category + entry metadata comes from GET /api/config/meta; only
-  whitelisted keys present in the live config are rendered.
+  The category + entry metadata comes from GET /api/config/meta; every
+  whitelisted entry is rendered — keys absent from the live config fall
+  back to their metadata default value and are written on save.
 -->
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, type Component } from 'vue'
@@ -68,9 +69,9 @@ const activeCat = computed<ConfigCategoryMeta | undefined>(() =>
   categories.value.find(c => c.id === activeCategory.value),
 )
 
-/** Number of config keys rendered for a category (whitelist ∩ live config). */
+/** Number of config keys rendered for a category (all whitelisted entries). */
 function countFor(categoryId: string): number {
-  return store.entries.filter(e => e.category === categoryId && e.key in store.config).length
+  return store.entries.filter(e => e.category === categoryId).length
 }
 
 /** All whitelisted entries of the active category (drives save/reset/dirty state). */
@@ -80,11 +81,11 @@ const categoryEntries = computed<ConfigEntryMeta[]>(() =>
     .sort((a, b) => a.order - b.order),
 )
 
-/** Entries of the active category that exist in the live config, search-filtered. */
+/** Entries of the active category, search-filtered. Keys absent from the live
+    config are still rendered (draft falls back to the metadata default). */
 const activeEntries = computed<ConfigEntryMeta[]>(() => {
   const query = search.value.trim().toLowerCase()
   return categoryEntries.value
-    .filter(e => e.key in store.config)
     .filter(e => !query || matches(e, query))
 })
 
@@ -124,16 +125,17 @@ function categoryDescription(cat: ConfigCategoryMeta): string {
 
 // ---- Draft / dirty tracking ----
 
-function originalValue(key: string): string {
-  return store.config[key] ?? ''
+/** Effective current value: live config wins, else the metadata default ('' if none). */
+function originalValue(entry: ConfigEntryMeta): string {
+  return store.config[entry.key] ?? entry.defaultValue ?? ''
 }
 
 function draftValue(entry: ConfigEntryMeta): string {
-  return entry.key in drafts ? drafts[entry.key] : originalValue(entry.key)
+  return entry.key in drafts ? drafts[entry.key] : originalValue(entry)
 }
 
 function isDirty(entry: ConfigEntryMeta): boolean {
-  return entry.key in drafts && drafts[entry.key] !== originalValue(entry.key)
+  return entry.key in drafts && drafts[entry.key] !== originalValue(entry)
 }
 
 function categoryDirty(entries: ConfigEntryMeta[]): boolean {
@@ -145,7 +147,7 @@ function dirtyCount(categoryId: string): number {
 }
 
 function setDraft(entry: ConfigEntryMeta, value: string): void {
-  if (value === originalValue(entry.key)) delete drafts[entry.key]
+  if (value === originalValue(entry)) delete drafts[entry.key]
   else drafts[entry.key] = value
 }
 

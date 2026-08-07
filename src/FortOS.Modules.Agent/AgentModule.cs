@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using FortOS.Agent.Infrastructure;
 using FortOS.Core;
 using FortOS.Modules.Host;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace FortOS.Modules.Agent;
@@ -28,7 +29,9 @@ public sealed class AgentModule : NasModuleBase
         var catalog = RequiredService<IAgentCatalog>();
         var template = await catalog.GetTemplateAsync(templateId, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Agent template does not exist: {templateId}");
-        var normalizedConfig = NormalizeConfig(config, Services.GetService(typeof(IFortOSConfiguration)) as IFortOSConfiguration);
+        var fileConfiguration = Services.GetService(typeof(IFortOSConfiguration)) as IFortOSConfiguration;
+        var runtimeConfiguration = Services.GetService(typeof(IConfiguration)) as IConfiguration;
+        var normalizedConfig = NormalizeConfig(config, fileConfiguration, runtimeConfiguration);
         normalizedConfig = ApplyTemplateVolumes(template, normalizedConfig);
         await RunPreflightChecksAsync(template, normalizedConfig, ct).ConfigureAwait(false);
         var compose = await RequiredService<IComposeGenerator>().GenerateAsync(template, normalizedConfig, ownerToken, ct).ConfigureAwait(false);
@@ -268,7 +271,7 @@ public sealed class AgentModule : NasModuleBase
     /// <summary>
     /// Normalize agent configuration and fill in default data volumes.
     /// </summary>
-    private static AgentConfig NormalizeConfig(AgentConfig config, IFortOSConfiguration? configuration)
+    private static AgentConfig NormalizeConfig(AgentConfig config, IFortOSConfiguration? configuration, IConfiguration? runtimeConfiguration = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         if (string.IsNullOrWhiteSpace(config.AgentId))
@@ -283,7 +286,7 @@ public sealed class AgentModule : NasModuleBase
             throw new ArgumentException("ImageName cannot be empty.", nameof(config));
         }
 
-        ValidateImage(config.ImageName, configuration);
+        ValidateImage(config.ImageName, configuration, runtimeConfiguration);
         var allowedRoots = ResolveAllowedRoots(configuration);
         var mappings = config.VolumeMapping.Length == 0
             ? [new VolumeMapping
@@ -385,10 +388,11 @@ public sealed class AgentModule : NasModuleBase
                 ExecutablePath = "chown",
                 Arguments = $"-R {uid}:{gid} {Quote(mapping.HostPath)}",
                 TimeoutSeconds = 60,
+                ThrowOnNonZeroExit = false,
             }, ct).ConfigureAwait(false);
             if (result.ExitCode != 0)
             {
-                throw new InvalidOperationException($"Failed to set ownership on {mapping.HostPath}: {result.Stderr}");
+                throw new InvalidOperationException($"设置数据目录所有者失败 {mapping.HostPath}：{TrimError(result.Stderr)}");
             }
         }
     }
@@ -400,10 +404,25 @@ public sealed class AgentModule : NasModuleBase
             ExecutablePath = "docker",
             Arguments = "version --format \"{{.Server.Version}}\"",
             TimeoutSeconds = 20,
+            ThrowOnNonZeroExit = false,
         }, ct).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new InvalidOperationException("Docker is unavailable, cannot deploy agent. Please verify docker engine and socket are accessible.");
+            throw new InvalidOperationException($"Docker 不可用，无法部署 Agent。请确认 docker 引擎与 socket 可访问：{TrimError(result.Stderr)}");
+        }
+
+        // docker compose 插件缺失是最隐蔽的部署失败点：docker 本体正常但 `docker compose` 子命令
+        // 不存在时，compose up 会报 "docker: 'compose' is not a docker command"。
+        var compose = await processManager.ExecuteCommandAsync(new ProcessStartConfig
+        {
+            ExecutablePath = "docker",
+            Arguments = "compose version",
+            TimeoutSeconds = 20,
+            ThrowOnNonZeroExit = false,
+        }, ct).ConfigureAwait(false);
+        if (compose.ExitCode != 0)
+        {
+            throw new InvalidOperationException("Docker Compose 插件不可用（docker compose 子命令缺失）。请安装 docker-compose-plugin 后重试。");
         }
     }
 
@@ -415,11 +434,24 @@ public sealed class AgentModule : NasModuleBase
             ExecutablePath = "docker",
             Arguments = $"pull {Quote(imageName)}",
             TimeoutSeconds = 1800,
+            ThrowOnNonZeroExit = false,
         }, ct).ConfigureAwait(false);
         if (pull.ExitCode != 0)
         {
-            throw new InvalidOperationException($"Failed to pull agent image {imageName}: {pull.Stderr}");
+            throw new InvalidOperationException($"拉取 Agent 镜像失败 {imageName}：{TrimError(pull.Stderr)}");
         }
+    }
+
+    /// <summary>Single-line command stderr suitable for surfacing in the UI (logs must not be forged via newlines).</summary>
+    private static string TrimError(string? stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stderr))
+        {
+            return "退出码非 0（无错误输出）";
+        }
+
+        var text = stderr.ReplaceLineEndings(" ").Trim();
+        return text.Length > 400 ? text[..400] + "…" : text;
     }
 
     private static async Task EnsureVolumePathsWritableAsync(IEnumerable<VolumeMapping> mappings, CancellationToken ct)
@@ -471,7 +503,11 @@ public sealed class AgentModule : NasModuleBase
         return mapping with { HostPath = mapping.HostPath };
     }
 
-    private static void ValidateImage(string imageName, IFortOSConfiguration? configuration)
+    /// <summary>
+    /// Validates an agent image reference. Internal so tests can verify the digest-requirement
+    /// switch (<c>agent:require_digest</c>) without spinning up a full module.
+    /// </summary>
+    internal static void ValidateImage(string imageName, IFortOSConfiguration? configuration, IConfiguration? runtimeConfiguration = null)
     {
         if (imageName.IndexOfAny(['\r', '\n', ' ', ';', '&', '|', '`', '$']) >= 0)
             throw new ArgumentException("Agent image name contains unsafe characters.", nameof(imageName));
@@ -479,8 +515,34 @@ public sealed class AgentModule : NasModuleBase
         if (allowed.Length > 0 && !allowed.Any(prefix => imageName.StartsWith(prefix.TrimEnd('*'), StringComparison.OrdinalIgnoreCase)))
             throw new ArgumentException("Agent image is not in the configured allowlist.", nameof(imageName));
         var production = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Production", StringComparison.OrdinalIgnoreCase);
-        if (production && !imageName.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
+        if (RequireDigest(configuration, runtimeConfiguration) && production && !imageName.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Production Agent images must be pinned by sha256 digest.", nameof(imageName));
+    }
+
+    /// <summary>
+    /// Whether Production deployments must pin agent images by sha256 digest. Defaults to
+    /// <c>true</c> (fail-closed: unset or unparseable values keep the strict check). The switch
+    /// is read from BOTH configuration systems because the dashboard writes <c>agent:require_digest</c>
+    /// to the runtime <see cref="IConfiguration"/> (SQLite overrides) while nas.yaml feeds the
+    /// <see cref="IFortOSConfiguration"/> — checking only one of them made the UI toggle a no-op.
+    /// The unsafe-character and allowlist checks always apply regardless of this switch.
+    /// </summary>
+    private static bool RequireDigest(IFortOSConfiguration? configuration, IConfiguration? runtimeConfiguration)
+    {
+        var candidates = new[]
+        {
+            runtimeConfiguration?["agent:require_digest"],
+            configuration?.GetValue("agent:require_digest"),
+        };
+        foreach (var raw in candidates)
+        {
+            if (bool.TryParse(raw, out var value))
+            {
+                return value;
+            }
+        }
+
+        return true;
     }
 
     private static string[] ResolveAllowedRoots(IFortOSConfiguration? configuration)

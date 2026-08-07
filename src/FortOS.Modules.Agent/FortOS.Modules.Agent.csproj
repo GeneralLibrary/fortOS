@@ -6,6 +6,10 @@
     <ProjectReference Include="..\FortOS.Agent\FortOS.Agent.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="FortOS.Tests.Integration" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

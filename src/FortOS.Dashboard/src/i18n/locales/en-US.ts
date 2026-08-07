@@ -611,6 +611,10 @@ export default {
         label: 'Agent Public Host',
         description: 'Externally reachable host or URL advertised to agents for callback traffic.',
       },
+      'agent:require_digest': {
+        label: 'Image Fingerprint Check',
+        description: 'When enabled, agent images must be pinned to an immutable sha256 digest (the image fingerprint) so a deployed image can never change underneath you. Disable to allow mutable tags like latest for convenience, at the cost of safety.',
+      },
     },
   },
 

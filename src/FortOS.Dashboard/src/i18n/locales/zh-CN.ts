@@ -611,6 +611,10 @@ export default {
         label: 'Agent 公共主机',
         description: '对外通告给 Agent 的回调主机或 URL。',
       },
+      'agent:require_digest': {
+        label: '镜像指纹校验',
+        description: '开启后，Agent 镜像必须使用带指纹（sha256 摘要）的固定版本，安装后镜像内容不会悄然变化，更安全；关闭后可直接用 latest 最新版镜像，更新方便但安全性降低。',
+      },
     },
   },
 

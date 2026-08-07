@@ -87,7 +87,9 @@ public sealed class ContainerServiceHost : IServiceHost
         {
             ExecutablePath = "docker",
             Arguments = $"compose -f {Quote(composeFile)} {arguments}",
-            TimeoutSeconds = 30,
+            // Compose up can implicitly pull a large image on first start; the 30s default
+            // timeout turned slow-but-legitimate starts into "docker" errors.
+            TimeoutSeconds = 600,
         }, ct);
 
     private static ServiceStatus ParseComposeStatus(string stdout)

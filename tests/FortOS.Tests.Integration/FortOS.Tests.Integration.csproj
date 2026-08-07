@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\FortOS.ServiceBus\FortOS.ServiceBus.csproj" />
     <ProjectReference Include="..\..\src\FortOS.Observability\FortOS.Observability.csproj" />
     <ProjectReference Include="..\..\src\FortOS.Modules\FortOS.Modules.csproj" />
+    <ProjectReference Include="..\..\src\FortOS.Modules.Agent\FortOS.Modules.Agent.csproj" />
     <ProjectReference Include="..\..\src\FortOS.Modules.Share\FortOS.Modules.Share.csproj" />
     <ProjectReference Include="..\..\src\FortOS.Modules.Backup\FortOS.Modules.Backup.csproj" />
     <ProjectReference Include="..\..\src\FortOS.Modules.Storage\FortOS.Modules.Storage.csproj" />

@@ -119,6 +119,9 @@ public static class ConfigMetaRegistry
         new("agent:public_host", "advanced", ConfigEntryType.String, "Agent Public Host",
             "Externally reachable host or URL advertised to agents for callback traffic.",
             Order: 4),
+        new("agent:require_digest", "advanced", ConfigEntryType.Boolean, "Image Fingerprint Check",
+            "When enabled, agent images must be pinned to an immutable sha256 digest (the image fingerprint) so a deployed image can never change underneath you. Disable to allow mutable tags like latest for convenience, at the cost of safety.",
+            DefaultValue: "true", Order: 5),
     ];
 
     /// <summary>True if the key is whitelisted for dashboard editing.</summary>

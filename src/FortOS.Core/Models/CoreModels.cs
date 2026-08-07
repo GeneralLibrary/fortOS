@@ -304,6 +304,13 @@ public record ProcessStartConfig
     public string? StandardInput { get; init; }
     /// <summary>Timeout in seconds.</summary>
     public int TimeoutSeconds { get; init; } = 30;
+    /// <summary>
+    /// When true (default), a non-zero exit code throws <see cref="CommandExecutionException"/>.
+    /// Set false to receive the result and inspect <see cref="CommandResult.ExitCode"/> / Stderr
+    /// yourself — callers that need to surface the underlying command error (e.g. docker pull)
+    /// must do this, otherwise the bare executable name hides the real cause.
+    /// </summary>
+    public bool ThrowOnNonZeroExit { get; init; } = true;
 }
 
 /// <summary>Process information.</summary>

@@ -66,10 +66,31 @@ public sealed class AgentsController : FortOSControllerBase
             }
             catch (Exception ex)
             {
-                Deployments[agentId] = status with { Status = "failed", Stage = "failed", Error = ex.Message, FinishedAt = DateTimeOffset.UtcNow };
+                Deployments[agentId] = status with { Status = "failed", Stage = "failed", Error = DescribeError(ex), FinishedAt = DateTimeOffset.UtcNow };
             }
         }, CancellationToken.None);
         return Accepted(new { agentId, status = status.Status });
+    }
+
+    /// <summary>
+    /// Surface the underlying command output (e.g. docker pull / compose stderr) in the
+    /// deployment error so the UI shows the real cause instead of a bare "docker" name.
+    /// </summary>
+    private static string DescribeError(Exception ex)
+    {
+        if (ex is not CommandExecutionException cmd)
+        {
+            return ex.Message;
+        }
+
+        var detail = string.IsNullOrWhiteSpace(cmd.Stderr) ? cmd.Stdout : cmd.Stderr;
+        var trimmed = string.IsNullOrWhiteSpace(detail) ? string.Empty : detail.ReplaceLineEndings(" ").Trim();
+        if (trimmed.Length > 400)
+        {
+            trimmed = trimmed[..400] + "…";
+        }
+
+        return string.IsNullOrWhiteSpace(trimmed) ? ex.Message : $"{ex.Message}: {trimmed}";
     }
 
     private static async Task<bool> ImageExistsAsync(IProcessManager process, string imageName)
@@ -79,6 +100,9 @@ public sealed class AgentsController : FortOSControllerBase
             ExecutablePath = "docker",
             Arguments = $"image inspect {QuoteShell(imageName)}",
             TimeoutSeconds = 30,
+            // 镜像不存在时 exit≠0 是正常探测结果（意味着需要拉取），不能按命令失败抛异常——
+            // 否则第一次部署永远挂在"检查镜像"这一步，报笼统的 "Command execution failed: docker"。
+            ThrowOnNonZeroExit = false,
         }, CancellationToken.None).ConfigureAwait(false);
         return result.ExitCode == 0;
     }

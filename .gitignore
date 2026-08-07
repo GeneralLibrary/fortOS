@@ -17,3 +17,6 @@ src/FortOS.Api/wwwroot/dashboard/
 # Reasonix local state
 .reasonix/
 reasonix.toml
+
+# Local scratch files (WSL disk compaction, one-off e2e scripts)
+tmp/
