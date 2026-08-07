@@ -31,15 +31,58 @@ jobs:
 
       - name: Validate ISO configuration
         run: |
-          bash -n eng/iso/build.sh eng/iso/build-in-container.sh eng/iso/verify-config.sh \
+          bash -n eng/iso/build-local-wsl.sh eng/iso/verify-config.sh \
             eng/iso/test-image.sh eng/iso/test-boot.sh eng/iso/test-install.sh \
             eng/iso/verify-size.sh eng/iso/tests/installer-e2e.sh
           bash eng/iso/verify-config.sh
 
+      # ------------------------------------------------------------------
+      # 原生构建路径(与 build-iso.ps1 / build-local-wsl.sh 等价,无需 Docker):
+      #   1. 前端 Dashboard 由 Vite 构建到 src/FortOS.Api/wwwroot/dashboard
+      #      (gitignore 产物),必须先在 runner 上构建,否则 build-local-wsl.sh
+      #      因缺 dashboard/index.html 直接报错;
+      #   2. dotnet SDK 10 由 setup-dotnet 提供(build-local-wsl.sh 从 PATH 发现,
+      #      也接受 /opt/dotnet);
+      #   3. live-build/xorriso 等工具链用 apt 安装;.NET 宿主库(libicu/libssl/
+      #      libunwind)也一并装上,因为 dotnet publish 在 runner 上运行;
+      #   4. lb build 需要 root(chroot 挂载 /proc /sys),故用 sudo 运行,并通过
+      #      env 显式保留 PATH(找到 dotnet)与 VERSION(产物命名/版本文件)。
+      # ------------------------------------------------------------------
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/FortOS.Dashboard/package-lock.json
+
+      - name: Build FortOS Dashboard frontend
+        run: |
+          cd src/FortOS.Dashboard
+          npm ci
+          npm run build
+
+      - name: Install ISO build toolchain
+        run: |
+          sudo apt-get update
+          # ubuntu-latest 现为 24.04(libicu74/libssl3t64);fallback 覆盖旧镜像包名
+          sudo apt-get install -y --no-install-recommends \
+            live-build xorriso squashfs-tools mtools dosfstools \
+            debootstrap cpio isolinux syslinux-common \
+            libicu74 libunwind8 libssl3t64 \
+            || sudo apt-get install -y --no-install-recommends \
+              live-build xorriso squashfs-tools mtools dosfstools \
+              debootstrap cpio isolinux syslinux-common \
+              libicu72 libunwind8 libssl3
+
       - name: Build Debian 12 installation image
         env:
           VERSION: ${{ inputs.version || github.event.release.tag_name || github.ref_name }}
-        run: bash eng/iso/build.sh
+        run: sudo env "PATH=$PATH" "VERSION=$VERSION" bash eng/iso/build-local-wsl.sh
 
       - name: Upload ISO and checksum
         uses: actions/upload-artifact@v4
