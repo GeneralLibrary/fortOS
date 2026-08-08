@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://fortos.dev/sitemap-index.xml
+Sitemap: https://fortos.justerzhu.cn/sitemap-index.xml
