@@ -95,6 +95,16 @@ echo "=== 2/6 lb config ==="
 rm -rf "${LIVE_ROOT}"
 mkdir -p "${LIVE_ROOT}"
 cd "${LIVE_ROOT}"
+# --uefi-secure-boot (signed shim + grub-efi) was added in live-build
+# 1:20170829; Debian bookworm ships 1:20230502 (supported), but Ubuntu 24.04's
+# live-build fork (3.0~a57-1ubuntu49) rejects the option. Probe the installed
+# live-build so the same script works on both hosts.
+secure_boot_args=()
+if lb config --help 2>/dev/null | grep -q -- '--uefi-secure-boot'; then
+    secure_boot_args=(--uefi-secure-boot auto)
+else
+    echo "  note: live-build lacks --uefi-secure-boot; building without Secure Boot shim" >&2
+fi
 lb config \
     --mode debian \
     --distribution bookworm \
@@ -109,7 +119,7 @@ lb config \
     --iso-application "FortOS Debian 12 Installer" \
     --iso-publisher "FortOS Project" \
     --iso-volume "FortOS_${SAFE_VERSION:0:20}" \
-    --uefi-secure-boot auto
+    "${secure_boot_args[@]}"
 
 echo "=== 3/6 Copy config + CRLF normalization + symlink restore ==="
 cp -a "${REPOSITORY_ROOT}/eng/iso/config/." "${LIVE_ROOT}/config/"
