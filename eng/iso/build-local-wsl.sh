@@ -109,17 +109,23 @@ fi
 # bookworm/updates (404), which aborts apt-get update during lb build. The
 # installed system's sources are written by debian-installer, so disabling the
 # security archive here only drops it from the live ISO's own apt config.
-# LB_BOOTSTRAP_INCLUDE=gnupg: debootstrap (Debian mode) only installs gpgv, but
-# live-build signs the local packages.chroot repository (docker .debs) inside
-# the chroot with gpg, aborting with "GPG exited with error status 127" when it
-# is missing. The gnupg default only applies to ubuntu/kubuntu modes, so set it
-# explicitly for Debian.
+# --apt-secure false: the 2012-era live-build shipped by Ubuntu 24.04 signs the
+# local packages.chroot repository (docker .debs) by generating a key inside
+# the chroot with `gpg --batch --gen-key`; bookworm's gpg 2.2 then fails in the
+# TTY-less CI environment with "agent_genkey failed: Inappropriate ioctl for
+# device". Disabling apt secure skips that signing step (and debootstrap's
+# --no-check-gpg); packages come from official ftp.debian.org and are still
+# installed, just without signature verification.
+# LB_BOOTSTRAP_INCLUDE=gnupg: keep gpg/gpgv in the chroot in case any
+# live-build path still needs them (the gnupg default only applies to
+# ubuntu/kubuntu modes).
 LB_BOOTSTRAP_INCLUDE=gnupg lb config \
     --mode debian \
     --distribution bookworm \
     --architecture amd64 \
     --archive-areas "main contrib non-free-firmware" \
     --security false \
+    --apt-secure false \
     --binary-image iso-hybrid \
     --checksums sha256 \
     --debian-installer live \

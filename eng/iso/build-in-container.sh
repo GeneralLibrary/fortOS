@@ -121,16 +121,20 @@ configure_live_image() {
 
     local live_boot_append="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8 noautologin"
 
-    # LB_BOOTSTRAP_INCLUDE=gnupg: debootstrap (Debian mode) only installs gpgv,
-    # but live-build signs the local packages.chroot repository (docker .debs)
-    # inside the chroot with gpg; without it lb build aborts with "GPG exited
-    # with error status 127" (the gnupg default only applies to ubuntu modes).
+    # LB_BOOTSTRAP_INCLUDE=gnupg: keep gpg/gpgv in the chroot (the gnupg
+    # default only applies to ubuntu modes).
+    # --apt-secure false: live-build signs the local packages.chroot repository
+    # (docker .debs) by generating a key inside the chroot with gpg; with
+    # bookworm's gpg 2.2 in a TTY-less build this fails with "agent_genkey
+    # failed: Inappropriate ioctl for device". Disabling apt secure skips that
+    # signing step (and debootstrap's --no-check-gpg).
     LB_BOOTSTRAP_INCLUDE=gnupg lb config \
         --mode debian \
         --distribution bookworm \
         --architecture "${ARCHITECTURE}" \
         --archive-areas "main contrib non-free-firmware" \
         --security false \
+        --apt-secure false \
         --binary-image iso-hybrid \
         --checksums sha256 \
         --debian-installer live \
