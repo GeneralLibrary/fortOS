@@ -78,6 +78,16 @@ jobs:
               live-build xorriso squashfs-tools mtools dosfstools \
               debootstrap cpio isolinux syslinux-common \
               libicu72 libunwind8 libssl3
+          # Ubuntu 24.04 ships a 2012-era live-build (3.0~a57-1) that hardcodes
+          # Debian 2.6-era debian-installer package names (linux-image-2.6-amd64,
+          # lilo) and predates bookworm features. Replace it with the Debian
+          # bookworm live-build (1:20230502), which is built for bookworm and
+          # supports --uefi-secure-boot. Its only hard Depends is debootstrap,
+          # already installed above (version 1:20230502 > 3.0~a57-1ubuntu49, so
+          # dpkg -i treats this as an upgrade).
+          curl -fsSL -o /tmp/live-build.deb \
+            https://deb.debian.org/debian/pool/main/l/live-build/live-build_20230502_all.deb
+          sudo dpkg -i /tmp/live-build.deb
 
       - name: Build Debian 12 installation image
         env:
