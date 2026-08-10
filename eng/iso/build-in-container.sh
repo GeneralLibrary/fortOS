@@ -121,7 +121,11 @@ configure_live_image() {
 
     local live_boot_append="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8 noautologin"
 
-    lb config \
+    # LB_BOOTSTRAP_INCLUDE=gnupg: debootstrap (Debian mode) only installs gpgv,
+    # but live-build signs the local packages.chroot repository (docker .debs)
+    # inside the chroot with gpg; without it lb build aborts with "GPG exited
+    # with error status 127" (the gnupg default only applies to ubuntu modes).
+    LB_BOOTSTRAP_INCLUDE=gnupg lb config \
         --mode debian \
         --distribution bookworm \
         --architecture "${ARCHITECTURE}" \

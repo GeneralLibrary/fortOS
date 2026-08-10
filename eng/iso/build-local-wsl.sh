@@ -109,7 +109,12 @@ fi
 # bookworm/updates (404), which aborts apt-get update during lb build. The
 # installed system's sources are written by debian-installer, so disabling the
 # security archive here only drops it from the live ISO's own apt config.
-lb config \
+# LB_BOOTSTRAP_INCLUDE=gnupg: debootstrap (Debian mode) only installs gpgv, but
+# live-build signs the local packages.chroot repository (docker .debs) inside
+# the chroot with gpg, aborting with "GPG exited with error status 127" when it
+# is missing. The gnupg default only applies to ubuntu/kubuntu modes, so set it
+# explicitly for Debian.
+LB_BOOTSTRAP_INCLUDE=gnupg lb config \
     --mode debian \
     --distribution bookworm \
     --architecture amd64 \
