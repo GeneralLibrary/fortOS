@@ -105,11 +105,16 @@ if lb config --help 2>/dev/null | grep -q -- '--uefi-secure-boot'; then
 else
     echo "  note: live-build lacks --uefi-secure-boot; building without Secure Boot shim" >&2
 fi
+# bookworm reached end-of-life (2026-06); security.debian.org no longer serves
+# bookworm/updates (404), which aborts apt-get update during lb build. The
+# installed system's sources are written by debian-installer, so disabling the
+# security archive here only drops it from the live ISO's own apt config.
 lb config \
     --mode debian \
     --distribution bookworm \
     --architecture amd64 \
     --archive-areas "main contrib non-free-firmware" \
+    --security false \
     --binary-image iso-hybrid \
     --checksums sha256 \
     --debian-installer live \

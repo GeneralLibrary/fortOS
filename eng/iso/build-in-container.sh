@@ -126,6 +126,7 @@ configure_live_image() {
         --distribution bookworm \
         --architecture "${ARCHITECTURE}" \
         --archive-areas "main contrib non-free-firmware" \
+        --security false \
         --binary-image iso-hybrid \
         --checksums sha256 \
         --debian-installer live \
