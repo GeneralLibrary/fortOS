@@ -119,6 +119,10 @@ fi
 # LB_BOOTSTRAP_INCLUDE=gnupg: keep gpg/gpgv in the chroot in case any
 # live-build path still needs them (the gnupg default only applies to
 # ubuntu/kubuntu modes).
+# --firmware-chroot/--firmware-binary false: live-build resolves firmware
+# packages from dists/bookworm/Contents-amd64.gz, which the official mirrors
+# removed after bookworm's end-of-life (404). Disable that auto-resolution;
+# firmware packages can still be added explicitly via package-lists.
 LB_BOOTSTRAP_INCLUDE=gnupg lb config \
     --mode debian \
     --distribution bookworm \
@@ -126,6 +130,8 @@ LB_BOOTSTRAP_INCLUDE=gnupg lb config \
     --archive-areas "main contrib non-free-firmware" \
     --security false \
     --apt-secure false \
+    --firmware-chroot false \
+    --firmware-binary false \
     --binary-image iso-hybrid \
     --checksums sha256 \
     --debian-installer live \

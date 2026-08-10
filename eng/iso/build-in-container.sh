@@ -128,6 +128,9 @@ configure_live_image() {
     # bookworm's gpg 2.2 in a TTY-less build this fails with "agent_genkey
     # failed: Inappropriate ioctl for device". Disabling apt secure skips that
     # signing step (and debootstrap's --no-check-gpg).
+    # --firmware-chroot/--firmware-binary false: live-build resolves firmware
+    # packages from dists/bookworm/Contents-amd64.gz, which the official
+    # mirrors removed after bookworm's end-of-life (404).
     LB_BOOTSTRAP_INCLUDE=gnupg lb config \
         --mode debian \
         --distribution bookworm \
@@ -135,6 +138,8 @@ configure_live_image() {
         --archive-areas "main contrib non-free-firmware" \
         --security false \
         --apt-secure false \
+        --firmware-chroot false \
+        --firmware-binary false \
         --binary-image iso-hybrid \
         --checksums sha256 \
         --debian-installer live \
