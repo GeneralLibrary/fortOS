@@ -1,0 +1,8 @@
+// FortOS ISO build: allow the unsigned local packages.chroot repository.
+// Ubuntu 24.04's 2012-era live-build cannot sign the local repository with
+// bookworm's gpg 2.2 in a TTY-less CI environment, so --apt-secure false
+// skips signing; apt's update stage still rejects unsigned repos unless
+// insecure repositories are explicitly allowed. Packages themselves come from
+// official ftp.debian.org; this only relaxes the file: local repository.
+Acquire::AllowInsecureRepositories "true";
+Acquire::AllowDowngradeToInsecureRepositories "true";
