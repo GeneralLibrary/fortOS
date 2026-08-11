@@ -87,9 +87,16 @@ publish_if_missing() {
         echo "  ${bin} already exists, skipping"
         return
     fi
-    dotnet publish "${REPOSITORY_ROOT}/$1" \
+    # dotnet 的 MSBuild 错误走 stdout,直接吞掉会让 CI 失败时无任何线索。
+    # 输出到日志文件,失败时把日志打出来。
+    local log="${output}/publish.log"
+    if ! dotnet publish "${REPOSITORY_ROOT}/$1" \
         --configuration Release --runtime "${DOTNET_RUNTIME}" --self-contained true \
-        ${extra} --output "${output}" >/dev/null
+        ${extra} --output "${output}" >"${log}" 2>&1; then
+        echo "  ERROR: dotnet publish failed for ${bin}; last 100 lines of ${log}:" >&2
+        tail -100 "${log}" >&2
+        return 1
+    fi
     echo "  ${bin} OK"
 }
 publish_if_missing "${PUBLISH_ROOT}/api" FortOS.Api "" "src/FortOS.Api/FortOS.Api.csproj"
