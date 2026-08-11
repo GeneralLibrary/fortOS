@@ -16,9 +16,9 @@ esac
 readonly SQUASHFS_PATH="${WORK_DIR}/filesystem.squashfs"
 readonly EXTRACTED_ROOT="${WORK_DIR}/root"
 
-for command in xorriso unsquashfs sha256sum file; do
+for command in xorriso unsquashfs sha256sum file isoinfo; do
     if ! command -v "${command}" >/dev/null 2>&1; then
-        echo "error: ${command} is required to inspect the ISO." >&2
+        echo "error: ${command} is required to inspect the ISO (apt-get install genisoimage)." >&2
         exit 1
     fi
 done
