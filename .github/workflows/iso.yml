@@ -214,7 +214,7 @@ jobs:
               qemu-system-x86 qemu-utils ovmf xorriso squashfs-tools genisoimage
           else
             sudo apt-get install -y --no-install-recommends \
-              qemu-system-arm qemu-utils qemu-efi-aarch64 xorriso squashfs-tools genisoimage
+              qemu-system-arm qemu-utils qemu-efi-aarch64 xorriso squashfs-tools genisoimage ipxe-qemu
           fi
 
       - name: Validate ISO image contents
