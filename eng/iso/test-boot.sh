@@ -57,9 +57,9 @@ else
     readonly CONSOLE_ARGS="console=ttyAMA0 earlycon=pl011,0x09000000"
 fi
 
-for command in "${QEMU_BIN}" python3 xorriso; do
+for command in "${QEMU_BIN}" python3 xorriso isoinfo; do
     if ! command -v "${command}" >/dev/null 2>&1; then
-        echo "error: ${command} is required for the boot test." >&2
+        echo "error: ${command} is required for the boot test (apt-get install genisoimage)." >&2
         exit 1
     fi
 done
@@ -92,16 +92,35 @@ rm -f "${SCREENSHOT}" "${MONITOR_LOG}" "${SERIAL_LOG}" "${DIAG_LOG}" "${MONITOR_
 # the 420 s diagnostics window ample room.
 # -------------------------------------------------------------------------
 mkdir -p "${BOOT_DIR}"
+# 提取 live 内核/initrd 直接传给 QEMU(-kernel/-initrd/-append),绕过 ISO 引导器
+# (isolinux/GRUB),避免 TCG 模拟下引导器卡在菜单倒计时。
+# amd64 的 live-build 固定命名 /live/vmlinuz、/live/initrd.img;
+# arm64 的命名带内核版本后缀(vmlinuz-<ver>-arm64 / initrd.img-<ver>-arm64),
+# 需先从 ISO 的 RockRidge 目录里解析实际文件名,再交给 xorriso 提取。
 _iso_extract() {
     xorriso -osirrox on -indev "${ISO_PATH}" -extract "${1}" "${2}" \
         >/dev/null 2>&1
 }
-_iso_extract /live/vmlinuz "${VMLINUZ}" \
-    || _iso_extract /isolinux/live/vmlinuz "${VMLINUZ}" \
-    || { echo "error: live vmlinuz not found in ISO." >&2; exit 1; }
-_iso_extract /live/initrd.img "${INITRD}" \
-    || _iso_extract /isolinux/live/initrd.img "${INITRD}" \
-    || { echo "error: live initrd.img not found in ISO." >&2; exit 1; }
+if [[ "${ISO_ARCH}" == "arm64" ]]; then
+    iso_listing="$(isoinfo -i "${ISO_PATH}" -R -f 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/;[0-9]*$//')"
+    arm64_vmlinuz="$(grep '^/live/vmlinuz-' <<<"${iso_listing}" | head -1 || true)"
+    arm64_initrd="$(grep '^/live/initrd.img-' <<<"${iso_listing}" | head -1 || true)"
+    if [[ -z "${arm64_vmlinuz}" || -z "${arm64_initrd}" ]]; then
+        echo "error: arm64 live kernel/initrd not found in ISO." >&2
+        exit 1
+    fi
+    _iso_extract "${arm64_vmlinuz}" "${VMLINUZ}" \
+        || { echo "error: failed to extract live vmlinuz from ISO." >&2; exit 1; }
+    _iso_extract "${arm64_initrd}" "${INITRD}" \
+        || { echo "error: failed to extract live initrd.img from ISO." >&2; exit 1; }
+else
+    _iso_extract /live/vmlinuz "${VMLINUZ}" \
+        || _iso_extract /isolinux/live/vmlinuz "${VMLINUZ}" \
+        || { echo "error: live vmlinuz not found in ISO." >&2; exit 1; }
+    _iso_extract /live/initrd.img "${INITRD}" \
+        || _iso_extract /isolinux/live/initrd.img "${INITRD}" \
+        || { echo "error: live initrd.img not found in ISO." >&2; exit 1; }
+fi
 
 # Validate after extraction: an empty file or a non-kernel image makes QEMU hang silently for 420 s with no output,
 # so fail early and write the actual content (type/size) to the log to help diagnose extraction problems.
