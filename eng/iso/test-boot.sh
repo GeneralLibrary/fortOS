@@ -209,6 +209,18 @@ if [[ "${ISO_ARCH}" == "arm64" ]]; then
     )
 fi
 # earlycon prints kernel messages before the serial driver is fully initialized, helping diagnose early crashes.
+# 第二个输出通道:amd64 的 q35 板有第二个 8250 串口(ttyS1)直接对应第二个 -serial;
+# arm64 的 virt 板只有一个 NS PL011(ttyAMA0),第二个 -serial 不会产生任何设备,
+# 因此 arm64 改用 virtio-serial 端口(guest 中为 /dev/vport0p1),diag 服务写它。
+if [[ "${ISO_ARCH}" == "arm64" ]]; then
+    diag_args=(
+        -chardev "file,id=fortos-diag,path=${DIAG_LOG}"
+        -device "virtio-serial-device,id=fortos-vser"
+        -device "virtio-serial-port,chardev=fortos-diag,name=fortos.diag"
+    )
+else
+    diag_args=(-serial "file:${DIAG_LOG}")
+fi
 timeout "${QEMU_TIMEOUT_S}s" "${QEMU_BIN}" \
     "${accel_args[@]}" \
     -m 2048 \
@@ -220,7 +232,7 @@ timeout "${QEMU_TIMEOUT_S}s" "${QEMU_BIN}" \
     -display vnc=127.0.0.1:99 \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \
     -serial "file:${SERIAL_LOG}" \
-    -serial "file:${DIAG_LOG}" \
+    "${diag_args[@]}" \
     -no-reboot \
     "${firmware_args[@]}" \
     >"${MONITOR_LOG}" 2>&1 &

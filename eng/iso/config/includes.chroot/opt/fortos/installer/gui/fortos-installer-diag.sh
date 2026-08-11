@@ -12,13 +12,14 @@ xorg_alive() {
 }
 
 # 把诊断输出写到所有可用的 CI 串口:amd64 QEMU 用 8250 串口 /dev/ttyS1,
-# arm64 QEMU virt 用 PL011 串口 /dev/ttyAMA1;真实硬件无这些串口时静默跳过。
+# arm64 QEMU virt 板只有一个 NS PL011(ttyAMA0),第二通道由 test-boot.sh
+# 以 virtio-serial 端口提供,guest 中为 /dev/vport0p1;真实硬件无这些串口时静默跳过。
 # 先缓冲到临时文件再逐个写出,避免管道被第一个串口消费后其余串口收到空。
 diag_tty() {
     local tmp
     tmp="$(mktemp)"
     cat > "${tmp}"
-    for tty in /dev/ttyS1 /dev/ttyAMA1; do
+    for tty in /dev/ttyS1 /dev/ttyAMA1 /dev/vport0p1; do
         if [ -w "${tty}" ]; then
             cat "${tmp}" > "${tty}" 2>/dev/null || true
         fi
