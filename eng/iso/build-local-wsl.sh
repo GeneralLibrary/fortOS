@@ -26,11 +26,19 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPOSITORY_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 readonly VERSION="${VERSION:-dev}"
 readonly SAFE_VERSION="${VERSION//[^a-zA-Z0-9._-]/-}"
+# 目标架构:amd64(默认,保持向后兼容)或 arm64。live-build 在 arm64 主机上
+# 原生构建 arm64 镜像;CI 通过 ARCHITECTURE 环境变量从 workflow matrix 传入。
+readonly ARCHITECTURE="${ARCHITECTURE:-amd64}"
+case "${ARCHITECTURE}" in
+    amd64) readonly DOTNET_RUNTIME="linux-x64" ;;
+    arm64) readonly DOTNET_RUNTIME="linux-arm64" ;;
+    *) echo "error: unsupported ARCHITECTURE '${ARCHITECTURE}' (expected amd64 or arm64)." >&2; exit 1 ;;
+esac
 readonly BUILD_ROOT="${BUILD_ROOT:-${REPOSITORY_ROOT}/artifacts/iso-build}"
 readonly PUBLISH_ROOT="${BUILD_ROOT}/publish"
 readonly LIVE_ROOT="${BUILD_ROOT}/live"
 readonly OUTPUT_DIR="${OUTPUT_DIR:-${REPOSITORY_ROOT}/artifacts/iso}"
-readonly IMAGE_BASENAME="fortos-debian12-${SAFE_VERSION}-amd64"
+readonly IMAGE_BASENAME="fortos-debian12-${SAFE_VERSION}-${ARCHITECTURE}"
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
@@ -80,7 +88,7 @@ publish_if_missing() {
         return
     fi
     dotnet publish "${REPOSITORY_ROOT}/$1" \
-        --configuration Release --runtime linux-x64 --self-contained true \
+        --configuration Release --runtime "${DOTNET_RUNTIME}" --self-contained true \
         ${extra} --output "${output}" >/dev/null
     echo "  ${bin} OK"
 }
@@ -119,7 +127,7 @@ fi
 lb config \
     --mode debian \
     --distribution bookworm \
-    --architecture amd64 \
+    --architecture "${ARCHITECTURE}" \
     --archive-areas "main contrib non-free-firmware" \
     --security false \
     --apt-secure false \
@@ -138,6 +146,15 @@ lb config \
 
 echo "=== 3/6 Copy config + CRLF normalization + symlink restore ==="
 cp -a "${REPOSITORY_ROOT}/eng/iso/config/." "${LIVE_ROOT}/config/"
+# Bootloader 包按架构选择(grub-pc/grub-efi-amd64 仅 amd64;grub-efi-arm64 仅 arm64)。
+keep_grub_list="fortos-grub-${ARCHITECTURE}.list.chroot"
+for grub_list in "${LIVE_ROOT}/config/package-lists"/fortos-grub-*.list.chroot; do
+    [[ -e "${grub_list}" ]] || continue
+    [[ "$(basename -- "${grub_list}")" == "${keep_grub_list}" ]] || rm -f "${grub_list}"
+done
+# 安装后系统的 docker apt 源按架构固定(docker 仅按架构提供 bookworm 包)。
+sed -i "s/arch=amd64/arch=${ARCHITECTURE}/" \
+    "${LIVE_ROOT}/config/includes.chroot/etc/apt/sources.list.d/docker.list"
 find "${LIVE_ROOT}/config" -type f -exec sed -i 's/\r$//' {} +
 find "${LIVE_ROOT}/config/hooks" -type f -name '*.hook.chroot' -exec chmod 0755 {} +
 # Restore git symlinks (includes.chroot) materialized as regular files by a
@@ -169,7 +186,7 @@ curl --fail --show-error --silent --location --retry 3 \
     https://download.docker.com/linux/debian/gpg \
     --output /etc/apt/keyrings/docker.asc
 printf '%s\n' \
-    "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+    "deb [arch=${ARCHITECTURE} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
     > /etc/apt/sources.list.d/docker.list
 cat > /etc/apt/preferences.d/fortos-docker-pin <<'PINEOF'
 Package: containerd.io docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
@@ -191,7 +208,7 @@ lb build
 
 echo "=== Output ISO ==="
 mkdir -p "${OUTPUT_DIR}"
-cp "${LIVE_ROOT}/live-image-amd64.hybrid.iso" "${OUTPUT_DIR}/${IMAGE_BASENAME}.iso"
+cp "${LIVE_ROOT}/live-image-${ARCHITECTURE}.hybrid.iso" "${OUTPUT_DIR}/${IMAGE_BASENAME}.iso"
 (cd "${OUTPUT_DIR}" && sha256sum "${IMAGE_BASENAME}.iso" > "${IMAGE_BASENAME}.iso.sha256")
 ls -la "${OUTPUT_DIR}/${IMAGE_BASENAME}.iso"
 echo "=== Done: ${OUTPUT_DIR}/${IMAGE_BASENAME}.iso ==="

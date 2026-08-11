@@ -3,6 +3,16 @@ set -Eeuo pipefail
 
 readonly ISO_PATH="${1:?usage: test-image.sh <iso-path> [work-directory]}"
 readonly WORK_DIR="${2:-$(mktemp -d)}"
+# 目标架构:优先 ARCH 环境变量,否则从 ISO 文件名(fortos-debian12-*-<arch>.iso)推断。
+readonly ISO_ARCH="${ARCH:-$(basename "${ISO_PATH}" | sed -nE 's/.*-(amd64|arm64)\.iso$/\1/p')}"
+if [[ -z "${ISO_ARCH}" ]]; then
+    echo "error: cannot determine target architecture from '${ISO_PATH}' — set ARCH=amd64|arm64." >&2
+    exit 1
+fi
+case "${ISO_ARCH}" in
+    amd64|arm64) ;;
+    *) echo "error: unsupported ARCH '${ISO_ARCH}' (expected amd64 or arm64)." >&2; exit 1 ;;
+esac
 readonly SQUASHFS_PATH="${WORK_DIR}/filesystem.squashfs"
 readonly EXTRACTED_ROOT="${WORK_DIR}/root"
 
@@ -30,7 +40,11 @@ fi
 
 boot_report="$(xorriso -indev "${ISO_PATH}" -report_el_torito plain 2>&1)"
 printf '%s\n' "${boot_report}" > "${WORK_DIR}/el-torito.txt"
-grep -Eq 'BIOS|El Torito boot img.*BIOS' "${WORK_DIR}/el-torito.txt"
+# arm64 的 live-build ISO 是纯 UEFI(无 BIOS El Torito 条目;isolinux 仅 x86),
+# 因此 BIOS 引导目录检查只在 amd64 上执行。
+if [[ "${ISO_ARCH}" == "amd64" ]]; then
+    grep -Eq 'BIOS|El Torito boot img.*BIOS' "${WORK_DIR}/el-torito.txt"
+fi
 grep -Eq 'UEFI|El Torito boot img.*UEFI' "${WORK_DIR}/el-torito.txt"
 
 xorriso -osirrox on -indev "${ISO_PATH}" \
@@ -89,9 +103,13 @@ for path in "${required_paths[@]}"; do
     fi
 done
 
-file "${EXTRACTED_ROOT}/opt/fortos/api/FortOS.Api" | grep -q 'ELF 64-bit.*x86-64'
-file "${EXTRACTED_ROOT}/opt/fortos/cli/FortOS.Cli" | grep -q 'ELF 64-bit.*x86-64'
-file "${EXTRACTED_ROOT}/opt/fortos/installer/gui/fortos-installer-gui" | grep -q 'ELF 64-bit.*x86-64'
+elf_pattern='ELF 64-bit.*x86-64'
+if [[ "${ISO_ARCH}" == "arm64" ]]; then
+    elf_pattern='ELF 64-bit.*aarch64'
+fi
+file "${EXTRACTED_ROOT}/opt/fortos/api/FortOS.Api" | grep -q "${elf_pattern}"
+file "${EXTRACTED_ROOT}/opt/fortos/cli/FortOS.Cli" | grep -q "${elf_pattern}"
+file "${EXTRACTED_ROOT}/opt/fortos/installer/gui/fortos-installer-gui" | grep -q "${elf_pattern}"
 grep -q '^ExecStart=/opt/fortos/api/FortOS.Api$' \
     "${EXTRACTED_ROOT}/etc/systemd/system/fortos.service"
 grep -q '^ExecStart=/opt/fortos/installer/gui/fortos-installer-kiosk.sh$' \

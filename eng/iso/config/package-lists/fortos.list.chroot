@@ -96,8 +96,6 @@ libegl1
 # Bootloader toolchain used by the installer's BootloaderStep (design §5.5).
 # grub-install executes from the live environment; signed shim + grub modules
 # keep the Secure Boot chain intact.
-grub-efi-amd64-signed
-grub-efi-amd64-bin
-grub-pc-bin
-grub-common
-shim-signed
+# NOTE: the arch-specific package names (grub-efi-amd64-*/grub-pc-bin vs
+# grub-efi-arm64-*) live in fortos-grub-<arch>.list.chroot, selected by the
+# build scripts via ARCHITECTURE.

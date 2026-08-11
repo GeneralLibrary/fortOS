@@ -8,7 +8,11 @@ on:
         required: true
         default: dev
       size_baseline:
-        description: Baseline ISO size in bytes for the ≤300 MiB graphics-stack delta check (optional; empty records this build as reference)
+        description: Baseline amd64 ISO size in bytes for the ≤300 MiB graphics-stack delta check (optional; empty records this build as reference)
+        required: false
+        default: ""
+      size_baseline_arm64:
+        description: Baseline arm64 ISO size in bytes for the ≤300 MiB graphics-stack delta check (optional; empty records this build as reference)
         required: false
         default: ""
   release:
@@ -22,7 +26,21 @@ permissions:
 
 jobs:
   build-iso:
-    runs-on: ubuntu-latest
+    # amd64 在 x64 runner 上原生构建;arm64 在 GitHub 原生 ARM64 runner
+    # (ubuntu-24.04-arm) 上原生构建,无需 qemu 模拟,与 amd64 完全同构。
+    # 两个 job 都会把产物发布到同一个 tag 的 release(文件名带架构后缀,
+    # 不冲突;并发 create/upload 竞争由 Publish 步骤的现有重试逻辑兜底)。
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            artifact: fortos-debian12-amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            artifact: fortos-debian12-arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +64,8 @@ jobs:
       #   3. live-build/xorriso 等工具链用 apt 安装;.NET 宿主库(libicu/libssl/
       #      libunwind)也一并装上,因为 dotnet publish 在 runner 上运行;
       #   4. lb build 需要 root(chroot 挂载 /proc /sys),故用 sudo 运行,并通过
-      #      env 显式保留 PATH(找到 dotnet)与 VERSION(产物命名/版本文件)。
+      #      env 显式保留 PATH(找到 dotnet)与 VERSION/ARCHITECTURE(产物命名/
+      #      版本文件/目标架构)。
       # ------------------------------------------------------------------
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -69,7 +88,7 @@ jobs:
       - name: Install ISO build toolchain
         run: |
           sudo apt-get update
-          # ubuntu-latest 现为 24.04(libicu74/libssl3t64);fallback 覆盖旧镜像包名
+          # ubuntu-latest/ubuntu-24.04-arm 现为 24.04(libicu74/libssl3t64);fallback 覆盖旧镜像包名
           sudo apt-get install -y --no-install-recommends \
             live-build xorriso squashfs-tools mtools dosfstools \
             debootstrap cpio isolinux syslinux-common \
@@ -89,15 +108,16 @@ jobs:
             https://deb.debian.org/debian/pool/main/l/live-build/live-build_20230502_all.deb
           sudo dpkg -i /tmp/live-build.deb
 
-      - name: Build Debian 12 installation image
+      - name: Build Debian 12 installation image (${{ matrix.arch }})
         env:
           VERSION: ${{ inputs.version || github.event.release.tag_name || github.ref_name }}
-        run: sudo env "PATH=$PATH" "VERSION=$VERSION" bash eng/iso/build-local-wsl.sh
+          ARCHITECTURE: ${{ matrix.arch }}
+        run: sudo env "PATH=$PATH" "VERSION=$VERSION" "ARCHITECTURE=$ARCHITECTURE" bash eng/iso/build-local-wsl.sh
 
       - name: Upload ISO and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: fortos-debian12-amd64
+          name: ${{ matrix.artifact }}
           path: artifacts/iso/*
           if-no-files-found: error
           retention-days: 14
@@ -106,12 +126,18 @@ jobs:
       - name: Enforce ISO size budget
         # 体积护栏(设计稿 §8.5):首次构建记录基线,后续传 baseline-bytes 断言
         # 图形栈增量 ≤ 300 MiB。GitHub Actions 无跨运行状态,基线可取自
-        # 上一次 release 的 ISO 大小(workflow 输入或手动传递)。
+        # 上一次 release 的 ISO 大小(workflow 输入或手动传递);两个架构各自
+        # 独立记录基线(size_baseline / size_baseline_arm64)。
         shell: bash
         run: |
           iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
           test -n "${iso}"
-          bash eng/iso/verify-size.sh "${iso}" "${{ inputs.size_baseline }}"
+          if [[ "${{ matrix.arch }}" == "amd64" ]]; then
+            baseline="${{ inputs.size_baseline }}"
+          else
+            baseline="${{ inputs.size_baseline_arm64 }}"
+          fi
+          bash eng/iso/verify-size.sh "${iso}" "${baseline}"
 
       - name: Check GitHub release asset size
         if: github.event_name == 'release' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && startsWith(inputs.version, 'v'))
@@ -129,6 +155,9 @@ jobs:
         # 三条发布路径:① release published → 上传到已存在 release;
         # ② push v* tag → 创建/更新 release;③ 手动触发且 version 以 v 开头
         # → 按 version 创建 tag + release 并上传(dev 等非 v 开头只出 artifacts)。
+        # amd64 与 arm64 两个 matrix job 并发执行本步骤:文件名带架构后缀互不
+        # 覆盖;若两者都发现 release 不存在而同时 create,失败的一方会在下一轮
+        # 重试中 view 到已创建的 release 并转为 upload。
         if: github.event_name == 'release' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && startsWith(inputs.version, 'v'))
         env:
           GH_TOKEN: ${{ github.token }}
@@ -151,44 +180,59 @@ jobs:
           done
 
   smoke-boot:
-    name: Boot smoke test (BIOS + UEFI → FortOS GUI)
+    name: Boot smoke test (${{ matrix.arch }})
     needs: build-iso
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # amd64:BIOS(isolinux)+ UEFI(grub)两条引导路径都要测
+          - arch: amd64
+            runner: ubuntu-latest
+            artifact: fortos-debian12-amd64
+            firmware: "bios uefi"
+          # arm64:纯 UEFI 引导(无 BIOS/grub-pc),只测 UEFI
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            artifact: fortos-debian12-arm64
+            firmware: "uefi"
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: fortos-debian12-amd64
+          name: ${{ matrix.artifact }}
           path: artifacts/iso
 
       - name: Install QEMU and ISO tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf xorriso squashfs-tools
+          if [[ "${{ matrix.arch }}" == "amd64" ]]; then
+            sudo apt-get install -y --no-install-recommends \
+              qemu-system-x86 qemu-utils ovmf xorriso squashfs-tools
+          else
+            sudo apt-get install -y --no-install-recommends \
+              qemu-system-arm qemu-utils qemu-efi-aarch64 xorriso squashfs-tools
+          fi
 
       - name: Validate ISO image contents
         run: |
           iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
           test -n "${iso}"
-          bash eng/iso/test-image.sh "${iso}"
+          ARCH=${{ matrix.arch }} bash eng/iso/test-image.sh "${iso}"
 
-      - name: Boot test — BIOS (isolinux)
+      - name: Boot test — BIOS/UEFI (${{ matrix.arch }})
         run: |
           iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
           test -n "${iso}"
-          bash eng/iso/test-boot.sh "${iso}" bios artifacts/boot-bios
-
-      - name: Boot test — UEFI (grub)
-        run: |
-          iso="$(find artifacts/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          test -n "${iso}"
-          bash eng/iso/test-boot.sh "${iso}" uefi artifacts/boot-uefi
+          for fw in ${{ matrix.firmware }}; do
+            ARCH=${{ matrix.arch }} bash eng/iso/test-boot.sh "${iso}" "${fw}" "artifacts/boot-${fw}"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: boot-test-results
+          name: boot-test-results-${{ matrix.arch }}
           path: artifacts/boot-*

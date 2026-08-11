@@ -16,15 +16,48 @@ readonly FIRMWARE="${2:?firmware must be bios or uefi}"
 readonly RESULT_DIR="${3:?result directory is required}"
 readonly OVMF_CODE="${OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
 readonly OVMF_VARS_TEMPLATE="${OVMF_VARS_TEMPLATE:-/usr/share/OVMF/OVMF_VARS_4M.fd}"
+readonly AAVMF_CODE="${AAVMF_CODE:-/usr/share/AAVMF/AAVMF_CODE.fd}"
+readonly AAVMF_VARS_TEMPLATE="${AAVMF_VARS_TEMPLATE:-/usr/share/AAVMF/AAVMF_VARS.fd}"
 # Not readonly: TCG mode relaxes the diagnostics timeout.
 DIAG_TIMEOUT_S="${DIAG_TIMEOUT_S:-150}"
+
+# 目标架构:优先 ARCH 环境变量,否则从 ISO 文件名(fortos-debian12-*-<arch>.iso)推断。
+readonly ISO_ARCH="${ARCH:-$(basename "${ISO_PATH}" | sed -nE 's/.*-(amd64|arm64)\.iso$/\1/p')}"
+if [[ -z "${ISO_ARCH}" ]]; then
+    echo "error: cannot determine target architecture from '${ISO_PATH}' — set ARCH=amd64|arm64." >&2
+    exit 1
+fi
+case "${ISO_ARCH}" in
+    amd64|arm64) ;;
+    *) echo "error: unsupported ARCH '${ISO_ARCH}' (expected amd64 or arm64)." >&2; exit 1 ;;
+esac
 
 if [[ "${FIRMWARE}" != "bios" && "${FIRMWARE}" != "uefi" ]]; then
     echo "error: firmware must be bios or uefi." >&2
     exit 1
 fi
+# arm64 (AArch64) 无 BIOS 引导路径(live-build 生成纯 UEFI ISO),只测 uefi。
+if [[ "${ISO_ARCH}" == "arm64" && "${FIRMWARE}" != "uefi" ]]; then
+    echo "error: arm64 ISO boots via UEFI only (no BIOS/grub-pc on AArch64)." >&2
+    exit 1
+fi
 
-for command in qemu-system-x86_64 python3 xorriso; do
+# 架构相关的 QEMU 可执行文件、UEFI 固件与控制台设备名。
+# amd64:qemu-system-x86_64 + OVMF,串口为 8250(ttyS0/ttyS1);
+# arm64:qemu-system-aarch64 + AAVMF,virt 板的 PL011 串口为 ttyAMA0/ttyAMA1。
+if [[ "${ISO_ARCH}" == "amd64" ]]; then
+    readonly QEMU_BIN="qemu-system-x86_64"
+    readonly UEFI_CODE="${OVMF_CODE}"
+    readonly UEFI_VARS_TEMPLATE="${OVMF_VARS_TEMPLATE}"
+    readonly CONSOLE_ARGS="console=tty0 console=ttyS0,115200n8 earlycon"
+else
+    readonly QEMU_BIN="qemu-system-aarch64"
+    readonly UEFI_CODE="${AAVMF_CODE}"
+    readonly UEFI_VARS_TEMPLATE="${AAVMF_VARS_TEMPLATE}"
+    readonly CONSOLE_ARGS="console=ttyAMA0 earlycon=pl011,0x09000000"
+fi
+
+for command in "${QEMU_BIN}" python3 xorriso; do
     if ! command -v "${command}" >/dev/null 2>&1; then
         echo "error: ${command} is required for the boot test." >&2
         exit 1
@@ -41,7 +74,12 @@ readonly MONITOR_SOCK="${RESULT_DIR}/${FIRMWARE}-monitor.sock"
 readonly VARS_FILE="${RESULT_DIR}/${FIRMWARE}-vars.fd"
 readonly VMLINUZ="${BOOT_DIR}/vmlinuz"
 readonly INITRD="${BOOT_DIR}/initrd.img"
-readonly LIVE_BOOT_APPEND="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8 earlycon"
+# arm64 TCG 模拟比 x86 慢,放宽 diag 服务等待 GUI 的轮询上限(内核 cmdline 参数)。
+extra_boot_args=""
+if [[ "${ISO_ARCH}" == "arm64" ]]; then
+    extra_boot_args="FORTOS_DIAG_WAIT_S=480"
+fi
+readonly LIVE_BOOT_APPEND="boot=live components hostname=fortos locales=en_US.UTF-8,zh_CN.UTF-8 keyboard-layouts=us ${extra_boot_args} ${CONSOLE_ARGS}"
 
 rm -f "${SCREENSHOT}" "${MONITOR_LOG}" "${SERIAL_LOG}" "${DIAG_LOG}" "${MONITOR_SOCK}"
 
@@ -67,13 +105,29 @@ _iso_extract /live/initrd.img "${INITRD}" \
 
 # Validate after extraction: an empty file or a non-kernel image makes QEMU hang silently for 420 s with no output,
 # so fail early and write the actual content (type/size) to the log to help diagnose extraction problems.
+# arm64 的 Debian live 内核是 gzip 压缩的 ARM64 Image(file 输出 gzip 而非 'Linux kernel'),
+# 先解压为未压缩 Image 再校验/传给 QEMU,兼容性最好。
 if [[ ! -s "${VMLINUZ}" ]]; then
     echo "error: extracted vmlinuz is empty or missing: ${VMLINUZ}" >&2
     exit 1
 fi
-if ! file "${VMLINUZ}" | grep -q 'Linux kernel'; then
-    echo "error: extracted vmlinuz is not a Linux kernel image: $(file "${VMLINUZ}")" >&2
-    exit 1
+if [[ "${ISO_ARCH}" == "arm64" ]]; then
+    if file "${VMLINUZ}" | grep -q 'gzip compressed data'; then
+        gunzip -c "${VMLINUZ}" > "${BOOT_DIR}/vmlinuz.image"
+        readonly VMLINUZ_KERNEL="${BOOT_DIR}/vmlinuz.image"
+    else
+        readonly VMLINUZ_KERNEL="${VMLINUZ}"
+    fi
+    if ! file "${VMLINUZ_KERNEL}" | grep -Eq 'Linux kernel ARM64|PE32\+ executable.*Aarch64'; then
+        echo "error: extracted vmlinuz is not an arm64 kernel image: $(file "${VMLINUZ_KERNEL}")" >&2
+        exit 1
+    fi
+else
+    readonly VMLINUZ_KERNEL="${VMLINUZ}"
+    if ! file "${VMLINUZ_KERNEL}" | grep -q 'Linux kernel'; then
+        echo "error: extracted vmlinuz is not a Linux kernel image: $(file "${VMLINUZ_KERNEL}")" >&2
+        exit 1
+    fi
 fi
 if [[ ! -s "${INITRD}" ]]; then
     echo "error: extracted initrd.img is empty or missing: ${INITRD}" >&2
@@ -82,9 +136,9 @@ fi
 
 firmware_args=()
 if [[ "${FIRMWARE}" == "uefi" ]]; then
-    cp "${OVMF_VARS_TEMPLATE}" "${VARS_FILE}"
+    cp "${UEFI_VARS_TEMPLATE}" "${VARS_FILE}"
     firmware_args=(
-        -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
+        -drive "if=pflash,format=raw,readonly=on,file=${UEFI_CODE}"
         -drive "if=pflash,format=raw,file=${VARS_FILE}"
     )
 fi
@@ -92,33 +146,58 @@ fi
 # -------------------------------------------------------------------------
 # Accelerator selection: nested virtualization on GitHub-hosted runners is experimental (/dev/kvm
 # is not guaranteed to exist); fall back to TCG software emulation when KVM is unavailable (slower, relaxed diagnostics timeout).
+# amd64 用 q35 + qemu64 CPU;arm64 用 virt + cortex-a57(virt 板没有 q35)。
 # -------------------------------------------------------------------------
-accel_args=(-machine q35,accel=tcg -cpu qemu64)
-accel_name="tcg"
-if [[ -e /dev/kvm && -r /dev/kvm ]]; then
-    accel_args=(-machine q35,accel=kvm -cpu host)
-    accel_name="kvm"
+if [[ "${ISO_ARCH}" == "amd64" ]]; then
+    accel_args=(-machine q35,accel=tcg -cpu qemu64)
+    accel_name="tcg"
+    if [[ -e /dev/kvm && -r /dev/kvm ]]; then
+        accel_args=(-machine q35,accel=kvm -cpu host)
+        accel_name="kvm"
+    fi
+else
+    accel_args=(-machine virt,accel=tcg -cpu cortex-a57)
+    accel_name="tcg"
+    if [[ -e /dev/kvm && -r /dev/kvm ]]; then
+        accel_args=(-machine virt,accel=kvm -cpu host)
+        accel_name="kvm"
+    fi
 fi
-echo "Boot test: ${FIRMWARE} firmware, accelerator=${accel_name}"
+echo "Boot test: ${FIRMWARE} firmware (${ISO_ARCH}), accelerator=${accel_name}"
 
 if [[ "${accel_name}" == "tcg" ]]; then
     DIAG_TIMEOUT_S=420
     QEMU_TIMEOUT_S=600
+    if [[ "${ISO_ARCH}" == "arm64" ]]; then
+        # arm64 在 TCG 下比 x86 更慢(Xorg/Avalonia 启动),放宽诊断窗口。
+        DIAG_TIMEOUT_S=600
+        QEMU_TIMEOUT_S=900
+    fi
 else
     QEMU_TIMEOUT_S=240
 fi
 
-# Start QEMU in the background: ttyS0 keeps kernel logs, ttyS1 receives GUI diagnostics output, monitor over a unix socket.
-# -cdrom attaches the ISO so the live-boot initramfs can locate the squashfs; booting is done via -kernel/-initrd.
+# Start QEMU in the background: UART0 keeps kernel logs, UART1 receives GUI diagnostics output, monitor over a unix socket.
+# 光驱:amd64/q35 支持 -cdrom(if=ide→AHCI);arm64/virt 无 IDE 总线,需显式
+# virtio-scsi + scsi-cd(guest 中为 /dev/sr0,live-boot 按 ISO label 找到 squashfs)。
+# -cdrom 让 live-boot initramfs 定位 squashfs;内核用 -kernel/-initrd 直启。
+cdrom_args=(-cdrom "${ISO_PATH}")
+if [[ "${ISO_ARCH}" == "arm64" ]]; then
+    cdrom_args=(
+        -drive "file=${ISO_PATH},media=cdrom,readonly=on,if=none,id=fortos-cd"
+        -device "virtio-scsi-device,id=fortos-scsi"
+        -device "scsi-cd,drive=fortos-cd"
+    )
+fi
 # earlycon prints kernel messages before the serial driver is fully initialized, helping diagnose early crashes.
-timeout "${QEMU_TIMEOUT_S}s" qemu-system-x86_64 \
+timeout "${QEMU_TIMEOUT_S}s" "${QEMU_BIN}" \
     "${accel_args[@]}" \
     -m 2048 \
     -smp 2 \
-    -kernel "${VMLINUZ}" \
+    -kernel "${VMLINUZ_KERNEL}" \
     -initrd "${INITRD}" \
     -append "${LIVE_BOOT_APPEND}" \
-    -cdrom "${ISO_PATH}" \
+    "${cdrom_args[@]}" \
     -display vnc=127.0.0.1:99 \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \
     -serial "file:${SERIAL_LOG}" \

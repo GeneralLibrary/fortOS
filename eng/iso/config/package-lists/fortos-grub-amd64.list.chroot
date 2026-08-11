@@ -1,0 +1,8 @@
+# FortOS bootloader toolchain — amd64 (BIOS + UEFI Secure Boot).
+# grub-pc = BIOS/MBR boot (grub-install /dev/sda); grub-efi-amd64-signed +
+# shim-signed keep the UEFI Secure Boot chain intact (design §5.5).
+grub-efi-amd64-signed
+grub-efi-amd64-bin
+grub-pc-bin
+grub-common
+shim-signed

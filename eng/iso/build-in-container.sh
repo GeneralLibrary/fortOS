@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly ARCHITECTURE="amd64"
-readonly DOTNET_RUNTIME="linux-x64"
+readonly ARCHITECTURE="${ARCHITECTURE:-amd64}"
+case "${ARCHITECTURE}" in
+    amd64) readonly DOTNET_RUNTIME="linux-x64" ;;
+    arm64) readonly DOTNET_RUNTIME="linux-arm64" ;;
+    *) echo "error: unsupported ARCHITECTURE '${ARCHITECTURE}' (expected amd64 or arm64)." >&2; exit 1 ;;
+esac
 readonly VERSION="${FortOS_VERSION:?FortOS_VERSION must be set by build.sh}"
 readonly SAFE_VERSION="${VERSION//[^a-zA-Z0-9._-]/-}"
 readonly IMAGE_BASENAME="fortos-debian12-${SAFE_VERSION}-${ARCHITECTURE}"
@@ -148,6 +152,15 @@ configure_live_image() {
         --uefi-secure-boot auto
 
     cp -a /workspace/eng/iso/config/. "${LIVE_ROOT}/config/"
+    # Bootloader 包按架构选择(grub-pc/grub-efi-amd64 仅 amd64;grub-efi-arm64 仅 arm64)。
+    keep_grub_list="fortos-grub-${ARCHITECTURE}.list.chroot"
+    for grub_list in "${LIVE_ROOT}/config/package-lists"/fortos-grub-*.list.chroot; do
+        [[ -e "${grub_list}" ]] || continue
+        [[ "$(basename -- "${grub_list}")" == "${keep_grub_list}" ]] || rm -f "${grub_list}"
+    done
+    # 安装后系统的 docker apt 源按架构固定(docker 仅按架构提供 bookworm 包)。
+    sed -i "s/arch=amd64/arch=${ARCHITECTURE}/" \
+        "${LIVE_ROOT}/config/includes.chroot/etc/apt/sources.list.d/docker.list"
     # Windows checkouts may expose CRLF files through the read-only bind mount.
     # live-build treats the trailing CR as part of package names and unit values,
     # so normalize the copied configuration before it is consumed.

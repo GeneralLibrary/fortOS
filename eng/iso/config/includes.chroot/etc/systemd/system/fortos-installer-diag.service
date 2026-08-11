@@ -8,7 +8,9 @@ After=fortos-installer.service
 Type=oneshot
 Environment=HOME=/root
 ExecStart=/opt/fortos/installer/gui/fortos-installer-diag.sh
-TimeoutStartSec=300
+# 须 ≥ 最大 FORTOS_DIAG_WAIT_S(arm64 TCG 用 480 s),否则 systemd 会在轮询结束前
+# 杀掉服务,DIAG_END 不会写出,冒烟测试等不到结论。
+TimeoutStartSec=600
 
 [Install]
 WantedBy=multi-user.target

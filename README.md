@@ -41,7 +41,7 @@ docker compose up -d --build
 
 **Option B — Bare metal**
 
-Download the Debian 12 ISO built by the [FortOS ISO workflow](https://github.com/GeneralLibrary/fortOS/actions/workflows/iso.yml) and flash it onto your NAS hardware.
+Download the Debian 12 ISO (amd64 / arm64) built by the [FortOS ISO workflow](https://github.com/GeneralLibrary/fortOS/actions/workflows/iso.yml) and flash it onto your NAS hardware.
 
 ## 💻 CLI examples
 

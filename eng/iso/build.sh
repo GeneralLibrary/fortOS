@@ -29,6 +29,7 @@ mkdir -p "${OUTPUT_DIR}"
 # the hybrid image, therefore the disposable builder requires --privileged.
 docker run --rm --privileged \
     --env "FortOS_VERSION=${VERSION}" \
+    --env "ARCHITECTURE=${ARCHITECTURE:-amd64}" \
     --env "DOTNET_SDK_VERSION=${DOTNET_SDK_VERSION:-10.0.302}" \
     --env "OUTPUT_UID=$(id -u)" \
     --env "OUTPUT_GID=$(id -g)" \

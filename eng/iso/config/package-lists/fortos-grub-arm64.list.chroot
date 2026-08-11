@@ -1,0 +1,7 @@
+# FortOS bootloader toolchain — arm64 (UEFI only; no BIOS/grub-pc on AArch64).
+# grub-efi-arm64-signed + shim-signed keep the UEFI Secure Boot chain intact
+# (design §5.5). Both packages exist in Debian bookworm arm64.
+grub-efi-arm64-signed
+grub-efi-arm64-bin
+grub-common
+shim-signed
