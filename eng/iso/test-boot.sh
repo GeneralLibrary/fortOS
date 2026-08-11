@@ -216,7 +216,7 @@ if [[ "${ISO_ARCH}" == "arm64" ]]; then
     diag_args=(
         -chardev "file,id=fortos-diag,path=${DIAG_LOG}"
         -device "virtio-serial-device,id=fortos-vser"
-        -device "virtio-serial-port,chardev=fortos-diag,name=fortos.diag"
+        -device "virtserialport,chardev=fortos-diag,name=fortos.diag"
     )
 else
     diag_args=(-serial "file:${DIAG_LOG}")
