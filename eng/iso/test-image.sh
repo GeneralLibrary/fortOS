@@ -40,12 +40,25 @@ fi
 
 boot_report="$(xorriso -indev "${ISO_PATH}" -report_el_torito plain 2>&1)"
 printf '%s\n' "${boot_report}" > "${WORK_DIR}/el-torito.txt"
-# arm64 的 live-build ISO 是纯 UEFI(无 BIOS El Torito 条目;isolinux 仅 x86),
-# 因此 BIOS 引导目录检查只在 amd64 上执行。
+# amd64 的 live-build ISO 是 isohybrid:BIOS(isolinux)+ UEFI(grub-efi)双 El Torito 条目;
+# arm64 的 live-build ISO 是纯 GRUB 引导(无 El Torito 记录,arm64 固件直接从
+# ISO 9660 加载 /BOOT/GRUB),因此 El Torito 检查只在 amd64 上执行,
+# arm64 改为验证 GRUB 引导文件存在。
 if [[ "${ISO_ARCH}" == "amd64" ]]; then
     grep -Eq 'BIOS|El Torito boot img.*BIOS' "${WORK_DIR}/el-torito.txt"
+    grep -Eq 'UEFI|El Torito boot img.*UEFI' "${WORK_DIR}/el-torito.txt"
+else
+    # 校验 arm64 引导文件在 ISO 中真实存在(grub.cfg + live 内核/initrd)。
+    # 必须用 -R(RockRidge)读取,否则会看到 Joliet 的 8.3 截断名(下划线),
+    # 而 grub.cfg 引用的是 RockRidge 长名(连字符)。
+    iso_listing="$(isoinfo -i "${ISO_PATH}" -R -f 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/;[0-9]*$//')"
+    for p in '/boot/grub/grub.cfg' '/live/vmlinuz-' '/live/initrd.img-'; do
+        if ! grep -q "^${p}" <<<"${iso_listing}"; then
+            echo "error: required ARM64 boot path not found in ISO: ${p}*" >&2
+            exit 1
+        fi
+    done
 fi
-grep -Eq 'UEFI|El Torito boot img.*UEFI' "${WORK_DIR}/el-torito.txt"
 
 xorriso -osirrox on -indev "${ISO_PATH}" \
     -extract /live/filesystem.squashfs "${SQUASHFS_PATH}" \
