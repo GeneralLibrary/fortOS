@@ -212,14 +212,18 @@ fi
 # 第二个输出通道:amd64 的 q35 板有第二个 8250 串口(ttyS1)直接对应第二个 -serial;
 # arm64 的 virt 板只有一个 NS PL011(ttyAMA0),第二个 -serial 不会产生任何设备,
 # 因此 arm64 改用 virtio-serial 端口(guest 中为 /dev/vport0p1),diag 服务写它。
+# arm64 virt 板默认没有显卡,须显式加 virtio-gpu(Xorg 用 modesetting 驱动),
+# 否则 Xorg 无显示设备可启动,GUI 冒烟测试只能看到 UEFI 固件画面。
 if [[ "${ISO_ARCH}" == "arm64" ]]; then
     diag_args=(
         -chardev "file,id=fortos-diag,path=${DIAG_LOG}"
         -device "virtio-serial-device,id=fortos-vser"
         -device "virtserialport,chardev=fortos-diag,name=fortos.diag"
     )
+    gpu_args=(-device virtio-gpu)
 else
     diag_args=(-serial "file:${DIAG_LOG}")
+    gpu_args=()
 fi
 timeout "${QEMU_TIMEOUT_S}s" "${QEMU_BIN}" \
     "${accel_args[@]}" \
@@ -229,6 +233,7 @@ timeout "${QEMU_TIMEOUT_S}s" "${QEMU_BIN}" \
     -initrd "${INITRD}" \
     -append "${LIVE_BOOT_APPEND}" \
     "${cdrom_args[@]}" \
+    "${gpu_args[@]}" \
     -display vnc=127.0.0.1:99 \
     -monitor "unix:${MONITOR_SOCK},server,nowait" \
     -serial "file:${SERIAL_LOG}" \
