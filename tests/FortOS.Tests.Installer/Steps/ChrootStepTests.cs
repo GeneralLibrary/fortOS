@@ -97,6 +97,27 @@ public class ChrootStepTests
         Assert.Equal(string.Empty, ChrootStep.BuildCrypttab(context));
     }
 
+    [Theory]
+    [InlineData("en_US.UTF-8", "en_US.UTF-8 UTF-8\n")]
+    [InlineData("zh_CN.UTF-8", "en_US.UTF-8 UTF-8\nzh_CN.UTF-8 UTF-8\n")]
+    [InlineData("ja_JP.UTF-8", "en_US.UTF-8 UTF-8\nja_JP.UTF-8 UTF-8\n")]
+    public void BuildLocaleGen_KeepsEnglishFallbackAndAddsSelected(string language, string expected)
+        => Assert.Equal(expected, ChrootStep.BuildLocaleGen(language));
+
+    [Theory]
+    [InlineData("zh_CN", "zh_CN.UTF-8")]
+    [InlineData("zh_CN.UTF-8", "zh_CN.UTF-8")]
+    [InlineData("zh_CN.utf-8", "zh_CN.UTF-8")]
+    [InlineData("zh_CN.GB2312", "zh_CN.UTF-8")]
+    [InlineData("de_DE", "de_DE.UTF-8")]
+    [InlineData("en_US.UTF-8", "en_US.UTF-8")]
+    [InlineData("", "en_US.UTF-8")]
+    [InlineData(".UTF-8", "en_US.UTF-8")]
+    [InlineData("sr_RS@latin", "en_US.UTF-8")]
+    [InlineData(null, "en_US.UTF-8")]
+    public void NormalizeLanguage_ForcesUtf8Suffix(string? input, string expected)
+        => Assert.Equal(expected, ChrootStep.NormalizeLanguage(input));
+
     [Fact]
     public void SeedFortosUserDb_CreatesAdminUser()
     {

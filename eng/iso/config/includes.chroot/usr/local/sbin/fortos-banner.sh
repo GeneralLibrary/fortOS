@@ -23,7 +23,7 @@ console=/dev/console
 {
     echo ""
     echo "============================================================"
-    echo "  FortOS 管理界面 / Management Console"
+    echo "  FortOS Management Console"
     echo "${ips}" | while read -r a; do
         [ -n "${a}" ] && echo "  http://${a}:${port}/dashboard/"
     done
