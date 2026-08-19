@@ -36,19 +36,24 @@ public static class WelcomeCommand
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0";
         var local = $"http://localhost:{ManagementPort}";
+        // On the kernel console (TERM=linux) the VGA font cannot render CJK, so
+        // everything must be ASCII (issue #17). SSH/graphical terminals keep the
+        // bilingual panel.
+        var ascii = CommandRuntime.IsKernelConsole();
 
         // List IPv4 addresses of all non-virtual NICs, to avoid picking the wrong one on multi-NIC machines and being unreachable via the banner address.
         var addresses = AllIPv4();
         var webLines = new List<string>();
+        var managementLabel = ascii ? "Management:" : "管理界面 Management:";
         if (addresses.Count == 0)
         {
-            webLines.Add($"管理界面 Management: [green underline]http://localhost:{ManagementPort}/dashboard/[/]");
+            webLines.Add($"{managementLabel} [green underline]http://localhost:{ManagementPort}/dashboard/[/]");
         }
         else
         {
             foreach (var address in addresses)
             {
-                webLines.Add($"管理界面 Management: [green underline]http://{Markup.Escape(address)}:{ManagementPort}/dashboard/[/]");
+                webLines.Add($"{managementLabel} [green underline]http://{Markup.Escape(address)}:{ManagementPort}/dashboard/[/]");
             }
         }
 
@@ -57,23 +62,25 @@ public static class WelcomeCommand
             .HideHeaders()
             .AddColumn(new TableColumn(string.Empty).NoWrap())
             .AddColumn(new TableColumn(string.Empty));
-        commands.AddRow("[cyan]fortos[/]", "交互监控界面 (TUI)");
-        commands.AddRow("[cyan]fortos status[/]", "查看系统与服务状态");
-        commands.AddRow("[cyan]fortos disk list[/]", "查看磁盘");
-        commands.AddRow("[cyan]fortos share list[/]", "查看共享");
-        commands.AddRow("[cyan]fortos service list[/]", "查看服务");
-        commands.AddRow("[cyan]fortos --help[/]", "查看全部命令");
+        commands.AddRow("[cyan]fortos[/]", ascii ? "Interactive monitoring (TUI)" : "交互监控界面 (TUI)");
+        commands.AddRow("[cyan]fortos status[/]", ascii ? "Show system and service status" : "查看系统与服务状态");
+        commands.AddRow("[cyan]fortos disk list[/]", ascii ? "List disks" : "查看磁盘");
+        commands.AddRow("[cyan]fortos share list[/]", ascii ? "List shares" : "查看共享");
+        commands.AddRow("[cyan]fortos service list[/]", ascii ? "List services" : "查看服务");
+        commands.AddRow("[cyan]fortos --help[/]", ascii ? "Show all commands" : "查看全部命令");
 
         var contentRows = new List<IRenderable>
         {
             new Markup($"[bold yellow]FortOS[/] [grey]v{Markup.Escape(version)}[/]"),
-            new Markup("[bold]欢迎使用 FortOS!Welcome to FortOS![/]"),
+            ascii
+                ? new Markup("[bold]Welcome to FortOS![/]")
+                : new Markup("[bold]欢迎使用 FortOS!Welcome to FortOS![/]"),
             Text.Empty,
         };
         contentRows.AddRange(webLines.Select(l => new Markup(l)));
-        contentRows.Add(new Markup($"本地访问 Local: [green]{Markup.Escape(local)}[/]"));
+        contentRows.Add(new Markup($"{(ascii ? "Local access:" : "本地访问 Local:")} [green]{Markup.Escape(local)}[/]"));
         contentRows.Add(Text.Empty);
-        contentRows.Add(new Markup("[bold]快速上手 Quick start:[/]"));
+        contentRows.Add(new Markup(ascii ? "[bold]Quick start:[/]" : "[bold]快速上手 Quick start:[/]"));
         contentRows.Add(commands);
 
         return new Panel(new Rows(contentRows.ToArray()))

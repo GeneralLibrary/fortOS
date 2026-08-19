@@ -44,6 +44,11 @@ public sealed class ChrootStep : IInstallStep
         WriteFortosEnv(context, target);
 
         await ConfigureUserAsync(context, target, ct).ConfigureAwait(false);
+        // Generate the wizard-selected locale inside the target chroot (see
+        // WriteLocale → /etc/locale.gen). Doing it explicitly here, instead of
+        // inheriting whatever the live environment generated at boot, keeps the
+        // installed system's locale set deterministic and correct.
+        await GenerateLocalesAsync(target, ct).ConfigureAwait(false);
         // Write the account password set in the wizard into the FortOS user database
         // (/srv/nas/database/nas.db), so the Web admin UI can log in with the same
         // credentials on first boot without anonymous registration.
@@ -173,7 +178,53 @@ public sealed class ChrootStep : IInstallStep
     }
 
     private static void WriteLocale(InstallContext context, string target)
-        => WriteFile(target, "etc/default/locale", $"LANG={context.Config.Locale.Language}\n");
+    {
+        // Normalize to xx_YY.UTF-8 so /etc/default/locale and locale-gen both get
+        // a value glibc accepts (e.g. YAML "zh_CN" without the charset suffix);
+        // a malformed language would otherwise make locale-gen fail the install.
+        var language = NormalizeLanguage(context.Config.Locale.Language);
+        WriteFile(target, "etc/default/locale", $"LANG={language}\n");
+        // /etc/locale.gen drives the `locale-gen` run in GenerateLocalesAsync.
+        // The installer rsyncs the live rootfs verbatim, so its locale-archive
+        // only contains what live-config happened to generate at boot; declaring
+        // and generating the wizard-selected language explicitly makes the
+        // installed system's locale set deterministic.
+        WriteFile(target, "etc/locale.gen", BuildLocaleGen(language));
+    }
+
+    /// <summary>
+    /// Normalize a locale string to the <c>xx_YY.UTF-8</c> form Debian's
+    /// locale-gen accepts: keeps the base name and forces the UTF-8 charset
+    /// (matching the system's UTF-8 console). Null, empty and character-invalid
+    /// values (including unsupported @modifier forms such as sr_RS@latin) fall
+    /// back to <c>en_US.UTF-8</c>; this only guarantees character validity, an
+    /// exotic-but-legal base may still fail later in locale-gen.
+    /// </summary>
+    internal static string NormalizeLanguage(string? language)
+    {
+        var baseName = language ?? string.Empty;
+        var dot = baseName.IndexOf('.');
+        if (dot > 0)
+        {
+            baseName = baseName[..dot];
+        }
+        if (baseName.Length == 0 || !baseName.All(static c => char.IsAsciiLetter(c) || c == '_'))
+        {
+            return "en_US.UTF-8";
+        }
+        return baseName + ".UTF-8";
+    }
+
+    /// <summary>Generate /etc/locale.gen content (pure function, unit-testable). en_US.UTF-8 is always kept as a fallback.</summary>
+    internal static string BuildLocaleGen(string language)
+    {
+        var lines = new List<string> { "en_US.UTF-8 UTF-8" };
+        if (!string.Equals(language, "en_US.UTF-8", StringComparison.OrdinalIgnoreCase))
+        {
+            lines.Add($"{language} UTF-8");
+        }
+        return string.Join('\n', lines) + "\n";
+    }
 
     private static void WriteKeyboard(InstallContext context, string target)
         => WriteFile(target, "etc/default/keyboard", $"XKBLAYOUT=\"{context.Config.Locale.Keyboard}\"\nXKBMODEL=\"pc105\"\n");
@@ -269,6 +320,19 @@ public sealed class ChrootStep : IInstallStep
                 $"chown -R '{qUsername}':'{qUsername}' '{qHome}/.ssh' && chmod 700 '{qHome}/.ssh' && chmod 600 '{qHome}/.ssh/authorized_keys'",
                 ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Generates the locales declared in /etc/locale.gen (written by WriteLocale)
+    /// inside the target chroot. The locale-archive is then guaranteed to contain
+    /// the wizard-selected language; without this, a missing locale makes tools
+    /// report "cannot set locale" and CJK output degrade under LANG=zh_CN.UTF-8.
+    /// locale-gen exits non-zero if any declared locale fails — a visible install
+    /// failure is preferable to a broken locale at first boot.
+    /// </summary>
+    private async Task GenerateLocalesAsync(string target, CancellationToken ct)
+    {
+        await _chroot.RunScriptAsync(target, "locale-gen", ct, timeout: TimeSpan.FromMinutes(2)).ConfigureAwait(false);
     }
 
     private async Task EnableServicesAsync(string target, CancellationToken ct)

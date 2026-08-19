@@ -39,6 +39,10 @@ rclone
 live-boot
 live-config
 live-config-systemd
+# locales provides locale-gen, which both live-config (bootappend locales=) and
+# the installer's ChrootStep.GenerateLocalesAsync depend on — declared explicitly
+# so the installed system always has the locale toolchain.
+locales
 
 # ---------------------------------------------------------------------------
 # FortOS graphical installer (design: docs/installer-design.md §3.2/§8).

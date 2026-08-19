@@ -34,6 +34,15 @@ public static class CommandRuntime
         if (result.GetValue(options.NoColor) || IsJson(result, options)) AnsiConsole.Profile.Capabilities.ColorSystem = ColorSystem.NoColors;
     }
 
+    /// <summary>
+    /// True when stdout is the kernel virtual console (tty1-6, TERM=linux), whose
+    /// VGA bitmap font has no CJK glyphs — Chinese output there renders as blocks
+    /// (issue #17). FortOS console output must stay ASCII on such terminals; SSH
+    /// and graphical terminals (TERM=xterm-*) render UTF-8 fine.
+    /// </summary>
+    public static bool IsKernelConsole()
+        => string.Equals(Environment.GetEnvironmentVariable("TERM"), "linux", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Execute API operation with unified error output.</summary>
     public static async Task<int> RunAsync(ParseResult result, CliOptions options, Func<FortOSApiClient, CancellationToken, Task<JsonDocument>> action, Action<JsonDocument>? render = null, CancellationToken cancellationToken = default)
         => await RunWithClientAsync(result, options, async (client, token) =>
@@ -83,7 +92,9 @@ public static class CommandRuntime
             // In a non-interactive environment (pipe/script) interactive login is impossible, so give clear guidance.
             if (ex.StatusCode == HttpStatusCode.Unauthorized && !ShouldPromptLogin(ex, result, options))
             {
-                Console.Error.WriteLine("未认证。请先运行 'fortos auth login' 登录,或通过 --token / FortOS_TOKEN 提供令牌。");
+                Console.Error.WriteLine(IsKernelConsole()
+                    ? "Not authenticated. Run 'fortos auth login' first, or provide a token via --token / FortOS_TOKEN."
+                    : "未认证。请先运行 'fortos auth login' 登录,或通过 --token / FortOS_TOKEN 提供令牌。");
             }
             return 1;
         }
