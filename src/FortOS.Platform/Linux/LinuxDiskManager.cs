@@ -222,14 +222,31 @@ public sealed partial class LinuxDiskManager : IDiskManager
             // Hard-coding /dev/md0 would collide with existing arrays, and a second RAID could never be created;
             // scan active arrays first and allocate the next available mdN device name.
             var device = await FindNextMdDeviceAsync(ct).ConfigureAwait(false);
-            var result = await _executor.ExecuteAsync("mdadm", $"--create {device} --level={raidLevel} --raid-devices={diskPaths.Length} {devices}", ct).ConfigureAwait(false);
+            // --force: mdadm refuses to create an array on member disks that still carry residual
+            // metadata (partition table, filesystem or old md superblock) without it — a common
+            // case for freshly attached disks. Creating a RAID erases member disks by design and
+            // the API requires explicit confirmation, so --force matches that destructive semantics.
+            var result = await _executor.ExecuteAsync("mdadm", $"--create {device} --level={raidLevel} --raid-devices={diskPaths.Length} --force {devices}", ct).ConfigureAwait(false);
             await PersistRaidAssemblyAsync(ct).ConfigureAwait(false);
             return new RaidResult { Success = true, PoolId = device, Message = result.Stdout };
         }
         catch (Exception ex) when (ex is PlatformException or CommandExecutionException)
         {
-            // Surface execution failures as a structured result instead of a 500.
-            return new RaidResult { Success = false, ErrorCode = "RAID_CREATE_FAILED", Message = ex.Message };
+            // Surface execution failures as a structured result instead of a 500, including the
+            // command's stderr so the UI shows the actual reason (e.g. a busy device) instead of
+            // the bare "Command execution failed: mdadm" (issue #16). Truncated to match the API
+            // error filter's cap so oversized stderr cannot flood the UI.
+            const int maxErrorLength = 4000;
+            var message = ex.Message;
+            if (ex is CommandExecutionException cmd && !string.IsNullOrWhiteSpace(cmd.Stderr))
+            {
+                message += " — " + cmd.Stderr.Trim();
+            }
+            if (message.Length > maxErrorLength)
+            {
+                message = message[..maxErrorLength];
+            }
+            return new RaidResult { Success = false, ErrorCode = "RAID_CREATE_FAILED", Message = message };
         }
     }
 

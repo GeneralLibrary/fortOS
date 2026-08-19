@@ -24,14 +24,12 @@ import {
   CheckmarkOutline,
   ArrowUndoOutline,
   RefreshOutline,
-  ServerOutline,
 } from '@vicons/ionicons5'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import StorageSettingsPanel from '@/components/settings/StorageSettingsPanel.vue'
 import type { ConfigCategoryMeta, ConfigEntryMeta } from '@/types'
 
 const store = useSettingsStore()
@@ -50,19 +48,23 @@ const categoryIcons: Record<string, Component> = {
   security: ShieldCheckmarkOutline,
   access: SpeedometerOutline,
   observability: PulseOutline,
-  storage: ServerOutline,
   advanced: OptionsOutline,
 }
 
 onMounted(async () => {
   await store.load()
-  if (!activeCategory.value && store.categories.length) {
-    activeCategory.value = store.categories[0].id
+  // Use the filtered list (storage category lives on the Storage page), so the
+  // initial category is always one that is actually rendered — even if the
+  // backend were to reorder storage to the front.
+  if (!activeCategory.value && categories.value.length) {
+    activeCategory.value = categories.value[0].id
   }
 })
 
 const categories = computed(() =>
-  [...store.categories].sort((a, b) => a.order - b.order),
+  // The storage category is a pure operations panel (RAID create/init), not a
+  // config-key category — it moved to the Storage page (StorageView) per issue #16.
+  [...store.categories].filter(c => c.id !== 'storage').sort((a, b) => a.order - b.order),
 )
 
 const activeCat = computed<ConfigCategoryMeta | undefined>(() =>
@@ -220,7 +222,7 @@ async function saveCategory(): Promise<void> {
           </NIcon>
           <span class="settings-nav-name">{{ categoryName(cat) }}</span>
           <span v-if="dirtyCount(cat.id)" class="settings-nav-badge">{{ dirtyCount(cat.id) }}</span>
-          <span v-else-if="cat.id !== 'storage'" class="settings-nav-count">{{ countFor(cat.id) }}</span>
+          <span v-else class="settings-nav-count">{{ countFor(cat.id) }}</span>
         </button>
       </aside>
 
@@ -231,7 +233,7 @@ async function saveCategory(): Promise<void> {
             <h3 class="settings-content-title">{{ categoryName(activeCat) }}</h3>
             <p class="settings-content-desc">{{ categoryDescription(activeCat) }}</p>
           </div>
-          <div class="settings-content-actions" v-if="activeCategory !== 'storage'">
+          <div class="settings-content-actions">
             <NTag v-if="dirtyCount(activeCategory)" size="small" type="warning" round>
               {{ t('settings.unsavedCount', { count: dirtyCount(activeCategory) }) }}
             </NTag>
@@ -250,11 +252,8 @@ async function saveCategory(): Promise<void> {
           </div>
         </div>
 
-        <!-- Disk & storage management (special category: operations, not config keys) -->
-        <StorageSettingsPanel v-if="activeCategory === 'storage'" />
-
         <!-- Config entries with graphical controls -->
-        <template v-else>
+        <template>
           <div class="settings-search">
             <NInput v-model:value="search" :placeholder="t('settings.searchPlaceholder')" clearable>
               <template #prefix><NIcon><SearchOutline /></NIcon></template>
