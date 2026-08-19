@@ -33,7 +33,7 @@ public sealed class FortOSExceptionFilter : IExceptionFilter
         context.ExceptionHandled = true;
     }
 
-    private static (int Status, string Code, string Error) Map(Exception exception) => exception switch
+    internal static (int Status, string Code, string Error) Map(Exception exception) => exception switch
     {
         ServiceNotFoundException ex => (StatusCodes.Status404NotFound, ex.ErrorCode, ex.Message),
         PermissionDeniedException ex => (StatusCodes.Status403Forbidden, ex.ErrorCode, ex.Message),
@@ -49,7 +49,20 @@ public sealed class FortOSExceptionFilter : IExceptionFilter
         FileNotFoundException ex => (StatusCodes.Status404NotFound, "FILE_NOT_FOUND", ex.Message),
         DirectoryNotFoundException ex => (StatusCodes.Status404NotFound, "DIRECTORY_NOT_FOUND", ex.Message),
         ArgumentException ex => (StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message),
+        // Command failures (mkfs, mount, mdadm, ...) carry the process's stderr,
+        // which is what makes the failure actionable for the user — e.g. a RAID
+        // format/mount failing because the mount point does not exist (issue #16).
+        // Must be matched before FortOSException since it derives from it.
+        CommandExecutionException ex => (StatusCodes.Status500InternalServerError, "COMMAND_EXECUTION_FAILED", CommandDetail(ex)),
         FortOSException ex => (StatusCodes.Status500InternalServerError, ex.ErrorCode, ex.Message),
         _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "Internal server error."),
     };
+
+    /// <summary>Appends the failing command's stderr (truncated) to the exception message so the UI shows the actual reason.</summary>
+    internal static string CommandDetail(CommandExecutionException ex)
+    {
+        var stderr = string.IsNullOrWhiteSpace(ex.Stderr) ? string.Empty : " — " + ex.Stderr.Trim();
+        var detail = ex.Message + stderr;
+        return detail.Length <= 4000 ? detail : detail[..4000];
+    }
 }
