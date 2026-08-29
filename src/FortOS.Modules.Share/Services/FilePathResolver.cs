@@ -9,6 +9,9 @@ namespace FortOS.Modules.Share.Services;
 /// </summary>
 public sealed class FilePathResolver
 {
+    /// <summary>Maximum time to wait for the external `realpath` process before falling back to a normalized path.</summary>
+    private const int RealpathTimeoutSeconds = 5;
+
     private readonly IFortOSConfiguration _configuration;
     private readonly ShareModule? _shareModule;
     private readonly IProcessManager? _processManager;
@@ -71,7 +74,7 @@ public sealed class FilePathResolver
             {
                 ExecutablePath = "realpath",
                 Arguments = "-m " + QuoteForShell(path),
-                TimeoutSeconds = 5,
+                TimeoutSeconds = RealpathTimeoutSeconds,
             }, ct).ConfigureAwait(false);
             if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Stdout))
             {

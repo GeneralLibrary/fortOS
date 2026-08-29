@@ -6,6 +6,9 @@ using FortOS.Cli.Tui;
 /// <summary>FortOS CLI program entry point.</summary>
 internal static class Program
 {
+    /// <summary>Delay before the TUI redraws over the welcome banner.</summary>
+    private const int BannerDisplayDelayMilliseconds = 1200;
+
     /// <summary>Starts CLI or interactive TUI.</summary>
     private static async Task<int> Main(string[] args)
     {
@@ -24,7 +27,7 @@ internal static class Program
             {
                 WelcomeCommand.PrintBanner();
                 // Give the banner a moment before the TUI redraws over it.
-                await Task.Delay(1200);
+                await Task.Delay(BannerDisplayDelayMilliseconds);
                 using var client = new FortOSApiClient();
                 return await new TuiRenderer().RunAsync(client);
             }

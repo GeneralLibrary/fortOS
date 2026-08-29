@@ -21,6 +21,9 @@ public sealed class OtaUpdateService
     /// <summary>Maximum update package size (2 GiB): prevents a malicious or abnormal URL from downloading endlessly and filling the disk.</summary>
     private const long MaxPackageBytes = 2L * 1024 * 1024 * 1024;
 
+    /// <summary>Buffer size used while streaming the update package to disk.</summary>
+    private const int DownloadCopyBufferBytes = 81920;
+
     /// <summary>Download the update package to the staging directory and verify SHA256.</summary>
     public async Task<DownloadResult> DownloadAsync(Uri packageUri, string expectedSha256, CancellationToken ct)
     {
@@ -42,7 +45,7 @@ public sealed class OtaUpdateService
             await using (var input = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
             await using (var output = File.Create(filePath))
             {
-                var buffer = new byte[81920];
+                var buffer = new byte[DownloadCopyBufferBytes];
                 long written = 0;
                 int read;
                 while ((read = await input.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
