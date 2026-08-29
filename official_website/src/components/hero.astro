@@ -2,6 +2,7 @@
 import { getDict } from "@/i18n";
 
 const dict = getDict(Astro.currentLocale);
+const videoTitle = "是的，开源了一个NAS系统fortOS";
 ---
 
 <main class="pt-20 md:pt-28 pb-8 text-center">
@@ -36,14 +37,27 @@ const dict = getDict(Astro.currentLocale);
   </div>
   <div class="mt-14 md:mt-20 px-5">
     <div class="mx-auto max-w-3xl bg-black rounded-3xl overflow-hidden">
-      <img
-        src="/images/fortos-logo-original.png"
-        alt="FortOS logo"
-        width="2208"
-        height="2048"
-        class="w-full h-auto block"
+      <iframe
+        src="https://player.bilibili.com/player.html?bvid=BV1uNuR6fETY&page=1&high_quality=1&danmaku=0&autoplay=0"
+        class="w-full aspect-video block"
+        title={videoTitle}
         loading="eager"
-      />
+        scrolling="no"
+        border="0"
+        frameborder="no"
+        framespacing="0"
+        allowfullscreen="true"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      ></iframe>
     </div>
+    <p class="text-center mt-4 text-slate-400 text-sm">
+      <a
+        href="https://www.bilibili.com/video/BV1uNuR6fETY"
+        target="_blank"
+        rel="noopener"
+        class="text-[#2997ff] hover:underline decoration-[#2997ff] underline-offset-4">
+        {dict.video.watchOnBilibili} <span class="font-medium">&gt;</span>
+      </a>
+    </p>
   </div>
 </main>
