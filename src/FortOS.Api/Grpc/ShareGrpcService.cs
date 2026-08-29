@@ -1,6 +1,7 @@
 using Grpc.Core;
 using FortOS.Core;
 using FortOS.Modules.Share;
+using Microsoft.Extensions.Logging;
 using static FortOS.Api.Grpc.GrpcMappings;
 using Proto = FortOS.Proto;
 
@@ -11,9 +12,15 @@ public sealed class ShareGrpcService : Proto.ShareService.ShareServiceBase
 {
     private readonly ShareModule shares;
     private readonly IEventBus events;
+    private readonly ILogger<ShareGrpcService> logger;
 
     /// <summary>Initializes the share gRPC service.</summary>
-    public ShareGrpcService(ShareModule shares, IEventBus events) { this.shares = shares; this.events = events; }
+    public ShareGrpcService(ShareModule shares, IEventBus events, ILogger<ShareGrpcService> logger)
+    {
+        this.shares = shares;
+        this.events = events;
+        this.logger = logger;
+    }
 
     /// <inheritdoc />
     public override async Task<Proto.ShareResult> CreateShare(Proto.CreateShareRequest request, ServerCallContext context)
@@ -53,9 +60,10 @@ public sealed class ShareGrpcService : Proto.ShareService.ShareServiceBase
                     if (document.RootElement.TryGetProperty("clientIp", out var ip)) clientIp = ip.GetString() ?? string.Empty;
                     if (document.RootElement.TryGetProperty("protocol", out var proto)) protocol = proto.GetString() ?? "unknown";
                 }
-                catch (System.Text.Json.JsonException)
+                catch (System.Text.Json.JsonException ex)
                 {
                     // Event payload is not JSON: keep the placeholder values and continue streaming.
+                    logger.LogDebug(ex, "Skipped non-JSON share client event payload for share {ShareId}.", request.ShareId);
                 }
             }
 

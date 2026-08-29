@@ -9,6 +9,7 @@ namespace FortOS.Api.Middleware;
 public sealed class IdempotencyMiddleware(RequestDelegate next, IConfiguration configuration)
 {
     private const int DefaultMaximumBody = 1024 * 1024;
+    private const int RequestBodyCopyBufferBytes = 81920;
 
     public async Task InvokeAsync(HttpContext context, IDatabaseProvider database)
     {
@@ -86,7 +87,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next, IConfiguration c
         // Include the query string: two requests with the same key, method and body but different
         // query parameters are distinct operations and must not be treated as a replay.
         hash.AppendData(Encoding.UTF8.GetBytes($"{request.Method}\n{request.Path}{request.QueryString}\n"));
-        var buffer = new byte[81920];
+        var buffer = new byte[RequestBodyCopyBufferBytes];
         int read;
         while ((read = await request.Body.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0) hash.AppendData(buffer, 0, read);
         return Convert.ToHexString(hash.GetHashAndReset());

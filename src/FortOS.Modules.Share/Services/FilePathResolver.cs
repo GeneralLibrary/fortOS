@@ -1,4 +1,6 @@
 using FortOS.Core;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FortOS.Modules.Share.Services;
 
@@ -9,9 +11,13 @@ namespace FortOS.Modules.Share.Services;
 /// </summary>
 public sealed class FilePathResolver
 {
+    /// <summary>Maximum time to wait for the external `realpath` process before falling back to a normalized path.</summary>
+    private const int RealpathTimeoutSeconds = 5;
+
     private readonly IFortOSConfiguration _configuration;
     private readonly ShareModule? _shareModule;
     private readonly IProcessManager? _processManager;
+    private readonly ILogger _logger;
 
     /// <summary>
     /// Initialize the path resolver.
@@ -19,11 +25,13 @@ public sealed class FilePathResolver
     /// <param name="configuration">Configuration provider (files:allowed_roots).</param>
     /// <param name="shareModule">Optional share module; when present, its share paths are also allowed roots.</param>
     /// <param name="processManager">Optional process runner used to resolve real paths via realpath.</param>
-    public FilePathResolver(IFortOSConfiguration configuration, ShareModule? shareModule = null, IProcessManager? processManager = null)
+    /// <param name="logger">Optional logger; defaults to a no-op logger when omitted (e.g. in unit tests).</param>
+    public FilePathResolver(IFortOSConfiguration configuration, ShareModule? shareModule = null, IProcessManager? processManager = null, ILogger<FilePathResolver>? logger = null)
     {
         _configuration = configuration;
         _shareModule = shareModule;
         _processManager = processManager;
+        _logger = logger ?? (ILogger)NullLogger.Instance;
     }
 
     /// <summary>
@@ -71,7 +79,7 @@ public sealed class FilePathResolver
             {
                 ExecutablePath = "realpath",
                 Arguments = "-m " + QuoteForShell(path),
-                TimeoutSeconds = 5,
+                TimeoutSeconds = RealpathTimeoutSeconds,
             }, ct).ConfigureAwait(false);
             if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Stdout))
             {
@@ -81,6 +89,7 @@ public sealed class FilePathResolver
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // best-effort: when realpath is unavailable, fall back to the normalized path without blocking file operations.
+            _logger.LogDebug(ex, "realpath resolution failed for {Path}; falling back to normalized path.", SanitizeForLog(path));
         }
 
         return PathSafety.NormalizePath(path);
@@ -178,4 +187,20 @@ public sealed class FilePathResolver
     }
 
     private static string QuoteForShell(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    /// <summary>
+    /// Strips CR/LF and other control characters from a caller-supplied value before it is written to
+    /// logs, preventing log forging (an attacker embedding fake log lines via a crafted file path).
+    /// </summary>
+    private static string SanitizeForLog(string value)
+    {
+        Span<char> buffer = value.Length <= 256 ? stackalloc char[value.Length] : new char[value.Length];
+        var written = 0;
+        foreach (var c in value)
+        {
+            buffer[written++] = char.IsControl(c) ? '_' : c;
+        }
+
+        return new string(buffer[..written]);
+    }
 }

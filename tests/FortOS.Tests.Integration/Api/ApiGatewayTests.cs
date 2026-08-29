@@ -29,6 +29,21 @@ public sealed class ApiGatewayTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task AnyResponse_IncludesSecurityHeaders()
+    {
+        using var factory = await ApiTestFactory.CreateAsync(nameof(AnyResponse_IncludesSecurityHeaders));
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/health");
+
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Equal("same-origin", response.Headers.GetValues("Referrer-Policy").Single());
+        Assert.Equal("camera=(), microphone=(), geolocation=()", response.Headers.GetValues("Permissions-Policy").Single());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task ProtectedEndpoint_WithoutToken_ReturnsUnauthorized()
     {
         using var factory = await ApiTestFactory.CreateAsync(nameof(ProtectedEndpoint_WithoutToken_ReturnsUnauthorized), createUser: true);
