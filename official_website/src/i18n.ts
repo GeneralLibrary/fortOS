@@ -70,6 +70,9 @@ export const en = {
   logos: {
     heading: "Built on proven open-source foundations",
   },
+  video: {
+    watchOnBilibili: "Watch on Bilibili",
+  },
   cta: {
     title: "Ready to take control of your data?",
     description:
@@ -244,6 +247,9 @@ export const zh: typeof en = {
   },
   logos: {
     heading: "构建于成熟的开源技术之上",
+  },
+  video: {
+    watchOnBilibili: "在 B 站观看",
   },
   cta: {
     title: "准备好掌控你的数据了吗？",
