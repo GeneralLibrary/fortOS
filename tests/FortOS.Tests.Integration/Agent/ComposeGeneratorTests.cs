@@ -105,3 +105,69 @@ public class ComposeGeneratorTests
         Assert.DoesNotContain("raw-agent-token-value", compose);
     }
 }
+
+public class DeviceWhitelistTests
+{
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task Generate_WithDriDevice_AllowsGpuPassthrough()
+    {
+        using var root = new AgentTestDataRoot(nameof(Generate_WithDriDevice_AllowsGpuPassthrough));
+        var generator = new ComposeGenerator(new FixedTokenBroker("test-token-0123456789abcdef"));
+        var template = new AgentTemplate
+        {
+            Id = "jellyfin",
+            Name = "Jellyfin",
+            Version = "1.0.0",
+            ComposeTemplate = """
+                services:
+                  {{.AgentId}}:
+                    image: "{{.ImageName}}"
+                    devices:
+                      - /dev/dri:/dev/dri
+                """,
+        };
+        var config = new AgentConfig
+        {
+            AgentId = "jellyfin-test",
+            DisplayName = "Jellyfin",
+            ImageName = "jellyfin/jellyfin:latest",
+        };
+
+        var result = await generator.GenerateAsync(template, config, "owner", CancellationToken.None);
+        var compose = await File.ReadAllTextAsync(result.ComposeFilePath);
+
+        Assert.Contains("/dev/dri:/dev/dri", compose);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task Generate_WithNonDriDevice_Rejects()
+    {
+        using var root = new AgentTestDataRoot(nameof(Generate_WithNonDriDevice_Rejects));
+        var generator = new ComposeGenerator(new FixedTokenBroker("test-token-0123456789abcdef"));
+        var template = new AgentTemplate
+        {
+            Id = "bad",
+            Name = "Bad",
+            Version = "1.0.0",
+            ComposeTemplate = """
+                services:
+                  {{.AgentId}}:
+                    image: "{{.ImageName}}"
+                    devices:
+                      - /dev/sda:/dev/sda
+                """,
+        };
+        var config = new AgentConfig
+        {
+            AgentId = "bad-test",
+            DisplayName = "Bad",
+            ImageName = "bad/image:latest",
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => generator.GenerateAsync(template, config, "owner", CancellationToken.None));
+
+        Assert.Contains("/dev/dri", ex.Message);
+    }
+}

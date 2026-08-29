@@ -133,6 +133,20 @@ public sealed class AgentModule : NasModuleBase
         return services.Where(s => s.ServiceId.StartsWith("agent-", StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
+    /// <summary>读取已部署 agent 的 Compose 文件内容(P1-6 Docker 管理:可视化查看配置)。</summary>
+    public async Task<string> GetComposeAsync(string agentId, CancellationToken ct)
+    {
+        var id = NormalizeAgentId(agentId);
+        ValidateAgentId(id);
+        var path = Path.Combine(AgentPaths.AgentsRoot, id, "docker-compose.yml");
+        if (!File.Exists(path))
+        {
+            throw new Core.ServiceNotFoundException($"Agent {id} has no compose file. Deploy the agent first.", "AGENT_COMPOSE_MISSING");
+        }
+
+        return await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Returns the persisted deployment manifest (ports, environment variable names,
     /// external access notes) for a deployed agent so the UI can surface how to reach

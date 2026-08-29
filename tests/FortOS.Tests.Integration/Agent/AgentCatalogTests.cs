@@ -55,6 +55,13 @@ public class AgentCatalogTests
         Assert.Contains(templates, t => t.Id == "openclaw");
         Assert.Contains(templates, t => t.Id == "open-webui");
         Assert.Contains(templates, t => t.Id == "ollama");
+        // P0-2: 24h AI 宿主模板。
+        Assert.Contains(templates, t => t.Id == "opencode");
+        Assert.Contains(templates, t => t.Id == "hermes");
+        // P1-5: 影音中心模板。
+        Assert.Contains(templates, t => t.Id == "jellyfin");
+        // P2-7: 垂直应用模板(KTV/影院)。
+        Assert.Contains(templates, t => t.Id == "kodi");
     }
 
     [Fact]
@@ -78,6 +85,17 @@ public class AgentCatalogTests
         Assert.Contains(webui.Parameters, p => p.Name == "HOST_PORT" && p.Default == "3000");
         Assert.Contains(webui.Parameters, p => p.Name == "CONTAINER_PORT" && p.Default == "8080");
         Assert.NotEmpty(webui.AccessNotes);
+
+        // P0-2: AI 宿主模板暴露端口/模型/数据目录参数与访问说明。
+        var opencode = Assert.Single(templates, t => t.Id == "opencode");
+        Assert.Contains(opencode.Parameters, p => p.Name == "OPENAI_BASE_URL");
+        Assert.Contains(opencode.Parameters, p => p.Name == "OPENAI_MODEL");
+        Assert.NotEmpty(opencode.AccessNotes);
+
+        var hermes = Assert.Single(templates, t => t.Id == "hermes");
+        Assert.Contains(hermes.Parameters, p => p.Name == "OPENAI_BASE_URL");
+        Assert.Contains(hermes.Parameters, p => p.Name == "HERMES_WORKSPACE");
+        Assert.NotEmpty(hermes.AccessNotes);
     }
 
     private static string ValidTemplateYaml(string id, string name, string description) => $@"id: {id}

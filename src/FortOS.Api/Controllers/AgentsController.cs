@@ -140,6 +140,14 @@ public sealed class AgentsController : FortOSControllerBase
     public Task<IReadOnlyList<LogEntry>> Logs(string id, [FromServices] MemoryLogStore logs, CancellationToken ct, [FromQuery] int tail = 100)
         => logs.QueryAsync(new LogQuery { AgentId = id, Limit = tail }, ct);
 
+    /// <summary>读取已部署 agent 的 Compose 配置(P1-6 Docker 管理:可视化查看)。</summary>
+    [HttpGet("{id}/compose")]
+    public async Task<object> Compose(string id, [FromServices] AgentModule agents, CancellationToken ct)
+    {
+        var compose = await agents.GetComposeAsync(id, ct).ConfigureAwait(false);
+        return new { agentId = id, compose };
+    }
+
     /// <summary>
     /// External access info for a deployed agent: published ports, environment
     /// variable names to wire chat channels / clients, and integration notes.
