@@ -7,16 +7,18 @@
 
 ## 1. Overall Code Quality Score (0-100)
 
-**Score: 88 / 100**
+**Score: 92 / 100**
 
 Deductions:
-- -4: A handful of magic numbers (copy-buffer sizes, timeouts, UI delay) were not extracted into
-  named constants (see 2.3; fixed in this PR).
 - -4: Auth token/payload persisted in `localStorage` on the dashboard, which is readable by any
-  script executing in the page context if an XSS bug is ever introduced elsewhere (see 3.1).
-- -3: A few silently-swallowed exception branches exist without telemetry, relying only on inline
-  comments to explain intent (see 2.2/2.3).
-- -1: Minor inconsistency in exception-log verbosity across modules.
+  script executing in the page context if an XSS bug is ever introduced elsewhere (see 3.1). This
+  is the only remaining tracked item; it requires an auth-transport redesign out of scope for a
+  surgical, low-risk fix (see rationale in 3.1).
+- -2: Response headers previously carried no defense-in-depth hardening (no `X-Frame-Options`,
+  `X-Content-Type-Options`, `Referrer-Policy`); **fixed in this PR** (see 3.1).
+- -2: A few silently-swallowed exception branches existed without telemetry, relying only on
+  inline comments to explain intent; **fixed in this PR** by adding debug-level structured
+  logging that preserves the original fail-open behavior (see 2.3).
 
 No glue code, no god classes/functions, no circular dependencies, and no floating package versions
 were found. Path handling, authentication, and password storage already follow strong practices
@@ -61,11 +63,16 @@ useless/redundant comments were found during sampling of the security, API, and 
   - `src/FortOS.Api/Grpc/ShareGrpcService.cs` and `src/FortOS.Api/Services/AiAssistantService.cs`
     each contain a `catch (JsonException) { /* comment */ }` used to skip a single malformed
     streamed event without aborting the whole stream. This is a deliberate, well-documented
-    design choice (partial/heartbeat data is expected on those wire formats), not a bug — no
-    change made.
+    design choice (partial/heartbeat data is expected on those wire formats), not a bug. **Fixed
+    in this PR**: both catch blocks now emit a debug-level structured log (`ILogger.LogDebug`)
+    identifying the event being skipped, so the fail-open behavior remains but is now observable;
+    the raw payload/SSE line content is intentionally not logged to avoid leaking event data.
+  - `src/FortOS.Modules.Share/Services/FilePathResolver.cs` silently fell back to a normalized
+    path when the `realpath` subprocess failed. **Fixed in this PR**: added a debug-level log
+    call documenting the fallback and the path involved.
   - `src/FortOS.Api/Services/StartupOrchestrator.cs` logs a warning on failure and continues
-    (graceful degradation by design); acceptable.
-  - No empty `catch {}` blocks or catch-all blocks with zero logging were found.
+    (graceful degradation by design); acceptable, no change needed.
+  - No empty `catch {}` blocks or catch-all blocks with zero logging remain.
 
 ## 3. Classified Security Vulnerability List
 
@@ -73,7 +80,8 @@ useless/redundant comments were found during sampling of the security, API, and 
 
 | Severity | Location | Attack Principle | Fix Status / Recommendation |
 |----------|----------|-------------------|------------------------------|
-| Medium | `src/FortOS.Dashboard/src/stores/auth.ts` | JWT access token and payload are persisted in `localStorage`. Any future XSS vulnerability elsewhere in the SPA would let an attacker read `localStorage` synchronously and exfiltrate the token, achieving full account takeover without needing to defeat CSRF/token-replay protections. | Not changed in this PR (would require a broader auth-transport redesign to HttpOnly, `SameSite=Strict` cookies plus CSRF-token issuance, which is out of scope for a surgical fix and carries regression risk to the whole auth flow). Recommended as a medium-term iteration: migrate token storage to an HttpOnly cookie set by the API, with a separate readable CSRF token for state-changing requests. |
+| Medium | `src/FortOS.Dashboard/src/stores/auth.ts` | JWT access token and payload are persisted in `localStorage`. Any future XSS vulnerability elsewhere in the SPA would let an attacker read `localStorage` synchronously and exfiltrate the token, achieving full account takeover without needing to defeat CSRF/token-replay protections. | Not changed in this PR (would require a broader auth-transport redesign to HttpOnly, `SameSite=Strict` cookies plus CSRF-token issuance, which is out of scope for a surgical fix and carries regression risk to the whole auth flow — there is no automated frontend test harness in this repository to validate such a change end-to-end). Recommended as a medium-term iteration: migrate token storage to an HttpOnly cookie set by the API, with a separate readable CSRF token for state-changing requests. **Partial mitigation applied in this PR**: added `SecurityHeadersMiddleware` (see next row) as defense-in-depth to reduce the likelihood/impact of the XSS precondition this finding depends on. |
+| Low | Missing HTTP security headers | No response carried `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, or `Permissions-Policy`, leaving the dashboard without baseline clickjacking/MIME-sniffing protection. | **Fixed in this PR**: added `src/FortOS.Api/Middleware/SecurityHeadersMiddleware.cs`, registered first in the pipeline, setting `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, and a restrictive `Permissions-Policy`. Covered by a new integration test (`ApiGatewayTests.AnyResponse_IncludesSecurityHeaders`). A strict `Content-Security-Policy` was intentionally not added in this pass: the dashboard has no frontend test harness to verify it would not break the Vite/Naive-UI bundle (e.g. its inline `<style>` FOUC guard), so it is called out as a follow-up requiring frontend verification rather than risked here. |
 | — | CORS | `builder.Services.AddCors` explicitly restricts to `allowedOrigins` (no `AllowAnyOrigin`); confirmed no wildcard origin. | No action needed. |
 | — | Transport | No plaintext transmission of credentials found; `NasTokenMiddleware` reads bearer tokens from the `Authorization` header, not cookies, and TLS termination is expected at the reverse-proxy/hosting layer per `docker-compose.yml`. | No action needed. |
 | — | Replay/CSRF | `IdempotencyMiddleware` (Idempotency-Key + request fingerprint) and `RateLimitMiddleware` already provide replay and abuse mitigations for state-changing requests. | No action needed. |
@@ -89,6 +97,7 @@ useless/redundant comments were found during sampling of the security, API, and 
 | — | Deserialization | No `BinaryFormatter`, unchecked `XmlSerializer`, or unrestricted `JsonConvert.DeserializeObject` usage found; the codebase uses `System.Text.Json` with typed deserialization throughout. | No action needed. |
 | — | Dependencies | All NuGet package references are pinned to explicit versions (no floating/wildcard versions). `FortOS.Installer.Core.csproj` and `FortOS.Core.csproj` explicitly pin `SQLitePCLRaw.bundle_e_sqlite3` to `3.0.4` with an inline comment documenting the CVE (`GHSA-2m69-gcr7-jv3q`) being avoided. | No action needed. |
 | Low | `src/FortOS.Api/Middleware/IdempotencyMiddleware.cs`, `src/FortOS.Modules.Update/Services/OtaUpdateService.cs` | Hardcoded `81920`-byte copy buffers appeared coincidentally identical in two unrelated files with no named constant, making it unclear whether the sizing was an intentional shared decision or two independent choices that happened to match. | **Fixed in this PR** — each class now owns its own named constant (`RequestBodyCopyBufferBytes`, `DownloadCopyBufferBytes`). The two classes have unrelated responsibilities (HTTP request-body hashing vs. update-package download streaming), so independent per-class constants are intentional; they are not meant to share a single value, and either can be tuned independently in the future. |
+| Medium | `src/FortOS.Modules.Share/Services/FilePathResolver.cs` (`ResolveRealPathAsync`) | Log forging: the newly-added debug log for the `realpath` fallback path wrote the caller-supplied path directly into the log message. `RecycleController` calls `ResolveRealPathAsync` with a decoded, attacker-influenced identifier before any newline-stripping validation runs, so a crafted path containing CR/LF could forge additional fake log lines. Found by CodeQL (`cs/log-forging`) during this PR's own review, not present before this PR's logging addition. | **Fixed in this PR** — added a `SanitizeForLog` helper that replaces control characters (including CR/LF) with `_` before the value is passed to `ILogger`, applied at the one call site that logs a caller-supplied path. |
 
 ### 3.3 Business Logic Layer Vulnerabilities
 
@@ -110,10 +119,8 @@ useless/redundant comments were found during sampling of the security, API, and 
   per-bounded-context files to ease navigation as the catalog grows.
 
 **Long-Term Architecture Adjustment**
-- Consider adding structured, sampled telemetry (not just log lines) around the intentionally
-  "best-effort" exception paths (`ShareGrpcService`, `AiAssistantService`, `FilePathResolver`
-  realpath fallback) so operators can observe how often these degraded paths are taken in
-  production, without changing their current fail-open behavior.
+- Add a frontend test harness (component/e2e) to the dashboard so a strict `Content-Security-Policy`
+  can be introduced and verified safely, further hardening the localStorage-token exposure.
 
 ## 5. Qualified Code Acceptance Standard Summary
 
@@ -121,7 +128,7 @@ useless/redundant comments were found during sampling of the security, API, and 
 |-------------|--------|
 | 1. No glue-style stacked logic; clear layered separation, single responsibility, no oversized monolithic functions | **Met** — clean project/module layering, no function exceeded ~40 lines in sampling. |
 | 2. Standard semantic naming; valid comments for all critical logic/inputs/exceptions; no useless redundant comments | **Met** — see 2.2. |
-| 3. No unreachable dead code, no excessive global state; complete exception capture with persistent log records | **Met**, with the noted best-effort/degrade-gracefully paths intentionally documented rather than logged at every occurrence (see 2.3). |
+| 3. No unreachable dead code, no excessive global state; complete exception capture with persistent log records | **Met** — best-effort/degrade-gracefully paths now emit debug-level logs in addition to their documenting comments (see 2.3). |
 | 4. Zero critical/high-risk vulnerabilities in network, runtime, and business logic layers; strict backend validation of all external input | **Met** — no critical/high findings; one **Medium** finding (localStorage token storage) tracked as a recommendation, not blocking, since it requires an auth-transport redesign outside this PR's minimal-change scope. |
 | 5. All magic numbers/hardcoded static strings extracted into unified constants | **Met** after this PR's fixes (see 2.2/3.2). |
 

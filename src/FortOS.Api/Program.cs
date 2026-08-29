@@ -92,6 +92,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<TraceIdMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<ApiVersionCompatibilityMiddleware>();
 app.UseRouting();
 app.UseCors();

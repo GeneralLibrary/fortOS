@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FortOS.Api.Services;
 
@@ -10,8 +12,10 @@ namespace FortOS.Api.Services;
 /// 为移动端 AI 对话入口提供自然语言 → 操作建议/执行的中转。
 /// 仅做协议中转与上下文拼装,不内置模型;端点、模型、密钥均可配置。
 /// </summary>
-public sealed class AiAssistantService(HttpClient http, IConfiguration configuration)
+public sealed class AiAssistantService(HttpClient http, IConfiguration configuration, ILogger<AiAssistantService>? logger = null)
 {
+    private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -96,7 +100,7 @@ public sealed class AiAssistantService(HttpClient http, IConfiguration configura
 
         if (request.Stream)
         {
-            return await ReadStreamingAsync(response, model, onDelta, ct).ConfigureAwait(false);
+            return await ReadStreamingAsync(response, model, onDelta, _logger, ct).ConfigureAwait(false);
         }
 
         var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -127,6 +131,7 @@ public sealed class AiAssistantService(HttpClient http, IConfiguration configura
         HttpResponseMessage response,
         string model,
         Action<string>? onDelta,
+        ILogger logger,
         CancellationToken ct)
     {
         var builder = new StringBuilder();
@@ -157,9 +162,10 @@ public sealed class AiAssistantService(HttpClient http, IConfiguration configura
                 builder.Append(delta);
                 onDelta?.Invoke(delta);
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
                 // 忽略无法解析的 SSE 行(部分网关会混入注释/心跳)。
+                logger.LogDebug(ex, "Skipped unparsable AI streaming SSE line.");
             }
         }
 
