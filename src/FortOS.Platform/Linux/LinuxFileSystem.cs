@@ -33,6 +33,12 @@ public sealed partial class LinuxFileSystem : IFileSystem
         ValidatePath(device, nameof(device));
         ValidatePath(mountPoint, nameof(mountPoint));
         ValidateFsType(fsType);
+        // mount refuses a non-existent mount point; mkdir -p is idempotent. Without
+        // this, initializing a fresh RAID with the guided /srv/nas/raid-mdN path
+        // always fails at mount time (issue #16). Failure is tolerated here — the
+        // mount command below fails visibly with its own error if mkdir could not
+        // create the directory.
+        await _executor.ExecuteAsync("mkdir", $"-p {Quote(mountPoint)}", ct, throwOnNonZeroExit: false).ConfigureAwait(false);
         await _executor.ExecuteAsync("mount", $"-t {Quote(fsType)} {Quote(device)} {Quote(mountPoint)}", ct).ConfigureAwait(false);
         await PersistFstabAsync(content => FstabEditor.UpsertEntry(content, device, mountPoint, fsType.ToLowerInvariant()), ct).ConfigureAwait(false);
     }

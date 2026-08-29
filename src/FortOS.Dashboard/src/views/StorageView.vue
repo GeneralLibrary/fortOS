@@ -10,6 +10,7 @@ import { runSmartCheck as apiRunSmartCheck } from '@/api/disks'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import StorageSettingsPanel from '@/components/settings/StorageSettingsPanel.vue'
 import { formatBytes, formatTemperature, formatPercent } from '@/utils/format'
 import type { DiskInfo, SmartData } from '@/types'
 import type { DataTableColumns } from 'naive-ui'
@@ -87,6 +88,9 @@ const columns: DataTableColumns<DiskInfo> = [
       <EmptyState v-else :message="t('storage.noDisks')" />
     </NCard>
 
+    <!-- RAID pools & disk operations (moved here from System Settings per issue #16) -->
+    <StorageSettingsPanel class="storage-raid-panel" />
+
     <!-- Disk detail drawer -->
     <NDrawer v-model:show="showDetail" :width="500" placement="right">
       <NDrawerContent v-if="selectedDisk" :title="t('storage.diskDetail')" closable>
@@ -147,5 +151,9 @@ const columns: DataTableColumns<DiskInfo> = [
 .storage-page {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.storage-raid-panel {
+  margin-top: 16px;
 }
 </style>
