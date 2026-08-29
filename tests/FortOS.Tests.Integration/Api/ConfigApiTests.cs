@@ -31,7 +31,7 @@ public sealed class ConfigApiTests
         var categories = body.GetProperty("categories");
         var categoryIds = categories.EnumerateArray().Select(c => c.GetProperty("id").GetString()).ToList();
         // Mirrors ConfigMetaRegistry.Categories — keep in sync when categories are added.
-        Assert.Equal(["security", "access", "observability", "storage", "advanced"], categoryIds);
+        Assert.Equal(["security", "access", "observability", "storage", "ai", "remote", "docker", "advanced"], categoryIds);
 
         var entries = body.GetProperty("entries");
         var entryMap = entries.EnumerateArray().ToDictionary(e => e.GetProperty("key").GetString()!);

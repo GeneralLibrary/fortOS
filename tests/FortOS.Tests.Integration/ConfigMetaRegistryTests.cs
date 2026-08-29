@@ -73,3 +73,23 @@ public sealed class ConfigMetaRegistryTests
         => Assert.All(ConfigMetaRegistry.Entries,
             e => Assert.Equal(e.Type.ToString().ToLowerInvariant(), e.TypeName));
 }
+
+public class P0P2ConfigMetaTests
+{
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void NewFeatureKeys_AreWhitelistedAndNotSensitive()
+    {
+        // P0-1 AI / P0-3 Remote / P1-6 Docker 的新增配置键。
+        Assert.Contains(ConfigMetaRegistry.Entries, e => e.Key == "ai:enabled" && e.Type == ConfigEntryType.Boolean);
+        Assert.Contains(ConfigMetaRegistry.Entries, e => e.Key == "ai:endpoint");
+        Assert.Contains(ConfigMetaRegistry.Entries, e => e.Key == "ai:model");
+        Assert.Contains(ConfigMetaRegistry.Entries, e => e.Key == "remote:enabled" && e.Type == ConfigEntryType.Boolean);
+        Assert.Contains(ConfigMetaRegistry.Entries, e => e.Key == "remote:tailscale_hostname");
+        Assert.Contains(ConfigMetaRegistry.Entries, e => e.Key == "docker:registry_mirrors" && e.Type == ConfigEntryType.Text);
+
+        // 凭据类键必须保持敏感(不进动态表单),防止密钥经配置页暴露。
+        Assert.True(ConfigMetaRegistry.IsSensitive("ai:api_key"));
+        Assert.True(ConfigMetaRegistry.IsSensitive("remote:tailscale_auth_key"));
+    }
+}
