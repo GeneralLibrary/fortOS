@@ -31,4 +31,8 @@ public static class NAbilityConstants
     public const string DataSensitive = "data:level:sensitive";
     /// <summary>Session token refresh permission: the self-service ability for an authenticated user to refresh their own session token, issued together with the login token.</summary>
     public const string SessionRefresh = "auth:session:refresh";
+    /// <summary>AI assistant chat permission (P0-1 phone-side AI entry).</summary>
+    public const string AiChat = "ai:chat";
+    /// <summary>Remote access (Tailscale) management permission (P0-3).</summary>
+    public const string RemoteAccess = "remote:access";
 }

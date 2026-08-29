@@ -424,6 +424,227 @@ compose:
       ports:
         - "${HOST_PORT}:${CONTAINER_PORT}"
 """,
+        ["opencode"] = """
+id: opencode
+name: OpenCode
+logo: /logos/opencode.svg
+version: 1.0.0
+description: OpenCode — 开源 AI 编程/运维 Agent(终端原生,24h 常驻),可连接 OpenAI 兼容端点(含本地 Ollama)。适合在 NAS 上做 AI 宿主机:手机 SSH 进容器即可指挥。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: ghcr.io/sst/opencode:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /root/.local/share/opencode
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "18790"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "18790"
+  - name: OPENAI_API_KEY
+    type: string
+    required: false
+    default: ""
+  - name: OPENAI_BASE_URL
+    type: string
+    required: false
+    default: http://host.docker.internal:11434/v1
+  - name: OPENAI_MODEL
+    type: string
+    required: false
+    default: qwen2.5:7b
+access:
+  - "终端交互: ssh 到宿主后 docker exec -it <agent> opencode"
+  - "手机指挥: 部署后开启 SSH(见 fortOS 网络页),手机终端进入容器即可用自然语言驱动 opencode"
+  - "对接本地 Ollama: 默认 OPENAI_BASE_URL 指向宿主 11434(Ollama),无需外网 API Key"
+  - "对接外部模型: 修改 OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL 后重启"
+  - "文档: https://opencode.ai"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        OPENAI_API_KEY: "${OPENAI_API_KEY}"
+        OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+        OPENAI_MODEL: "${OPENAI_MODEL}"
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+""",
+        ["hermes"] = """
+id: hermes
+name: Hermes Agent
+logo: /logos/hermes.svg
+version: 1.0.0
+description: Hermes — 轻量常驻 AI 助手(OpenAI 兼容),面向"24 小时运行、手机指挥"场景:常驻监听,任务/问答经 API 或终端发起。适合与 OpenCode 配合做个人 AI 宿主。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: ghcr.io/anthropic-ai/hermes:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /data
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "18791"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "18791"
+  - name: OPENAI_API_KEY
+    type: string
+    required: false
+    default: ""
+  - name: OPENAI_BASE_URL
+    type: string
+    required: false
+    default: http://host.docker.internal:11434/v1
+  - name: OPENAI_MODEL
+    type: string
+    required: false
+    default: qwen2.5:7b
+  - name: HERMES_WORKSPACE
+    type: string
+    required: false
+    default: /data/workspace
+access:
+  - "API 地址: http://<fortos-ip>:18791 (OpenAI 兼容 chat/completions)"
+  - "手机指挥: 任何支持 OpenAI 兼容客户端的 App/脚本把 base URL 指向该地址即可对话"
+  - "对接本地 Ollama: 默认 OPENAI_BASE_URL 指向宿主 11434,无需外网 Key"
+  - "文档: https://hermes.example.ai"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      environment:
+        OPENAI_API_KEY: "${OPENAI_API_KEY}"
+        OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+        OPENAI_MODEL: "${OPENAI_MODEL}"
+        HERMES_WORKSPACE: "${HERMES_WORKSPACE}"
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+""",
+        ["jellyfin"] = """
+id: jellyfin
+name: Jellyfin
+logo: /logos/jellyfin.svg
+version: 1.0.0
+description: Jellyfin — 开源影音媒体中心(免费 Plex 替代),支持 H.265/HEVC 硬件转码直通(Intel/AMD /dev/dri)。可管理影视库并串流到手机/电视。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: jellyfin/jellyfin:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /config
+  - name: media_dir
+    type: string
+    required: false
+    default: /media
+  - name: HOST_PORT
+    type: int
+    required: false
+    default: "8096"
+  - name: CONTAINER_PORT
+    type: int
+    required: false
+    default: "8096"
+  - name: TZ
+    type: string
+    required: false
+    default: UTC
+access:
+  - "Web 界面: http://<fortos-ip>:8096"
+  - "首次访问设置管理员账号与媒体库"
+  - "硬件转码: 部署时挂载 /dev/dri(Intel/AMD iGPU),Jellyfin 转码设置选择 QSV/VAAPI 即支持 H.265/HEVC"
+  - "手机端: Jellyfin 官方 App 连接 http://<fortos-ip>:8096,可配合 P0-3 远程访问在户外观看"
+  - "文档: https://jellyfin.org/docs"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "${HOST_PORT}:${CONTAINER_PORT}"
+      devices:
+        - /dev/dri:/dev/dri
+      environment:
+        TZ: "${TZ}"
+""",
+        ["kodi"] = """
+id: kodi
+name: Kodi (家庭 KTV / 影院)
+logo: /logos/kodi.svg
+version: 1.0.0
+description: Kodi — 开源家庭影院/媒体中心,配合点歌插件可做家庭 KTV。桌面/手机/电视多端客户端访问同一个媒体库。
+capabilities_required:
+  - storage:share:media:read
+parameters:
+  - name: image
+    type: string
+    required: false
+    default: docker.io/linuxserver/kodi:latest
+  - name: data_dir
+    type: string
+    required: false
+    default: /config
+  - name: media_dir
+    type: string
+    required: false
+    default: /media
+  - name: PUID
+    type: int
+    required: false
+    default: "1000"
+  - name: PGID
+    type: int
+    required: false
+    default: "1000"
+  - name: TZ
+    type: string
+    required: false
+    default: Asia/Shanghai
+access:
+  - "说明: 家庭 KTV 需要电视/显示器 + Kodi 客户端(Kodi 官方 App,全平台含 AppleTV)。NAS 上部署本服务托管媒体库与点歌插件。"
+  - "Web 远程控制: 安装 Kodi web 界面(默认 8080 端口)后可从手机浏览器遥控。"
+  - "点歌插件: 在 Kodi 内安装 KTV 点歌插件(如「酷我音乐」类 VOD 插件),AppleTV 端建议配合 Jellyfin 做媒体播放。"
+  - "文档: https://kodi.tv"
+compose:
+  services:
+    "{{.AgentId}}":
+      image: "{{.ImageName}}"
+      restart: unless-stopped
+      ports:
+        - "8080:8080"
+      environment:
+        PUID: "${PUID}"
+        PGID: "${PGID}"
+        TZ: "${TZ}"
+      devices:
+        - /dev/dri:/dev/dri
+""",
     };
     private readonly HttpClient _httpClient;
     private readonly IDeserializer _deserializer;

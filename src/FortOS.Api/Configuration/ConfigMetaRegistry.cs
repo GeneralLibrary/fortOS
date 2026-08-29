@@ -75,7 +75,10 @@ public static class ConfigMetaRegistry
         new("access", "Access Control", "speedometer", "Rate limiting for the API surface", 2),
         new("observability", "Monitoring & Logs", "pulse", "Metrics exposure and logging behaviour", 3),
         new("storage", "Disk & Storage", "server", "Disk health and RAID pool management", 4),
-        new("advanced", "Advanced", "options", "Internal tuning options — change with care", 5),
+        new("ai", "AI Assistant", "bolt", "Natural-language management assistant settings", 5),
+        new("remote", "Remote Access", "link", "Tailscale-based remote access settings", 6),
+        new("docker", "Docker", "server", "Container registry and daemon settings", 7),
+        new("advanced", "Advanced", "options", "Internal tuning options — change with care", 8),
     ];
 
     /// <summary>Whitelisted, user-editable configuration entries.</summary>
@@ -122,6 +125,30 @@ public static class ConfigMetaRegistry
         new("agent:require_digest", "advanced", ConfigEntryType.Boolean, "Image Fingerprint Check",
             "When enabled, agent images must be pinned to an immutable sha256 digest (the image fingerprint) so a deployed image can never change underneath you. Disable to allow mutable tags like latest for convenience, at the cost of safety.",
             DefaultValue: "true", Order: 5),
+
+        // ---- AI assistant (P0-1) ----
+        new("ai:enabled", "ai", ConfigEntryType.Boolean, "AI Assistant",
+            "Enable the natural-language assistant (phone-side AI management entry).",
+            DefaultValue: "true", Order: 1),
+        new("ai:endpoint", "ai", ConfigEntryType.String, "AI Endpoint (OpenAI-compatible)",
+            "Base URL of the LLM endpoint. Defaults to the local Ollama instance (http://127.0.0.1:11434/v1).",
+            DefaultValue: "http://127.0.0.1:11434/v1", Order: 2),
+        new("ai:model", "ai", ConfigEntryType.String, "AI Model",
+            "Model name served by the endpoint (e.g. qwen2.5:7b, deepseek-r1:8b).",
+            DefaultValue: "qwen2.5:7b", Order: 3),
+
+        // ---- Remote access (P0-3, Tailscale) ----
+        new("remote:enabled", "remote", ConfigEntryType.Boolean, "Remote Access",
+            "Enable Tailscale-based remote access (no public IP or port forwarding needed).",
+            DefaultValue: "false", Order: 1),
+        new("remote:tailscale_hostname", "remote", ConfigEntryType.String, "Tailscale Device Name",
+            "Display name for this NAS in your Tailscale network.",
+            DefaultValue: "fortos", Order: 2),
+
+        // ---- Docker management (P1-6, 1panel parity) ----
+        new("docker:registry_mirrors", "docker", ConfigEntryType.Text, "Registry Mirrors (one per line)",
+            "Docker daemon registry mirrors, e.g. a domestic acceleration endpoint (https://docker.m.daocloud.io). One per line. Applied by restarting docker.",
+            Order: 1),
     ];
 
     /// <summary>True if the key is whitelisted for dashboard editing.</summary>

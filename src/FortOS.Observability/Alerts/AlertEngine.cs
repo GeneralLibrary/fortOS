@@ -176,7 +176,17 @@ public sealed class AlertEngine : IAlertEngine, IHostedService, IDisposable
     public void Dispose()
     {
         _subscription?.Dispose();
-        _stopping.Cancel();
+        // Cancel 后立即 Dispose 的 CTS,若 Dispose 被重复调用(宿主 Stop + 容器释放都会触发),
+        // 第二次 Cancel 会对已处置的 CTS 抛 ObjectDisposedException —— 必须容错,否则进程 ABRT。
+        try
+        {
+            _stopping.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已被处置(重复 Dispose),忽略。
+        }
+
         _stopping.Dispose();
     }
 

@@ -213,7 +213,7 @@ public sealed class ComposeGenerator : IComposeGenerator
         RejectHostNamespace(service, "network_mode");
         RejectHostNamespace(service, "pid");
         RejectHostNamespace(service, "ipc");
-        RejectPresent(service, "devices");
+        ValidateDevices(service);
         if (service.Children.TryGetValue(new YamlScalarNode("cap_add"), out var caps) && caps is YamlSequenceNode capList
             && capList.Children.OfType<YamlScalarNode>().Any(c => IsDangerousCapability(c.Value)))
             throw new InvalidDataException("Agent compose may not add dangerous Linux capabilities.");
@@ -279,6 +279,37 @@ public sealed class ComposeGenerator : IComposeGenerator
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Validates a compose <c>devices</c> list. FortOS agents run with the least privilege
+    /// possible, so host devices are NOT generally mountable. The single exception is the
+    /// Intel/AMD GPU device group <c>/dev/dri</c> (video transcode hardware acceleration for
+    /// trusted media templates such as Jellyfin); anything else — including raw disks, host
+    /// sockets, or misc devices — is rejected.
+    /// </summary>
+    private static void ValidateDevices(YamlMappingNode service)
+    {
+        if (!service.Children.TryGetValue(new YamlScalarNode("devices"), out var devices)
+            || devices is not YamlSequenceNode deviceList)
+        {
+            return;
+        }
+
+        foreach (var device in deviceList.Children)
+        {
+            var value = device is YamlScalarNode scalar ? scalar.Value : null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidDataException("Agent compose devices entries must be scalar paths.");
+            }
+
+            var hostPath = value.Split(':', 2)[0];
+            if (!hostPath.StartsWith("/dev/dri", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException($"Agent compose may only mount GPU devices under /dev/dri (got '{hostPath}').");
+            }
+        }
     }
 
     /// <summary>

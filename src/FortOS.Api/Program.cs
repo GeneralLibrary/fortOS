@@ -57,6 +57,8 @@ builder.Services.AddSingleton<FileManagerService>();
 builder.Services.AddSingleton<UploadSessionService>();
 builder.Services.AddSingleton<BackupRunHistoryStore>();
 builder.Services.AddSingleton<BackupExecutionService>();
+builder.Services.AddHttpClient<AiAssistantService>();
+builder.Services.AddSingleton<RemoteAccessService>();
 // FortOS runs only on Linux; synchronizes system users with smbpasswd so SMB clients can use the same credentials.
 builder.Services.AddSingleton<ISystemUserProvisioner, SambaUserProvisioner>();
 builder.Services.AddFortOSAgent();
